@@ -18,7 +18,7 @@ public sealed class BandWindow : Window
 
     private sealed record Chip(string Key, string Label, string Accent, Func<AppSettings, bool> Enabled)
     {
-        public StackPanel Panel { get; } = new() { Margin = new Thickness(0, 0, 14, 0), VerticalAlignment = VerticalAlignment.Center };
+        public StackPanel Panel { get; } = new() { Margin = new Thickness(7, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center };
         public TextBlock Value { get; } = new() { FontSize = 13, FontWeight = FontWeights.SemiBold, Style = null };
         public Brush? Tint { get; set; }
         public bool TintSet { get; set; }
@@ -61,13 +61,12 @@ public sealed class BandWindow : Window
             var label = new TextBlock { Text = c.Label, FontSize = 10, Style = null };
             label.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
             c.Value.SetResourceReference(TextBlock.ForegroundProperty, c.Accent);
-            c.Panel.MinWidth = c.Key is "mem" or "cpu" ? 38 : 70;
             c.Panel.Children.Add(label);
             c.Panel.Children.Add(c.Value);
             _row.Children.Add(c.Panel);
         }
 
-        var pill = new Border { Padding = new Thickness(10, 2, 0, 2), VerticalAlignment = VerticalAlignment.Center, Child = _row };
+        var pill = new Border { Padding = new Thickness(3, 0, 3, 0), VerticalAlignment = VerticalAlignment.Stretch, Child = _row };
         System.Windows.Documents.TextElement.SetFontFamily(pill, (FontFamily)Application.Current.FindResource("AppFont"));
         Content = new Grid { Children = { pill } };
 
@@ -152,7 +151,7 @@ public sealed class BandWindow : Window
                 Sync();
                 break;
             case nameof(AppSettings.BandOffset):
-            case nameof(AppSettings.BandFollowStart):
+            case nameof(AppSettings.BandPosition):
                 Reposition(refreshStart: true);
                 break;
             case nameof(AppSettings.SpeedBits):
@@ -179,6 +178,22 @@ public sealed class BandWindow : Window
             Native.SetWindowPos(_hwnd, Native.HWND_TOPMOST, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
     }
 
+    private double _fontFor;
+
+    private void ApplyFonts(double heightDip)
+    {
+        if (Math.Abs(_fontFor - heightDip) < 0.5) return;
+        _fontFor = heightDip;
+        double value = Math.Clamp(heightDip * 0.40, 12, 24);
+        double label = Math.Clamp(heightDip * 0.24, 9, 14);
+        foreach (var c in _chips)
+        {
+            c.Value.FontSize = value;
+            ((TextBlock)c.Panel.Children[0]).FontSize = label;
+            c.Panel.MinWidth = c.Key is "mem" or "cpu" ? value * 2.9 : value * 5.4;
+        }
+    }
+
     private void Reposition(bool refreshStart = false)
     {
         if (_hwnd == IntPtr.Zero || !IsVisible) return;
@@ -190,14 +205,22 @@ public sealed class BandWindow : Window
         double trayW = t.Right - t.Left, trayH = t.Bottom - t.Top;
         if (trayH > trayW) trayH = Math.Min(trayH, 48 * sy);
 
+        ApplyFonts(trayH / sy);
         if (refreshStart || _start.IsEmpty) _start = FindStartButton(tray);
 
         double widthPx = ActualWidth * sx;
-        double x;
-        if (_settings.BandFollowStart && !_start.IsEmpty && _start.Left - widthPx - 10 * sx > t.Left)
-            x = _start.Left - widthPx - 10 * sx;
-        else
-            x = t.Left + 6 * sx;
+        double gap = 6 * sx;
+        double x = t.Left;
+        switch (_settings.BandPosition)
+        {
+            case "Start":
+                if (!_start.IsEmpty && _start.Left - widthPx - gap > t.Left) x = _start.Left - widthPx - gap;
+                break;
+            case "Right":
+                IntPtr notify = Native.FindWindowEx(tray, IntPtr.Zero, "TrayNotifyWnd", null);
+                x = notify != IntPtr.Zero && Native.GetWindowRect(notify, out var n) ? n.Left - widthPx - gap : t.Right - widthPx - 220 * sx;
+                break;
+        }
         x += _settings.BandOffset * sx;
 
         Height = trayH / sy;

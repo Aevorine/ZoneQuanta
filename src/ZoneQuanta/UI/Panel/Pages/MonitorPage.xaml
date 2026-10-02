@@ -26,7 +26,6 @@
                     <ToggleButton Style="{StaticResource SwitchRow}" Content="总网速" IsChecked="{Binding BandTotal, Mode=TwoWay}"/>
                     <ToggleButton Style="{StaticResource SwitchRow}" Content="内存占用率" IsChecked="{Binding BandMem, Mode=TwoWay}"/>
                     <ToggleButton Style="{StaticResource SwitchRow}" Content="CPU 占用率" IsChecked="{Binding BandCpu, Mode=TwoWay}"/>
-                    <ToggleButton Style="{StaticResource SwitchRow}" Content="紧贴开始按钮左侧" IsChecked="{Binding BandFollowStart, Mode=TwoWay}"/>
                 </UniformGrid>
             </Border>
 
@@ -47,8 +46,12 @@
                     </UniformGrid>
                     <TextBlock Grid.Row="2" Text="单位选择" Style="{StaticResource Heading}" Margin="0,22,0,10"/>
                     <UniformGrid x:Name="Scales" Grid.Row="3" Rows="1"/>
-                    <TextBlock Grid.Row="4" Text="位置微调" Style="{StaticResource Heading}" Margin="0,22,0,10"/>
-                    <Slider Grid.Row="5" VerticalAlignment="Top" Style="{StaticResource Range}" Minimum="-400" Maximum="800" SmallChange="2" LargeChange="20" Value="{Binding BandOffset, Mode=TwoWay}"/>
+                    <TextBlock Grid.Row="4" Text="显示位置" Style="{StaticResource Heading}" Margin="0,22,0,10"/>
+                    <StackPanel Grid.Row="5">
+                        <UniformGrid x:Name="Positions" Rows="1" Margin="0,0,0,16"/>
+                        <TextBlock Text="位置微调" Style="{StaticResource Heading}" Margin="0,0,0,10"/>
+                        <Slider VerticalAlignment="Top" Style="{StaticResource Range}" Minimum="-400" Maximum="800" SmallChange="2" LargeChange="20" Value="{Binding BandOffset, Mode=TwoWay}"/>
+                    </StackPanel>
                 </Grid>
             </Border>
         </Grid>

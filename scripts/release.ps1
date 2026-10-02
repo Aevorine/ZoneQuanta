@@ -24,25 +24,20 @@ function Invoke-Native([scriptblock]$Cmd) {
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
 New-Item -ItemType Directory -Path $dist | Out-Null
 
-foreach ($flavor in 'lite', 'full') {
-    $obj = Join-Path $root 'src\ZoneQuanta\obj'
-    if (Test-Path $obj) { Remove-Item $obj -Recurse -Force }
-    $out = Join-Path $dist "build-$flavor"
-    Invoke-Native { dotnet publish $proj -c Release -o $out -p:Flavor=$flavor -p:PublishReadyToRun=true -nologo -v q }
-    $name = if ($flavor -eq 'full') { 'ZoneQuanta-standalone.exe' } else { 'ZoneQuanta.exe' }
-    Move-Item (Join-Path $out 'ZoneQuanta.exe') (Join-Path $dist $name)
-    Remove-Item $out -Recurse -Force
-}
+$obj = Join-Path $root 'src\ZoneQuanta\obj'
+if (Test-Path $obj) { Remove-Item $obj -Recurse -Force }
+$out = Join-Path $dist 'build'
+Invoke-Native { dotnet publish $proj -c Release -o $out -p:Flavor=full -p:PublishReadyToRun=true -nologo -v q }
+Move-Item (Join-Path $out 'ZoneQuanta.exe') (Join-Path $dist 'ZoneQuanta.exe')
+Remove-Item $out -Recurse -Force
 
-$assets = [ordered]@{}
-foreach ($pair in @(@('lite', 'ZoneQuanta.exe'), @('full', 'ZoneQuanta-standalone.exe'))) {
-    $file = Join-Path $dist $pair[1]
-    $assets[$pair[0]] = [ordered]@{
-        name   = $pair[1]
-        size   = (Get-Item $file).Length
-        sha256 = (Get-FileHash $file -Algorithm SHA256).Hash
-    }
+$file = Join-Path $dist 'ZoneQuanta.exe'
+$entry = [ordered]@{
+    name   = 'ZoneQuanta.exe'
+    size   = (Get-Item $file).Length
+    sha256 = (Get-FileHash $file -Algorithm SHA256).Hash
 }
+$assets = [ordered]@{ lite = $entry; full = $entry }
 
 $payload = [ordered]@{ version = $Version; notes = $Notes; assets = $assets } | ConvertTo-Json -Compress -Depth 5
 
@@ -56,7 +51,7 @@ $password = $null
 
 if ($SkipPublish) { Write-Output "构建完成（未发布）：$dist"; return }
 
-$files = @('ZoneQuanta.exe', 'ZoneQuanta-standalone.exe', 'update.json') | ForEach-Object { Join-Path $dist $_ }
+$files = @('ZoneQuanta.exe', 'update.json') | ForEach-Object { Join-Path $dist $_ }
 $body = if ($Notes) { $Notes } else { "ZoneQuanta $tag" }
 Invoke-Native { gh release create $tag @files --repo $repo --title "ZoneQuanta $tag" --notes $body --latest }
 

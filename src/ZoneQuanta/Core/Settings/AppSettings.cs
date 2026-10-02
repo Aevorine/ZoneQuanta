@@ -70,10 +70,10 @@ public sealed class AppSettings : Observable
     public bool AutoInstallUpdate { get => _autoInstallUpdate; set => Set(ref _autoInstallUpdate, value); }
     public bool UseMirrors { get => _useMirrors; set => Set(ref _useMirrors, value); }
 
-    private bool _bandVisible = true, _bandUp = true, _bandDown = true, _bandTotal = true, _bandMem = true, _bandCpu = true, _bandFollowStart = true;
+    private bool _bandVisible = true, _bandUp = true, _bandDown = true, _bandTotal = true, _bandMem = true, _bandCpu = true;
     private double _bandOffset;
     private bool _speedBits, _trackApps;
-    private string _speedUnit = "Auto", _trafficRange = "Today";
+    private string _speedUnit = "Auto", _trafficRange = "Today", _bandPosition = "Left";
 
     public bool BandVisible { get => _bandVisible; set => Set(ref _bandVisible, value); }
     public bool BandUp { get => _bandUp; set => Set(ref _bandUp, value); }
@@ -81,7 +81,7 @@ public sealed class AppSettings : Observable
     public bool BandTotal { get => _bandTotal; set => Set(ref _bandTotal, value); }
     public bool BandMem { get => _bandMem; set => Set(ref _bandMem, value); }
     public bool BandCpu { get => _bandCpu; set => Set(ref _bandCpu, value); }
-    public bool BandFollowStart { get => _bandFollowStart; set => Set(ref _bandFollowStart, value); }
+    public string BandPosition { get => _bandPosition; set => Set(ref _bandPosition, value); }
     public double BandOffset { get => _bandOffset; set => Set(ref _bandOffset, Math.Clamp(value, -2000, 4000)); }
 
     public bool SpeedBits { get => _speedBits; set => Set(ref _speedBits, value); }

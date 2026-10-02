@@ -18,7 +18,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
-    <Flavor Condition="'$(Flavor)' == ''">lite</Flavor>
+    <Flavor Condition="'$(Flavor)' == ''">full</Flavor>
     <TieredPGO>true</TieredPGO>
     <UseSystemResourceKeys>true</UseSystemResourceKeys>
     <DebugType>none</DebugType>
@@ -28,7 +28,6 @@
 
   <PropertyGroup Condition="'$(Flavor)' == 'full'">
     <SelfContained>true</SelfContained>
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Flavor)' != 'full'">
     <SelfContained>false</SelfContained>

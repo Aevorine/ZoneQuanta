@@ -44,6 +44,20 @@ public partial class MonitorPage : UserControl
             Scales.Children.Add(r);
         }
 
+        foreach (var (pos, text) in new[] { ("Left", "最左侧"), ("Start", "开始按钮左侧"), ("Right", "通知区左侧") })
+        {
+            var r = new RadioButton
+            {
+                Content = text,
+                Style = (Style)FindResource("Segment"),
+                GroupName = "pos",
+                Margin = new Thickness(2, 0, 2, 0),
+                IsChecked = s.BandPosition == pos,
+            };
+            r.Checked += (_, _) => s.BandPosition = pos;
+            Positions.Children.Add(r);
+        }
+
         ByteMode.IsChecked = !s.SpeedBits;
         BitMode.IsChecked = s.SpeedBits;
         ByteMode.Checked += (_, _) => s.SpeedBits = false;
