@@ -5,11 +5,14 @@ using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
+using ZoneQuanta.Core.Monitor;
 using ZoneQuanta.Core.Settings;
+using ZoneQuanta.Core.Traffic;
 using ZoneQuanta.Core.Time;
 using ZoneQuanta.Core.Update;
 using ZoneQuanta.Platform;
 using ZoneQuanta.Shell;
+using ZoneQuanta.UI.Band;
 using ZoneQuanta.UI.Panel;
 using ZoneQuanta.UI.Theme;
 using ZoneQuanta.UI.Widget;
@@ -23,6 +26,9 @@ public sealed class AppController : IPanelHost, IDisposable
     private readonly ClockTicker _ticker = new();
     private readonly HotkeyService _hotkey = new();
     private readonly UpdateCoordinator _updates;
+    private readonly SystemMetrics _metrics = new();
+    private readonly TotalsRecorder _totals = new();
+    private BandWindow _band = null!;
     private WidgetWindow _widget = null!;
     private PanelWindow? _panel;
     private TrayService _tray = null!;
@@ -37,6 +43,8 @@ public sealed class AppController : IPanelHost, IDisposable
     public AppSettings Settings => _store.Current;
     public TimeEngine Engine => _engine;
     public UpdateCoordinator Updates => _updates;
+    public Metrics Latest { get; private set; }
+    public TrafficFile Totals => _totals.File;
     public event Action<DateTimeOffset>? Tick;
 
     public (double X, double Y) WidgetPosition => (
@@ -52,9 +60,13 @@ public sealed class AppController : IPanelHost, IDisposable
         ThemeManager.Apply(s.Theme);
 
         _widget = new WidgetWindow(s, _engine);
+        _band = new BandWindow(s);
         _tray = new TrayService(s, TogglePanel, ResetWidget, () => _ = _updates.CheckAsync(), ExitApp);
 
         _widget.ApplyInitial(DateTimeOffset.UtcNow);
+        _metrics.Sample();
+        _band.Sync();
+        if (s.TrackApps) _ = HelperLauncher.StartIfInstalledAsync();
         s.PropertyChanged += OnSettingChanged;
         _hotkey.Pressed += TogglePanel;
         RegisterHotkey();
@@ -100,6 +112,19 @@ public sealed class AppController : IPanelHost, IDisposable
         _widget.Anchor("TR");
     }
 
+    public async System.Threading.Tasks.Task<bool> SetTrackingAsync(bool on)
+    {
+        if (on)
+        {
+            bool ok = await HelperLauncher.EnableAsync();
+            Settings.TrackApps = ok;
+            return ok;
+        }
+        await HelperLauncher.DisableAsync();
+        Settings.TrackApps = false;
+        return true;
+    }
+
     public void OpenSettingsFolder()
     {
         string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ZoneQuanta");
@@ -114,8 +139,10 @@ public sealed class AppController : IPanelHost, IDisposable
     public void Dispose()
     {
         _store.Flush();
+        _totals.Flush();
         _hotkey.Dispose();
         _tray.Dispose();
+        _band.Close();
         _widget.Close();
         _panel?.Close();
     }
@@ -126,6 +153,11 @@ public sealed class AppController : IPanelHost, IDisposable
 
         bool fullscreen = s.HideOnFullscreen && FullscreenWatcher.IsFullscreenActive();
         _widget.SetSuppressed(fullscreen);
+        _band.SetSuppressed(fullscreen);
+
+        Latest = _metrics.Sample();
+        _totals.Add(Latest);
+        _band.Update(Latest);
 
         if (!fullscreen)
         {

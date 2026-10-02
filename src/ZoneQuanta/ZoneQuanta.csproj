@@ -11,7 +11,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>ZoneQuanta</AssemblyName>
     <RootNamespace>ZoneQuanta</RootNamespace>
-    <Version>1.0.3</Version>
+    <Version>1.1.0</Version>
     <NoWarn>$(NoWarn);WFAC010</NoWarn>
     <Product>ZoneQuanta</Product>
     <Authors>Aevorine</Authors>
@@ -35,11 +35,26 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PublishReadyToRunExclude Include="Microsoft.Diagnostics.Tracing.TraceEvent.dll" />
+  </ItemGroup>
+
+  <Target Name="PruneTraceEventExtras" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="'%(Filename)' == 'msdia140' Or '%(Filename)' == 'KernelTraceControl' Or '%(Filename)' == 'KernelTraceControl.Win61' Or '%(Filename)' == 'Dia2Lib' Or '%(Filename)' == 'Microsoft.DiaSymReader.Native.amd64' Or '%(Filename)' == 'Microsoft.Diagnostics.NETCore.Client' Or $([System.String]::new('%(Filename)').StartsWith('Microsoft.Extensions.'))" />
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup>
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
       <_Parameter1>Flavor</_Parameter1>
       <_Parameter2>$(Flavor)</_Parameter2>
     </AssemblyAttribute>
     <Resource Include="Assets\app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.2.8" />
   </ItemGroup>
 
 </Project>

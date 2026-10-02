@@ -75,6 +75,7 @@ public sealed class UpdateCoordinator : Observable
             });
             string file = await _service.DownloadAsync(Available, _settings.UseMirrors, progress, CancellationToken.None);
             Status = "正在安装…";
+            Traffic.HelperLauncher.RequestStop();
             UpdateService.ApplyAndRestart(file);
             Status = "更新完成，正在重启";
             ReadyToExit?.Invoke();

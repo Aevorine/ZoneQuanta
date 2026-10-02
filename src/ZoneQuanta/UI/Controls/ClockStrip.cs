@@ -80,7 +80,8 @@ public sealed class ClockStrip : Border
         var zones = _settings.Zones;
         for (int i = 0; i < zones.Count; i++)
         {
-            var card = new ZoneCard(i, _allowAnimation);
+            var zone = zones[i];
+            var card = new ZoneCard(i, _allowAnimation) { InfoProvider = () => _engine.GetDstInfo(zone, DateTimeOffset.UtcNow) };
             _cards.Add(card);
             _grid.Children.Add(card);
         }

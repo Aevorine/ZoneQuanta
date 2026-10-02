@@ -1,0 +1,56 @@
+<UserControl x:Class="ZoneQuanta.UI.Panel.Pages.MonitorPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="16" Padding="8" Margin="0,0,0,12">
+            <UniformGrid x:Name="Preview" Rows="1" Margin="0,4"/>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="14" Padding="8">
+                <UniformGrid Columns="1">
+                    <ToggleButton Style="{StaticResource SwitchRow}" Content="任务栏监控条" IsChecked="{Binding BandVisible, Mode=TwoWay}"/>
+                    <ToggleButton Style="{StaticResource SwitchRow}" Content="上传速度" IsChecked="{Binding BandUp, Mode=TwoWay}"/>
+                    <ToggleButton Style="{StaticResource SwitchRow}" Content="下载速度" IsChecked="{Binding BandDown, Mode=TwoWay}"/>
+                    <ToggleButton Style="{StaticResource SwitchRow}" Content="总网速" IsChecked="{Binding BandTotal, Mode=TwoWay}"/>
+                    <ToggleButton Style="{StaticResource SwitchRow}" Content="内存占用率" IsChecked="{Binding BandMem, Mode=TwoWay}"/>
+                    <ToggleButton Style="{StaticResource SwitchRow}" Content="CPU 占用率" IsChecked="{Binding BandCpu, Mode=TwoWay}"/>
+                    <ToggleButton Style="{StaticResource SwitchRow}" Content="紧贴开始按钮左侧" IsChecked="{Binding BandFollowStart, Mode=TwoWay}"/>
+                </UniformGrid>
+            </Border>
+
+            <Border Grid.Column="2" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="14" Padding="18,14">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="网速单位" Style="{StaticResource Heading}" Margin="0,0,0,10"/>
+                    <UniformGrid Grid.Row="1" Rows="1">
+                        <RadioButton x:Name="ByteMode" Style="{StaticResource Segment}" Content="字节 B" GroupName="base" Margin="0,0,4,0"/>
+                        <RadioButton x:Name="BitMode" Style="{StaticResource Segment}" Content="比特 b" GroupName="base" Margin="4,0,0,0"/>
+                    </UniformGrid>
+                    <TextBlock Grid.Row="2" Text="单位选择" Style="{StaticResource Heading}" Margin="0,22,0,10"/>
+                    <UniformGrid x:Name="Scales" Grid.Row="3" Rows="1"/>
+                    <TextBlock Grid.Row="4" Text="位置微调" Style="{StaticResource Heading}" Margin="0,22,0,10"/>
+                    <Slider Grid.Row="5" VerticalAlignment="Top" Style="{StaticResource Range}" Minimum="-400" Maximum="800" SmallChange="2" LargeChange="20" Value="{Binding BandOffset, Mode=TwoWay}"/>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

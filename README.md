@@ -1,47 +1,45 @@
 # ZoneQuanta
 
-Windows 桌面时钟组件：同时显示**本地时间**与**美国洛杉矶时间**（自动处理夏令时），常驻桌面，不抢焦点、不挡操作、几乎不占资源。
+**Windows 桌面世界时钟 + 任务栏网速 / CPU / 内存监控 + 应用流量统计** · Windows desktop world clock (Los Angeles / local / any city, automatic DST), taskbar network-speed, CPU and RAM monitor, and per-app traffic statistics. Lightweight WPF / .NET 8, single-file exe, signed auto-update.
+
+> 关键词 / Keywords: world clock, time zone, DST, Los Angeles time, desktop widget, taskbar monitor, network speed meter, upload download speed, CPU usage, memory usage, per-app network traffic, bandwidth monitor, Windows 10, Windows 11, WPF, .NET 8, 桌面时钟, 世界时钟, 夏令时, 洛杉矶时间, 任务栏网速, 流量统计
 
 ## 特性
 
 | 能力 | 说明 |
 |---|---|
-| 鼠标穿透 | 点击直接落到下层窗口；关闭后可拖动 |
-| 总是置顶 | 周期性重新置顶，不被其他窗口盖住 |
-| 锁定位置 | 锁定后无法误拖；坐标 / 九宫格 / 微调仍可精确定位 |
-| 允许超出屏幕边界 | 可开关，关闭时自动贴回屏幕内 |
-| 全屏时隐藏 | 检测独占全屏、D3D 全屏、无边框全屏与演示模式，退出后自动恢复 |
+| 本地 + 洛杉矶时间 | 夏令时 / 冬令时自动切换，使用系统时区数据库，逐年规则准确；卡片点击翻转，查看当前状态、下次切换时刻与当年夏令时区间 |
+| 热门国家与城市 | 内置 36 个热门城市（美国、加拿大、中国、日本、欧洲、澳洲等），另可从系统全部时区中搜索，最多同时显示 4 个，可改名、排序 |
+| 任务栏监控条 | 显示在任务栏「开始」按钮左侧：上传速度、下载速度、总网速、内存占用率（%）、CPU 占用率（%），每一项可单独开关 |
+| 网速单位 | 字节 `B` / 比特 `b`；单位自动（B → KB → MB → GB）或固定 K / M / G |
+| 应用流量统计 | 按应用统计上传 / 下载流量；时间范围：今天、24 小时、本周、一月、一年、全部时间；带实时网速曲线与动画柱状图 |
+| 桌面组件 | 鼠标穿透、总是置顶、锁定位置、允许超出屏幕边界、全屏程序运行时自动隐藏 |
 | 开机自启 | 写入当前用户启动项，无需管理员权限 |
-| 自定义时区 | 面板内搜索添加 / 改名 / 排序 / 删除，最多 4 个；靠右或靠下时向屏幕内生长 |
-| 昼夜弧线 | 每个时区一条日出到日落的弧线，太阳 / 月亮随时间移动 |
-| 数字滚动 | 变化的数字逐位滚动，可关闭 |
-| 四套护眼主题 | 石墨、暮紫、松针、纸本；低饱和、无纯白纯黑 |
-| 托盘 | 左键显示 / 隐藏面板；右键含全部常用开关 |
-| 全局快捷键 | 默认 `Ctrl + Alt + Z` 显示 / 隐藏面板，可自定义 |
-| 在线更新 | 多线路并发 + 分段并行下载，签名与哈希双重校验 |
+| 外观 | 四套低饱和护眼主题（石墨、暮紫、松针、纸本）；数字滚动、卡片翻转、悬停、页面切换等 2D 动画，均可按需关闭 |
+| 托盘与快捷键 | 托盘左键显示 / 隐藏面板，右键含常用开关；全局快捷键默认 `Ctrl + Alt + Z` |
+| 在线更新 | 多线路并发探测 + 分段并行下载，ECDSA 签名与 SHA-256 双重校验 |
+| 低占用 | 秒对齐计时、只重绘变化内容；预热后空闲 CPU 约 0.3%（单核），内存约 70 MB |
 
 ## 安装
 
 在 [Releases](https://github.com/Aevorine/ZoneQuanta/releases/latest) 下载：
 
-- `ZoneQuanta.exe` 轻量版（约 0.5 MB），需要 [.NET 8 桌面运行时](https://dotnet.microsoft.com/download/dotnet/8.0)
-- `ZoneQuanta-standalone.exe` 独立版（约 67 MB），内置运行时，直接运行
+- `ZoneQuanta.exe` 轻量版（约 8 MB），需要 [.NET 8 桌面运行时](https://dotnet.microsoft.com/download/dotnet/8.0)
+- `ZoneQuanta-standalone.exe` 独立版（约 70 MB），内置运行时
 
-双击即可，无需安装。首次运行 Windows SmartScreen 可能提示未知发布者（程序未做代码签名），选择「仍要运行」。
+首次运行会询问安装位置：**可自行选择任意目录，程序始终安装在其中的 `ZoneQuanta` 文件夹内**（例如选择 `D:\Apps`，实际安装到 `D:\Apps\ZoneQuanta`），并可选创建桌面快捷方式与开机自启。程序未做代码签名，SmartScreen 可能提示未知发布者，选择「仍要运行」。
+
+## 应用流量统计说明
+
+Windows 只允许管理员读取按进程划分的网络事件，因此该功能是**可选的**：在「流量」页打开开关后，会弹出一次系统授权，创建名为 `ZoneQuantaTraffic` 的计划任务，用管理员权限运行统计助手（基于 ETW `Microsoft-Windows-Kernel-Network`，只记录进程名与字节数，不读取内容）。关闭开关时删除该任务。不开启时，仍可看到全部流量的总量与实时网速。
+
+使用本地代理（如 TUN / 系统代理）时，流量会归属到代理进程。
 
 ## 使用
 
-- 托盘图标 **左键** 打开 / 收起面板；收起后任务栏不显示
-- 托盘图标 **右键** 直接切换穿透、锁定、置顶、全屏隐藏、开机自启
-- 面板分六页：控制台、显示、时区、窗口、系统、更新
-- 设置保存在 `%APPDATA%\ZoneQuanta\settings.json`
-
-## 更新机制
-
-1. 启动 10 秒后（可关）读取最新 Release 中的 `update.json`
-2. `update.json` 由 ECDSA P-256 私钥签名，公钥内置于程序；镜像线路无法篡改内容
-3. 直连与镜像并发探测，取最快线路；文件切成最多 8 段并行下载
-4. 校验 SHA-256 后原地替换并重启；上一版本自动清理
+- 托盘图标 **左键** 打开 / 收起面板，收起后任务栏不显示
+- 面板分八页：控制台、显示、时区、监控、流量、窗口、系统、更新
+- 设置、日志与统计数据在 `%APPDATA%\ZoneQuanta`
 
 ## 架构
 
@@ -49,29 +47,25 @@ Windows 桌面时钟组件：同时显示**本地时间**与**美国洛杉矶时
 src/ZoneQuanta
 ├── Core        纯逻辑，不依赖界面
 │   ├── Settings   设置模型与持久化
-│   ├── Time       时区计算、秒对齐计时器
+│   ├── Time       时区计算、夏令时、城市目录、秒对齐计时器
+│   ├── Monitor    网速 / CPU / 内存采样、单位换算、流量存储
+│   ├── Traffic    管理员统计助手（ETW）与计划任务启动器
 │   └── Update     清单验证、并行下载、更新协调
 ├── Platform    Win32 封装：窗口样式、全屏检测、全局热键、开机自启
 ├── Shell       托盘
 ├── UI
 │   ├── Theme      调色板与统一样式
-│   ├── Controls   滚动数字、昼夜弧线、时区卡片、时钟条
+│   ├── Controls   滚动数字、昼夜弧线、速度曲线、时区卡片
 │   ├── Widget     桌面组件窗口
+│   ├── Band       任务栏监控条
+│   ├── Setup      安装窗口
 │   └── Panel      设置面板（页面注册表，新增页面只需加一行）
-└── AppController  组合根：把设置变化接到各模块
+└── AppController  组合根
 ```
-
-时区是数据（设置中的 `Zones` 列表，每项 `{ Label, TimeZoneId }`）；新增页面在 `PanelWindow` 的 `Defs` 注册。
 
 ## 构建
 
-需要 .NET 8 SDK。
-
-```powershell
-dotnet build src/ZoneQuanta -c Release
-```
-
-发布流程见 `scripts/release.ps1`（构建两个版本、签名、创建 Release、仅保留最近两个版本）。签名私钥不在仓库中。
+需要 .NET 8 SDK：`dotnet build src/ZoneQuanta -c Release`。发布流程见 `scripts/release.ps1`（构建两个版本、签名、创建 Release、仅保留最近两个版本）。签名私钥不在仓库中。
 
 ## 许可
 

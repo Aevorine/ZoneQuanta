@@ -1,7 +1,14 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
+using ZoneQuanta.Core;
+using ZoneQuanta.Core.Traffic;
+using ZoneQuanta.Platform;
+using ZoneQuanta.UI.Setup;
+using ZoneQuanta.UI.Theme;
 
 namespace ZoneQuanta;
 
@@ -21,6 +28,26 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        if (Array.IndexOf(e.Args, "--traffic-helper") >= 0)
+        {
+            Task.Run(() =>
+            {
+                try { TrafficHelper.Run(); }
+                catch (Exception ex) { Log.Error("traffic-helper", ex); }
+                Dispatcher.BeginInvoke(new Action(Shutdown));
+            });
+            return;
+        }
+
+        bool autostart = Array.IndexOf(e.Args, "--autostart") >= 0;
+        bool skipInstall = autostart || Array.IndexOf(e.Args, "--updated") >= 0
+                           || Array.IndexOf(e.Args, "--installed") >= 0 || Array.IndexOf(e.Args, "--portable") >= 0;
+        if (!skipInstall && !InInstallFolder())
+        {
+            RunInstaller();
+            return;
+        }
+
         _mutex = new Mutex(true, MutexName, out bool first);
         _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
         if (!first)
@@ -31,7 +58,6 @@ public partial class App : Application
         }
 
         Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.BelowNormal;
-        bool autostart = Array.IndexOf(e.Args, "--autostart") >= 0;
 
         _controller = new AppController();
         _controller.Start(showPanel: !autostart);
@@ -58,5 +84,43 @@ public partial class App : Application
             _mutex.Dispose();
         }
         base.OnExit(e);
+    }
+
+    private static bool InInstallFolder()
+    {
+        string? dir = Path.GetDirectoryName(Environment.ProcessPath);
+        return string.Equals(Path.GetFileName(dir), InstallWindow.FolderName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void RunInstaller()
+    {
+        ThemeManager.Apply("Graphite");
+        var window = new InstallWindow();
+        if (window.ShowDialog() == true && window.InstalledExe is { } exe)
+        {
+            if (window.EnableAutostart) AutoStart.Set(true, exe);
+            if (window.CreateDesktopShortcut) CreateShortcut(exe);
+            Process.Start(new ProcessStartInfo(exe, "--installed") { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(exe)! });
+        }
+        Shutdown();
+    }
+
+    private static void CreateShortcut(string exe)
+    {
+        try
+        {
+            Type? shell = Type.GetTypeFromProgID("WScript.Shell");
+            if (shell is null) return;
+            dynamic sh = Activator.CreateInstance(shell)!;
+            string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            dynamic link = sh.CreateShortcut(Path.Combine(desktop, "ZoneQuanta.lnk"));
+            link.TargetPath = exe;
+            link.WorkingDirectory = Path.GetDirectoryName(exe);
+            link.Save();
+        }
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or IOException or UnauthorizedAccessException)
+        {
+            Log.Error("shortcut", ex);
+        }
     }
 }

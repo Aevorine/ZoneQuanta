@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using ZoneQuanta.Core.Settings;
+using ZoneQuanta.Core.Time;
 
 namespace ZoneQuanta.UI.Panel.Pages;
 
@@ -13,7 +14,7 @@ public partial class ZonesPage : UserControl
 {
     private const int MaxZones = 4;
 
-    private sealed record Option(string Id, string Name);
+    private sealed record Option(string Id, string Name, string? Label = null);
 
     private readonly IPanelHost _host;
     private readonly List<Option> _all;
@@ -23,7 +24,8 @@ public partial class ZonesPage : UserControl
         _host = host;
         InitializeComponent();
 
-        _all = new List<Option> { new("local", "本机时区") };
+        _all = new List<Option> { new("local", "本机时区", "本地") };
+        _all.AddRange(CityCatalog.Popular.Select(c => new Option(c.TimeZoneId, "★ " + c.Display, c.Name)));
         _all.AddRange(TimeZoneInfo.GetSystemTimeZones().Select(z => new Option(z.Id, z.DisplayName)));
 
         var strip = new ZoneQuanta.UI.Controls.ClockStrip(host.Settings, host.Engine, allowAnimation: false, forceVertical: true);
@@ -54,7 +56,7 @@ public partial class ZonesPage : UserControl
     }
 
     private static string DefaultLabel(Option o) =>
-        o.Id == "local" ? "本地" : Regex.Replace(o.Name, @"^\(.*?\)\s*", string.Empty).Trim();
+        o.Label ?? Regex.Replace(o.Name, @"^\(.*?\)\s*", string.Empty).Trim();
 
     private void Commit(IEnumerable<ZoneConfig> zones)
     {

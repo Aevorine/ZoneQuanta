@@ -1,0 +1,55 @@
+<UserControl x:Class="ZoneQuanta.UI.Panel.Pages.TrafficPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:ZoneQuanta.UI.Controls">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <UniformGrid x:Name="Ranges" Rows="1" Margin="0,0,0,10"/>
+
+        <UniformGrid Grid.Row="1" Rows="1" Margin="-4,0,-4,6">
+            <Border Style="{x:Null}" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="12" Padding="14,10" Margin="4,0">
+                <StackPanel>
+                    <TextBlock Text="上传" Style="{StaticResource Muted}"/>
+                    <TextBlock x:Name="UpText" FontSize="24" FontWeight="Light" Foreground="{DynamicResource Accent2Brush}"/>
+                </StackPanel>
+            </Border>
+            <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="12" Padding="14,10" Margin="4,0">
+                <StackPanel>
+                    <TextBlock Text="下载" Style="{StaticResource Muted}"/>
+                    <TextBlock x:Name="DownText" FontSize="24" FontWeight="Light" Foreground="{DynamicResource Accent1Brush}"/>
+                </StackPanel>
+            </Border>
+            <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="12" Padding="14,10" Margin="4,0">
+                <StackPanel>
+                    <TextBlock Text="合计" Style="{StaticResource Muted}"/>
+                    <TextBlock x:Name="TotalText" FontSize="24" FontWeight="Light"/>
+                </StackPanel>
+            </Border>
+        </UniformGrid>
+
+        <Border Grid.Row="2" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="12" Margin="0,0,0,10" Height="110" ClipToBounds="True">
+            <c:SpeedChart x:Name="Chart" Margin="6,4"/>
+        </Border>
+
+        <Border Grid.Row="3" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="14" Padding="16,12">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="应用流量" Style="{StaticResource Heading}" Margin="0,0,0,8"/>
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="Apps"/>
+                </ScrollViewer>
+                <ToggleButton x:Name="TrackToggle" Grid.Row="2" Style="{StaticResource SwitchRow}" Content="统计每个应用的流量（需管理员授权）" Margin="-12,6,-12,-6"/>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

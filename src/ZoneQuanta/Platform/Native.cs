@@ -66,6 +66,22 @@ internal static class Native
     [DllImport("shell32.dll")]
     public static extern int SHQueryUserNotificationState(out int state);
 
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MEMORYSTATUSEX
+    {
+        public uint dwLength, dwMemoryLoad;
+        public ulong ullTotalPhys, ullAvailPhys, ullTotalPageFile, ullAvailPageFile, ullTotalVirtual, ullAvailVirtual, ullAvailExtendedVirtual;
+    }
+
+    [DllImport("kernel32.dll")]
+    public static extern bool GetSystemTimes(out long idle, out long kernel, out long user);
+
+    [DllImport("kernel32.dll")]
+    public static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX status);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern IntPtr FindWindow(string cls, string? title);
+
     [DllImport("dwmapi.dll")]
     public static extern int DwmSetWindowAttribute(IntPtr hWnd, int attr, ref int value, int size);
 

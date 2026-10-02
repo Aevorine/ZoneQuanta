@@ -14,12 +14,12 @@ internal static class AutoStart
         return key?.GetValue(ValueName) is string;
     }
 
-    public static void Set(bool enabled)
+    public static void Set(bool enabled, string? exePath = null)
     {
         using var key = Registry.CurrentUser.CreateSubKey(RunKey);
         if (enabled)
         {
-            string exe = Environment.ProcessPath ?? string.Empty;
+            string exe = exePath ?? Environment.ProcessPath ?? string.Empty;
             if (exe.Length > 0) key.SetValue(ValueName, $"\"{exe}\" --autostart");
         }
         else
