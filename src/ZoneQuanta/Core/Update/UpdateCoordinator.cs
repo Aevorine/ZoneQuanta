@@ -32,6 +32,7 @@ public sealed class UpdateCoordinator : Observable
         Busy = true;
         Progress = 0;
         Status = "正在检查更新…";
+        Log.Write("check start");
         try
         {
             var info = await _service.CheckAsync(_settings.UseMirrors, CancellationToken.None);
@@ -46,8 +47,9 @@ public sealed class UpdateCoordinator : Observable
                 UpdateFound?.Invoke(info);
             }
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex)
         {
+            Log.Error("check", ex);
             Status = "无法连接更新服务器";
         }
         finally
@@ -77,8 +79,9 @@ public sealed class UpdateCoordinator : Observable
             Status = "更新完成，正在重启";
             ReadyToExit?.Invoke();
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or CryptographicException or System.IO.IOException or UnauthorizedAccessException)
+        catch (Exception ex)
         {
+            Log.Error("install", ex);
             Status = ex is CryptographicException ? "文件校验失败，已取消" : "更新失败，请稍后重试";
         }
         finally

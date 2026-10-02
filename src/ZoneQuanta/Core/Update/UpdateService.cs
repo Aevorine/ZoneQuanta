@@ -55,8 +55,12 @@ public sealed class UpdateService
             tasks.Remove(done);
             UpdateInfo? info = null;
             try { info = await done; }
-            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or CryptographicException or FormatException) { }
-            if (info is not null) return info.Version > CurrentVersion ? info : null;
+            catch (Exception ex) { Log.Error("manifest", ex); }
+            if (info is not null)
+            {
+                Log.Write($"manifest ok: latest v{info.Version}, current v{CurrentVersion}, flavor {Flavor}");
+                return info.Version > CurrentVersion ? info : null;
+            }
         }
         throw new HttpRequestException("无法连接更新服务器");
     }
