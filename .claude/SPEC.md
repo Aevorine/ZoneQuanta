@@ -1,0 +1,30 @@
+# SPEC — ZoneQuanta
+> 「现在」的唯一事实源。稳定知识在 README.md，长期方向在 .claude/TECH_ROADMAP.md，规则在 .claude/CLAUDE.md。
+
+## 当前目标
+Windows 桌面时钟组件（本地 + 洛杉矶），WPF / .NET 8 单文件 exe。验收标准：
+1. 鼠标穿透、总是置顶、锁定位置、允许超出屏幕、全屏时隐藏、开机自启，均有开关且立即生效
+2. 托盘左键显示 / 隐藏面板（隐藏后任务栏无图标），右键含常用开关；全局快捷键切换面板
+3. 在线更新：多线路并发 + 分段下载，签名与 SHA-256 校验，原地替换重启
+4. 界面风格统一、护眼、可扩展（页面注册表、时区列表数据化）
+5. 公开仓库 Aevorine/ZoneQuanta，Releases 只保留最近两版
+
+## 计划与进度
+| ID | 事项 | 泳道 / 负责 | 状态（未开始 / 进行中 / 待验收 / 完成 / 阻塞） | 证据（命令输出 / 文件 / 提交；日期写绝对日期） |
+|---|---|---|---|---|
+| T-20261002-1 | 配置 Matt Pocock 技能；建公开仓库 Aevorine/ZoneQuanta | 主线 | 完成 | `gh repo view` → PUBLIC（2026-10-02） |
+| T-20261002-2 | 桌面时钟组件全功能实现、打包、首次发布 | 主线 | 待验收 | `src/ZoneQuanta`；`scripts/release.ps1`；Release 见 GitHub（2026-10-02） |
+
+## 问题与待决
+- 程序未做 Authenticode 代码签名，SmartScreen 会提示未知发布者（需购买证书，暂不做）
+- 镜像线路（ghfast.top、gh-proxy.com）为第三方，可用性随时变化；已有签名校验，失效时自动回退直连
+
+## 恢复点
+下一步：等用户验收反馈（按 T-20261002-2 继续）。
+关键决策：WPF + .NET 8；轻量版 / 独立版并行发布；更新清单用 ECDSA P-256 签名，私钥与密码在仓库外的 `ZONEQUANTA_SECRET_DIR`；`Core` 不依赖 `UI`。
+已知错误：无。
+<!-- wf:resume:start -->
+（机器快照，PreCompact 钩子写，勿手改）
+<!-- wf:resume:end -->
+
+## 明确不做

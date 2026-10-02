@@ -1,0 +1,49 @@
+<UserControl x:Class="ZoneQuanta.UI.Panel.Pages.DisplayPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <ContentPresenter x:Name="Preview" Margin="0,0,0,8"/>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="14" Padding="8">
+                <UniformGrid Columns="1">
+                    <ToggleButton Style="{StaticResource SwitchRow}" Content="24 小时制" IsChecked="{Binding Use24Hour, Mode=TwoWay}"/>
+                    <ToggleButton Style="{StaticResource SwitchRow}" Content="显示秒" IsChecked="{Binding ShowSeconds, Mode=TwoWay}"/>
+                    <ToggleButton Style="{StaticResource SwitchRow}" Content="显示日期" IsChecked="{Binding ShowDate, Mode=TwoWay}"/>
+                    <ToggleButton Style="{StaticResource SwitchRow}" Content="显示时差" IsChecked="{Binding ShowOffset, Mode=TwoWay}"/>
+                    <ToggleButton Style="{StaticResource SwitchRow}" Content="昼夜弧线" IsChecked="{Binding ShowDayNight, Mode=TwoWay}"/>
+                    <ToggleButton Style="{StaticResource SwitchRow}" Content="数字滚动" IsChecked="{Binding Animate, Mode=TwoWay}"/>
+                </UniformGrid>
+            </Border>
+
+            <Border Grid.Column="2" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="14" Padding="18,14">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="主题" Style="{StaticResource Heading}" Margin="0,0,0,10"/>
+                    <UniformGrid x:Name="Themes" Grid.Row="1" Rows="1"/>
+                    <TextBlock Grid.Row="2" Text="排列" Style="{StaticResource Heading}" Margin="0,22,0,10"/>
+                    <UniformGrid Grid.Row="3" Rows="1">
+                        <RadioButton x:Name="Horizontal" Style="{StaticResource Segment}" Content="横向" GroupName="orient" Margin="0,0,4,0"/>
+                        <RadioButton x:Name="Vertical" Style="{StaticResource Segment}" Content="纵向" GroupName="orient" Margin="4,0,0,0"/>
+                    </UniformGrid>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

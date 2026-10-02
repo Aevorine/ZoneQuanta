@@ -1,0 +1,27 @@
+# 个人偏好，不进仓库
+CLAUDE.local.md
+.claude/settings.local.json
+
+# 系统杂项
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# 构建产物与旧版本
+bin/
+obj/
+dist/
+publish/
+*.new
+*.old
+*.bak
+*.user
+.vs/
+
+# 密钥与凭据（真实密钥只放在仓库之外）
+*.p8
+*.pfx
+*.pem
+*.key
+*password*
+.env
