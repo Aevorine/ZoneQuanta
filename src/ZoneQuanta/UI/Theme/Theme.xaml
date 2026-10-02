@@ -28,6 +28,7 @@
     <Geometry x:Key="Icon.Move">M12,3 L12,21 M3,12 L21,12 M12,3 L9,6 M12,3 L15,6 M12,21 L9,18 M12,21 L15,18 M3,12 L6,9 M3,12 L6,15 M21,12 L18,9 M21,12 L18,15</Geometry>
     <Geometry x:Key="Icon.Sliders">M4,7 L20,7 M4,17 L20,17 M9,4 L9,10 M15,14 L15,20</Geometry>
     <Geometry x:Key="Icon.Download">M12,4 L12,15 M7,11 L12,16 L17,11 M5,20 L19,20</Geometry>
+    <Geometry x:Key="Icon.Globe">M12,3 A9,9 0 1 0 12,21 A9,9 0 1 0 12,3 Z M3,12 L21,12 M12,3 C8,7 8,17 12,21 M12,3 C16,7 16,17 12,21</Geometry>
     <Geometry x:Key="Icon.Min">M5,12 L19,12</Geometry>
     <Geometry x:Key="Icon.Close">M6,6 L18,18 M18,6 L6,18</Geometry>
     <Geometry x:Key="Icon.Left">M15,5 L8,12 L15,19</Geometry>
@@ -309,6 +310,38 @@
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="PickList" TargetType="ListBox">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="ItemContainerStyle">
+            <Setter.Value>
+                <Style TargetType="ListBoxItem">
+                    <Setter Property="Cursor" Value="Hand"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ListBoxItem">
+                                <Border x:Name="Bg" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="0,1">
+                                    <ContentPresenter/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Bg" Property="Background" Value="{DynamicResource RaisedBrush}"/>
+                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter TargetName="Bg" Property="Background" Value="{DynamicResource RaisedBrush}"/>
+                                        <Setter TargetName="Bg" Property="BorderBrush" Value="{DynamicResource Accent1Brush}"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
             </Setter.Value>
         </Setter>
     </Style>

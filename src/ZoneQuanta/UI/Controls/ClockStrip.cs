@@ -18,10 +18,12 @@ public sealed class ClockStrip : Border
     private DateTimeOffset _last = DateTimeOffset.UtcNow;
 
     private readonly bool _allowAnimation;
+    private readonly bool _forceVertical;
 
-    public ClockStrip(AppSettings settings, TimeEngine engine, bool allowAnimation = true)
+    public ClockStrip(AppSettings settings, TimeEngine engine, bool allowAnimation = true, bool forceVertical = false)
     {
         _allowAnimation = allowAnimation;
+        _forceVertical = forceVertical;
         _settings = settings;
         _engine = engine;
         CornerRadius = new CornerRadius(16);
@@ -82,8 +84,9 @@ public sealed class ClockStrip : Border
             _cards.Add(card);
             _grid.Children.Add(card);
         }
-        _grid.Rows = _settings.Vertical ? zones.Count : 1;
-        _grid.Columns = _settings.Vertical ? 1 : zones.Count;
+        bool vertical = _forceVertical || _settings.Vertical;
+        _grid.Rows = vertical ? zones.Count : 1;
+        _grid.Columns = vertical ? 1 : zones.Count;
     }
 
     private void Render()

@@ -18,6 +18,7 @@ public partial class PanelWindow : Window
     {
         new("控制台", "Icon.Grid", h => new ConsolePage(h)),
         new("显示", "Icon.Monitor", h => new DisplayPage(h)),
+        new("时区", "Icon.Globe", h => new ZonesPage(h)),
         new("窗口", "Icon.Move", h => new WindowPage(h)),
         new("系统", "Icon.Sliders", h => new SystemPage(h)),
         new("更新", "Icon.Download", h => new UpdatePage(h)),

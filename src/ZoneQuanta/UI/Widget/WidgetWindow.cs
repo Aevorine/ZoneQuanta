@@ -41,6 +41,7 @@ public sealed class WidgetWindow : Window
 
         SourceInitialized += OnSourceInitialized;
         LocationChanged += OnLocationChanged;
+        SizeChanged += OnSizeChanged;
         MouseLeftButtonDown += OnMouseDown;
         _settings.PropertyChanged += OnSettingChanged;
     }
@@ -180,6 +181,26 @@ public sealed class WidgetWindow : Window
         }
         _settings.Left = l;
         _settings.Top = t;
+    }
+
+    private void OnSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (e.PreviousSize.Width < 1 || double.IsNaN(Left) || double.IsNaN(Top) || !IsVisible) return;
+
+        var area = WorkArea();
+        double left = Left, top = Top;
+        if (e.WidthChanged && left + e.PreviousSize.Width / 2 > area.Left + area.Width / 2)
+            left -= e.NewSize.Width - e.PreviousSize.Width;
+        if (e.HeightChanged && top + e.PreviousSize.Height / 2 > area.Top + area.Height / 2)
+            top -= e.NewSize.Height - e.PreviousSize.Height;
+
+        if (Math.Abs(left - Left) < 0.5 && Math.Abs(top - Top) < 0.5) return;
+        _applyingPosition = true;
+        Left = left;
+        Top = top;
+        _applyingPosition = false;
+        _settings.Left = left;
+        _settings.Top = top;
     }
 
     private (double, double) Clamp(double left, double top)
