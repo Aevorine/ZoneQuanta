@@ -67,6 +67,7 @@ public sealed class AppController : IPanelHost, IDisposable
         _band = new BandWindow(s);
         _detail = new BandDetailWindow(s, _totals.File, _metrics, () => _band.BoundsPx);
         _band.HoverChanged += _detail.SetHover;
+        _band.SettingsRequested += ShowPanel;
         _tray = new TrayService(s, TogglePanel, ResetWidget, () => _ = _updates.CheckAsync(), ExitApp);
 
         ShowPendingUpdateFailure();

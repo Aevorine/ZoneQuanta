@@ -68,7 +68,7 @@ public sealed class WidgetWindow : Window
     private void OnDisplayChanged(object? sender, EventArgs e) => Dispatcher.BeginInvoke(() =>
     {
         if (!IsVisible) return;
-        if (!_settings.AllowOffScreen) MoveTo(Left, Top);
+        Place();
         ReassertTopmost();
     });
 
@@ -103,25 +103,53 @@ public sealed class WidgetWindow : Window
             Native.SetWindowPos(_hwnd, Native.HWND_TOPMOST, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
     }
 
+    private const double EdgeGap = 20;
+
+    // The spot the user chose is the single source of truth: explicit coordinates (Pin empty) or an
+    // edge / corner / centre pin. The window is always derived from it, so a size change (new text,
+    // scale, flip) can never drag a locked widget away from where it was put.
     public void MoveTo(double left, double top)
     {
-        if (!_settings.AllowOffScreen) (left, top) = Clamp(left, top);
-        _applyingPosition = true;
-        Left = left;
-        Top = top;
-        _applyingPosition = false;
+        _settings.Pin = "";
         _settings.Left = left;
         _settings.Top = top;
+        Place();
+        if (!_settings.AllowOffScreen)
+        {
+            _settings.Left = Left;
+            _settings.Top = Top;
+        }
     }
 
     public void Anchor(string where)
     {
-        var area = WorkArea();
+        _settings.Pin = where;
+        Place();
+    }
+
+    private void Place()
+    {
+        if (_hwnd == IntPtr.Zero && !IsVisible) return;
         double w = ActualWidth > 0 ? ActualWidth : 400, h = ActualHeight > 0 ? ActualHeight : 150;
-        const double gap = 20;
-        double x = where.Contains('L') ? area.Left + gap : where.Contains('R') ? area.Right - w - gap : area.Left + (area.Width - w) / 2;
-        double y = where.Contains('T') ? area.Top + gap : where.Contains('B') ? area.Bottom - h - gap : area.Top + (area.Height - h) / 2;
-        MoveTo(x, y);
+        double x = _settings.Left ?? Left, y = _settings.Top ?? Top;
+        if (double.IsNaN(x) || double.IsNaN(y)) { x = 0; y = 0; }
+
+        string pin = _settings.Pin;
+        if (pin.Length > 0)
+        {
+            var area = WorkArea();
+            x = pin.Contains('L') ? area.Left + EdgeGap : pin.Contains('R') ? area.Right - w - EdgeGap : area.Left + (area.Width - w) / 2;
+            y = pin.Contains('T') ? area.Top + EdgeGap : pin.Contains('B') ? area.Bottom - h - EdgeGap : area.Top + (area.Height - h) / 2;
+            _settings.Left = x;
+            _settings.Top = y;
+        }
+
+        if (!_settings.AllowOffScreen) (x, y) = Clamp(x, y);
+        if (Math.Abs(x - Left) < 0.01 && Math.Abs(y - Top) < 0.01) return;
+        _applyingPosition = true;
+        Left = x;
+        Top = y;
+        _applyingPosition = false;
     }
 
     public void ApplyInitial(DateTimeOffset now)
@@ -137,17 +165,17 @@ public sealed class WidgetWindow : Window
 
     private void PlaceInitially()
     {
-        if (_settings.Left is { } l && _settings.Top is { } t)
+        if (_settings.Pin.Length == 0 && _settings.Left is { } l && _settings.Top is { } t)
         {
             _applyingPosition = true;
             Left = l;
             Top = t;
             _applyingPosition = false;
-            if (!_settings.AllowOffScreen) MoveTo(l, t);
+            Place();
         }
         else
         {
-            Anchor("TR");
+            Anchor(_settings.Pin.Length > 0 ? _settings.Pin : "TR");
         }
     }
 
@@ -176,7 +204,7 @@ public sealed class WidgetWindow : Window
                 SyncVisibility();
                 break;
             case nameof(AppSettings.AllowOffScreen):
-                if (!_settings.AllowOffScreen) MoveTo(Left, Top);
+                Place();
                 break;
         }
     }
@@ -204,6 +232,7 @@ public sealed class WidgetWindow : Window
     private void OnLocationChanged(object? sender, EventArgs e)
     {
         if (_applyingPosition) return;
+        _settings.Pin = "";
         double l = Left, t = Top;
         if (!_settings.AllowOffScreen)
         {
@@ -224,22 +253,8 @@ public sealed class WidgetWindow : Window
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
     {
-        if (e.PreviousSize.Width < 1 || double.IsNaN(Left) || double.IsNaN(Top) || !IsVisible) return;
-
-        var area = WorkArea();
-        double left = Left, top = Top;
-        if (e.WidthChanged && left + e.PreviousSize.Width / 2 > area.Left + area.Width / 2)
-            left -= e.NewSize.Width - e.PreviousSize.Width;
-        if (e.HeightChanged && top + e.PreviousSize.Height / 2 > area.Top + area.Height / 2)
-            top -= e.NewSize.Height - e.PreviousSize.Height;
-
-        if (Math.Abs(left - Left) < 0.5 && Math.Abs(top - Top) < 0.5) return;
-        _applyingPosition = true;
-        Left = left;
-        Top = top;
-        _applyingPosition = false;
-        _settings.Left = left;
-        _settings.Top = top;
+        if (e.PreviousSize.Width < 1 || !IsVisible) return;
+        Place();
     }
 
     private (double, double) Clamp(double left, double top)

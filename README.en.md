@@ -22,7 +22,7 @@
 | Desktop widget | Click-through, always on top, lock position, may extend past screen edges, auto-hide when a full-screen app runs |
 | Start with Windows | Per-user startup entry, no administrator rights needed |
 | Look and feel | Four eye-friendly low-saturation themes; rolling digits, card flip, hover and page transitions (2D animation), all optional |
-| Tray and hotkey | Left-click the tray icon to show / hide the panel; right-click for common switches; global hotkey `Ctrl + Alt + Z` by default |
+| Tray and hotkey | Left-click the tray icon to show / hide the panel; right-click for common switches; global hotkey `Ctrl + Alt + Z` by default; right-click the ZoneQuanta area on the taskbar to open settings too |
 | Auto-update | Parallel multi-mirror download, ECDSA signature + SHA-256 verification |
 | Low footprint | Second-aligned timer, redraws only what changes; about 0.3% of one CPU core and ~75 MB RAM when idle |
 

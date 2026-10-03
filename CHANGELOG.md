@@ -1,5 +1,9 @@
 # 更新日志 · Changelog
 
+## 1.2.13
+- 中文：修复锁定位置后桌面组件仍会偏离设定位置的问题——位置改为由「你选定的坐标 / 九宫格贴边」直接决定，文字、缩放、翻面等引起的尺寸变化不再挪动窗口，也不再改写已保存的坐标；多显示器与分辨率变化后按同一设定重新定位。任务栏 ZoneQuanta 显示区现在可右键直接打开设置界面。
+- English: fixed the desktop widget drifting away from its chosen spot even when position is locked — the position is now derived from the coordinates or edge/corner you picked, so size changes (text, scale, card flip) no longer move the window or overwrite the saved coordinates; display changes re-place it from the same setting. Right-clicking the ZoneQuanta area on the taskbar now opens the settings window.
+
 ## 1.2.12
 - 中文：桌面时间组件改为紧凑样式——只保留名称、带秒数的大号时间、一条细 24 小时日轴和关键标记（昨天 / 明天、相对本地的时差、夏令时），窗口面积约缩小一半；完整信息仍可点击卡片翻面查看。修复日轴向顶层窗口索取过宽空间的问题。
 - English: the desktop time widget now uses a compact layout — only the name, a large time with seconds, a slim 24-hour ribbon and key marks (yesterday / tomorrow, offset from local, DST) — cutting the window area by about half; the full details are still one click away on the card back. Fixed the ribbon claiming too much width in a top-level window.

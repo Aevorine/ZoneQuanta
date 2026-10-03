@@ -39,6 +39,7 @@ public sealed class BandWindow : Window
     private bool _hovering;
 
     public event Action<bool>? HoverChanged;
+    public event Action? SettingsRequested;
 
     public Rect BoundsPx => _hwnd != IntPtr.Zero && Native.GetWindowRect(_hwnd, out var r)
         ? new Rect(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top)
@@ -84,9 +85,10 @@ public sealed class BandWindow : Window
         SourceInitialized += (_, _) =>
         {
             _hwnd = new WindowInteropHelper(this).Handle;
-            Native.SetExStyle(_hwnd, Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE | Native.WS_EX_TRANSPARENT, true);
+            Native.SetExStyle(_hwnd, Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE, true);
         };
         SizeChanged += (_, _) => Reposition();
+        MouseRightButtonUp += (_, e) => { e.Handled = true; SettingsRequested?.Invoke(); };
         StateChanged += (_, _) => Revive();
         _settings.PropertyChanged += OnSettingChanged;
         _hover.Tick += (_, _) => PollHover();

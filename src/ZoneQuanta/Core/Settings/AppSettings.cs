@@ -34,7 +34,7 @@ public sealed class AppSettings : Observable
     private bool _hotkeyEnabled = true, _autoCheckUpdate = true, _autoInstallUpdate, _useMirrors = true;
     private double _scale = 1.0, _opacity = 0.94;
     private double? _left, _top;
-    private string _theme = "Graphite";
+    private string _theme = "Graphite", _pin = "";
     private uint _hotkeyModifiers = 3, _hotkeyKey = 0x5A;
     private List<ZoneConfig> _zones = new()
     {
@@ -63,6 +63,7 @@ public sealed class AppSettings : Observable
     public double Opacity { get => _opacity; set => Set(ref _opacity, Math.Clamp(value, 0.2, 1.0)); }
     public double? Left { get => _left; set => Set(ref _left, value); }
     public double? Top { get => _top; set => Set(ref _top, value); }
+    public string Pin { get => _pin; set => Set(ref _pin, value ?? ""); }
 
     public bool HotkeyEnabled { get => _hotkeyEnabled; set => Set(ref _hotkeyEnabled, value); }
     public uint HotkeyModifiers { get => _hotkeyModifiers; set => Set(ref _hotkeyModifiers, value); }
