@@ -1,5 +1,9 @@
 # 更新日志 · Changelog
 
+## 1.2.1
+- 中文：重新打包发布；清理旧版本与本地备份；完善中英文 README 与仓库检索标签。
+- English: rebuilt and republished; old versions and local backups removed; refined bilingual README and repository topics.
+
 ## 1.2.0
 - 中文：发布包改为自带运行时与全部依赖的单个 `ZoneQuanta.exe`，下载即用；任务栏监控条默认在最左侧，可选位置，高度自适应无留白；新增英文 README。
 - English: a single self-contained `ZoneQuanta.exe` (runtime and all dependencies built in); the taskbar monitor defaults to the far left with a selectable position and a height that adapts to the taskbar with no padding; English README added.
