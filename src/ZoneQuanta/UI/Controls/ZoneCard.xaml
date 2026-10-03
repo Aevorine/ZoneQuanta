@@ -27,13 +27,13 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock x:Name="LabelText" Style="{StaticResource Heading}"/>
-                    <TextBlock x:Name="TagText" Grid.Column="1" Style="{StaticResource Muted}" FontSize="11"/>
+                    <TextBlock x:Name="TagText" Grid.Column="1" Style="{StaticResource Muted}" FontSize="11" TextTrimming="CharacterEllipsis" Margin="8,0,0,0"/>
                 </Grid>
 
                 <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,2,0,2">
                     <c:RollingText x:Name="Main" TextElement.FontSize="44" TextElement.FontWeight="Light"
                                    TextElement.Foreground="{DynamicResource TextBrush}" TextElement.FontFamily="{StaticResource AppFont}"/>
-                    <StackPanel VerticalAlignment="Bottom" Margin="6,0,0,9">
+                    <StackPanel x:Name="Tail" VerticalAlignment="Bottom" Margin="6,0,0,9">
                         <TextBlock x:Name="AmPmText" Style="{StaticResource Muted}" FontSize="11" HorizontalAlignment="Left"/>
                         <c:RollingText x:Name="Secs" TextElement.FontSize="20" TextElement.FontWeight="Light"
                                        TextElement.Foreground="{DynamicResource MutedBrush}" TextElement.FontFamily="{StaticResource AppFont}"/>

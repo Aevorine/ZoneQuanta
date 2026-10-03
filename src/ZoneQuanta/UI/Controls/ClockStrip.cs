@@ -19,16 +19,18 @@ public sealed class ClockStrip : Border
 
     private readonly bool _allowAnimation;
     private readonly bool _forceVertical;
+    private readonly bool _compact;
 
-    public ClockStrip(AppSettings settings, TimeEngine engine, bool allowAnimation = true, bool forceVertical = false)
+    public ClockStrip(AppSettings settings, TimeEngine engine, bool allowAnimation = true, bool forceVertical = false, bool compact = false)
     {
+        _compact = compact;
         _allowAnimation = allowAnimation;
         _forceVertical = forceVertical;
         _settings = settings;
         _engine = engine;
-        CornerRadius = new CornerRadius(16);
+        CornerRadius = new CornerRadius(compact ? 12 : 16);
         BorderThickness = new Thickness(1);
-        Padding = new Thickness(4);
+        Padding = new Thickness(compact ? 3 : 4);
         this.SetResourceReference(BackgroundProperty, "SurfaceBrush");
         this.SetResourceReference(BorderBrushProperty, "LineBrush");
         Child = _grid;
@@ -81,7 +83,7 @@ public sealed class ClockStrip : Border
         for (int i = 0; i < zones.Count; i++)
         {
             var zone = zones[i];
-            var card = new ZoneCard(i, _allowAnimation) { InfoProvider = () => _engine.GetDstInfo(zone, DateTimeOffset.UtcNow) };
+            var card = new ZoneCard(i, _allowAnimation, _compact) { InfoProvider = () => _engine.GetDstInfo(zone, DateTimeOffset.UtcNow) };
             _cards.Add(card);
             _grid.Children.Add(card);
         }

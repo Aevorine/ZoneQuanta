@@ -9,7 +9,7 @@ public partial class ConsolePage : UserControl
     {
         InitializeComponent();
         DataContext = host.Settings;
-        var strip = new ClockStrip(host.Settings, host.Engine, allowAnimation: false);
+        var strip = new ClockStrip(host.Settings, host.Engine, allowAnimation: false, compact: true);
         Preview.Content = strip;
         host.Tick += now => { if (IsVisible) strip.Update(now); };
     }

@@ -14,14 +14,39 @@ public partial class ZoneCard : UserControl
 
     private readonly bool _allowAnimation;
 
-    public ZoneCard(int index, bool allowAnimation)
+    private readonly bool _compact;
+
+    public ZoneCard(int index, bool allowAnimation, bool compact = false)
     {
         _allowAnimation = allowAnimation;
+        _compact = compact;
         InitializeComponent();
+        if (compact) ApplyCompactLayout();
         string accent = index % 2 == 0 ? "Accent1Brush" : "Accent2Brush";
         LabelText.SetResourceReference(TextBlock.ForegroundProperty, accent);
         Arc.SetResourceReference(DayBar.AccentProperty, accent);
         WireInteraction();
+    }
+
+    private void ApplyCompactLayout()
+    {
+        Root.Padding = new Thickness(10, 5, 10, 6);
+        Root.Margin = new Thickness(2);
+        Root.CornerRadius = new CornerRadius(10);
+        System.Windows.Documents.TextElement.SetFontSize(Main, 30);
+        System.Windows.Documents.TextElement.SetFontSize(Secs, 13);
+        Tail.Margin = new Thickness(4, 0, 0, 5);
+        LabelText.FontSize = 12;
+        TagText.FontSize = 10;
+        Arc.Compact = true;
+        Arc.Margin = new Thickness(0, 1, 0, 0);
+        DateText.Visibility = Visibility.Collapsed;
+        OffsetText.Visibility = Visibility.Collapsed;
+        BackName.FontSize = 11;
+        BackState.FontSize = 12;
+        BackNext.FontSize = 11;
+        BackSun.FontSize = 11;
+        BackYear.FontSize = 10.5;
     }
 
     public Func<DstInfo>? InfoProvider { get; set; }
@@ -138,7 +163,7 @@ public partial class ZoneCard : UserControl
         _hasSnap = true;
 
         LabelText.Text = s.Label;
-        TagText.Text = FormatTag(s);
+        TagText.Text = _compact ? FormatCompactTag(s, o) : FormatTag(s);
 
         int hour = t.Hour;
         if (!o.Use24Hour)
@@ -170,11 +195,25 @@ public partial class ZoneCard : UserControl
             Arc.PolarNight = s.Sun.PolarNight;
         }
 
-        DateText.Visibility = o.ShowDate ? Visibility.Visible : Visibility.Collapsed;
-        if (o.ShowDate) DateText.Text = FormatDate(s);
+        DateText.Visibility = o.ShowDate && !_compact ? Visibility.Visible : Visibility.Collapsed;
+        if (o.ShowDate && !_compact) DateText.Text = FormatDate(s);
 
-        OffsetText.Visibility = o.ShowOffset ? Visibility.Visible : Visibility.Collapsed;
-        if (o.ShowOffset) OffsetText.Text = FormatOffset(s);
+        OffsetText.Visibility = o.ShowOffset && !_compact ? Visibility.Visible : Visibility.Collapsed;
+        if (o.ShowOffset && !_compact) OffsetText.Text = FormatOffset(s);
+    }
+
+    private static string FormatCompactTag(ZoneSnapshot s, AppSettings o)
+    {
+        var parts = new System.Collections.Generic.List<string>(3);
+        if (o.ShowDate && !s.IsLocal) parts.Add(s.DayDelta < 0 ? "昨天" : s.DayDelta > 0 ? "明天" : "今天");
+        if (o.ShowOffset && !s.IsLocal && s.RelativeToLocalMinutes != 0)
+        {
+            int m = Math.Abs(s.RelativeToLocalMinutes);
+            string span = m % 60 == 0 ? $"{m / 60}h" : $"{m / 60}:{m % 60:00}h";
+            parts.Add((s.RelativeToLocalMinutes < 0 ? "-" : "+") + span);
+        }
+        if (s.IsDst) parts.Add("夏令时");
+        return string.Join(" · ", parts);
     }
 
     private static string FormatTag(ZoneSnapshot s)

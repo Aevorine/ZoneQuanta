@@ -13,7 +13,7 @@ public partial class DisplayPage : UserControl
         var settings = host.Settings;
         DataContext = settings;
 
-        var strip = new ClockStrip(settings, host.Engine, allowAnimation: false);
+        var strip = new ClockStrip(settings, host.Engine, allowAnimation: false, compact: true);
         Preview.Content = strip;
         host.Tick += now => { if (IsVisible) strip.Update(now); };
 

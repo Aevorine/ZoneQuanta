@@ -23,6 +23,10 @@ public sealed class DayBar : FrameworkElement
     public static readonly DependencyProperty RevealProperty = Reg("Reveal", 1.0);
     public static readonly DependencyProperty AnimatedProperty = Reg("Animated", false, false, (d, _) => ((DayBar)d).SyncAnimation());
 
+    public static readonly DependencyProperty CompactProperty = DependencyProperty.Register(
+        nameof(Compact), typeof(bool), typeof(DayBar),
+        new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsRender));
+
     public double Now { get => (double)GetValue(NowProperty); set => SetValue(NowProperty, value); }
     public double Rise { get => (double)GetValue(RiseProperty); set => SetValue(RiseProperty, value); }
     public double Set { get => (double)GetValue(SetProperty); set => SetValue(SetProperty, value); }
@@ -32,8 +36,14 @@ public sealed class DayBar : FrameworkElement
     public Brush Accent { get => (Brush)GetValue(AccentProperty); set => SetValue(AccentProperty, value); }
     public double Reveal { get => (double)GetValue(RevealProperty); set => SetValue(RevealProperty, value); }
     public bool Animated { get => (bool)GetValue(AnimatedProperty); set => SetValue(AnimatedProperty, value); }
+    public bool Compact { get => (bool)GetValue(CompactProperty); set => SetValue(CompactProperty, value); }
 
-    private const double Height0 = 36, Pad = 9, BarY = 17, Thick = 8;
+    private double Height0 => Compact ? 20 : 36;
+    private double Pad => Compact ? 6 : 9;
+    private double BarY => Compact ? 8.5 : 17;
+    private double Thick => Compact ? 4.5 : 8;
+    private double K => Compact ? 0.66 : 1.0;
+
     private double Phase => Now * 3600 % 6 / 6.0;
     private double? _hoverHour;
 
@@ -57,8 +67,7 @@ public sealed class DayBar : FrameworkElement
         };
     }
 
-    protected override Size MeasureOverride(Size availableSize) =>
-        new(double.IsInfinity(availableSize.Width) ? 140 : Math.Max(120, availableSize.Width), Height0);
+    protected override Size MeasureOverride(Size availableSize) => new(Compact ? 90 : 110, Height0);
 
     private void SyncAnimation()
     {
@@ -81,6 +90,7 @@ public sealed class DayBar : FrameworkElement
     {
         double w = ActualWidth;
         if (w < 40) return;
+        double barY = BarY, thick = Thick, pad = Pad;
 
         var line = (Brush)(TryFindResource("LineBrush") ?? Brushes.DimGray);
         var muted = (Brush)(TryFindResource("MutedBrush") ?? Brushes.Gray);
@@ -94,10 +104,10 @@ public sealed class DayBar : FrameworkElement
         double reveal = Math.Clamp(Reveal, 0, 1);
         double now = ((Now % 24) + 24) % 24;
         double nowX = X(now, w);
-        double top = BarY - Thick / 2, bottom = BarY + Thick / 2;
+        double top = barY - thick / 2, bottom = barY + thick / 2;
 
         // night track
-        dc.DrawRoundedRectangle(line, null, new Rect(Pad - 4, top, w - 2 * Pad + 8, Thick), Thick / 2, Thick / 2);
+        dc.DrawRoundedRectangle(line, null, new Rect(pad - 3, top, w - 2 * pad + 6, thick), thick / 2, thick / 2);
 
         // daylight segment: dimmer for the part of the day still to come, full strength for the part already gone
         var edge = Lerp(sunBrush.Color, Color.FromRgb(0xD9, 0x7B, 0x3A), 0.55);
@@ -111,45 +121,48 @@ public sealed class DayBar : FrameworkElement
             grad.GradientStops.Add(new GradientStop(edge, 0));
             grad.GradientStops.Add(new GradientStop(sunBrush.Color, 0.5));
             grad.GradientStops.Add(new GradientStop(edge, 1));
-            var rect = new Rect(x1, top, Math.Max(2, x2 - x1), Thick);
-            double revealX = x1 + (rect.Width) * reveal;
+            var rect = new Rect(x1, top, Math.Max(2, x2 - x1), thick);
+            double revealX = x1 + rect.Width * reveal;
 
             dc.PushClip(new RectangleGeometry(new Rect(0, 0, Math.Max(0, revealX), Height0)));
             dc.PushOpacity(0.38);
-            dc.DrawRoundedRectangle(grad, null, rect, Thick / 2, Thick / 2);
+            dc.DrawRoundedRectangle(grad, null, rect, thick / 2, thick / 2);
             dc.Pop();
             dc.PushClip(new RectangleGeometry(new Rect(0, 0, Math.Max(0, Math.Min(nowX, revealX)), Height0)));
-            dc.DrawRoundedRectangle(grad, null, rect, Thick / 2, Thick / 2);
+            dc.DrawRoundedRectangle(grad, null, rect, thick / 2, thick / 2);
             dc.Pop();
             dc.Pop();
         }
 
-        // hour ticks
+        // hour ticks (compact: the four quarter-day marks only)
         var minor = new Pen(muted, 0.6);
         var major = new Pen(muted, 1.0);
         for (int h = 0; h <= 24; h++)
         {
             bool big = h % 6 == 0;
+            if (Compact && !big) continue;
             double x = X(h, w);
-            dc.DrawLine(big ? major : minor, new Point(x, bottom + 1.5), new Point(x, bottom + (big ? 5.5 : 3.5)));
+            dc.DrawLine(big ? major : minor, new Point(x, bottom + 1.5), new Point(x, bottom + (Compact ? 4.0 : big ? 5.5 : 3.5)));
         }
 
         var font = TryFindResource("AppFont") as FontFamily ?? new FontFamily("Segoe UI");
         var face = new Typeface(font, FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
         double ppd = VisualTreeHelper.GetDpi(this).PixelsPerDip;
 
-        foreach (int h in new[] { 0, 6, 12, 18, 24 })
+        if (!Compact)
         {
-            var t = new FormattedText(h.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture, FlowDirection.LeftToRight, face, 8.5, muted, ppd);
-            double x = Math.Clamp(X(h, w) - t.Width / 2, 0, w - t.Width);
-            dc.DrawText(t, new Point(x, bottom + 5.5));
-        }
+            foreach (int h in new[] { 0, 6, 12, 18, 24 })
+            {
+                var t = new FormattedText(h.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture, FlowDirection.LeftToRight, face, 8.5, muted, ppd);
+                double x = Math.Clamp(X(h, w) - t.Width / 2, 0, w - t.Width);
+                dc.DrawText(t, new Point(x, bottom + 5.5));
+            }
 
-        // sunrise / sunset times
-        if (hasDay && !PolarDay)
-        {
-            DrawTime(dc, face, ppd, dayFrom, w, sunBrush, top - 11.5);
-            DrawTime(dc, face, ppd, dayTo, w, sunBrush, top - 11.5);
+            if (hasDay && !PolarDay)
+            {
+                DrawTime(dc, face, ppd, dayFrom, w, sunBrush, top - 11.5);
+                DrawTime(dc, face, ppd, dayTo, w, sunBrush, top - 11.5);
+            }
         }
 
         // stars on the night part of the track
@@ -160,7 +173,7 @@ public sealed class DayBar : FrameworkElement
                 if (hasDay && sh > dayFrom && sh < dayTo) continue;
                 double tw = 0.5 + 0.5 * Math.Sin((Phase + sh * 0.37) * 2 * Math.PI);
                 dc.PushOpacity(0.25 + 0.6 * tw);
-                dc.DrawEllipse(moon, null, new Point(X(sh, w), BarY), 0.9, 0.9);
+                dc.DrawEllipse(moon, null, new Point(X(sh, w), barY), 0.9 * K + 0.1, 0.9 * K + 0.1);
                 dc.Pop();
             }
         }
@@ -179,7 +192,7 @@ public sealed class DayBar : FrameworkElement
 
         // current-time marker
         double wave = Math.Sin(Phase * 2 * Math.PI);
-        var marker = new Point(nowX, BarY);
+        var marker = new Point(nowX, barY);
         if (IsDay) DrawSun(dc, marker, sunBrush, wave, reveal);
         else DrawMoon(dc, marker, moon, card, reveal);
     }
@@ -195,27 +208,29 @@ public sealed class DayBar : FrameworkElement
 
     private void DrawSun(DrawingContext dc, Point c, Brush sun, double wave, double reveal)
     {
+        double k = K * reveal;
         var glow = new RadialGradientBrush(((SolidColorBrush)sun).Color, Colors.Transparent) { Opacity = 0.6 + 0.15 * wave };
-        dc.DrawEllipse(glow, null, c, 9 * reveal, 9 * reveal);
+        dc.DrawEllipse(glow, null, c, 9 * k, 9 * k);
 
-        var ray = new Pen(sun, 1.0) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+        var ray = new Pen(sun, Compact ? 0.8 : 1.0) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
         double spin = Phase * Math.PI / 4;
         for (int i = 0; i < 8; i++)
         {
             double a = spin + i * Math.PI / 4;
-            double from = 5.0 * reveal, to = (6.6 + 0.9 * wave) * reveal;
+            double from = 5.0 * k, to = (6.6 + 0.9 * wave) * k;
             dc.DrawLine(ray, new Point(c.X + from * Math.Cos(a), c.Y + from * Math.Sin(a)),
                              new Point(c.X + to * Math.Cos(a), c.Y + to * Math.Sin(a)));
         }
-        dc.DrawEllipse(sun, null, c, 3.8 * reveal, 3.8 * reveal);
+        dc.DrawEllipse(sun, null, c, 3.8 * k, 3.8 * k);
     }
 
-    private static void DrawMoon(DrawingContext dc, Point c, Brush moon, Brush card, double reveal)
+    private void DrawMoon(DrawingContext dc, Point c, Brush moon, Brush card, double reveal)
     {
+        double k = K * reveal;
         var glow = new RadialGradientBrush(((SolidColorBrush)moon).Color, Colors.Transparent) { Opacity = 0.45 };
-        dc.DrawEllipse(glow, null, c, 8.5 * reveal, 8.5 * reveal);
-        dc.DrawEllipse(moon, null, c, 4.4 * reveal, 4.4 * reveal);
-        dc.DrawEllipse(card, null, new Point(c.X + 2.1, c.Y - 1.4), 3.6 * reveal, 3.6 * reveal);
+        dc.DrawEllipse(glow, null, c, 8.5 * k, 8.5 * k);
+        dc.DrawEllipse(moon, null, c, 4.4 * k, 4.4 * k);
+        dc.DrawEllipse(card, null, new Point(c.X + 2.1 * K, c.Y - 1.4 * K), 3.6 * k, 3.6 * k);
     }
 
     private static Color Lerp(Color a, Color b, double t) => Color.FromRgb(

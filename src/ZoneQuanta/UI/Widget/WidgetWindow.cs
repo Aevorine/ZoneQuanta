@@ -37,7 +37,7 @@ public sealed class WidgetWindow : Window
         Title = "ZoneQuanta";
         Focusable = false;
 
-        _strip = new ClockStrip(settings, engine) { LayoutTransform = _scale };
+        _strip = new ClockStrip(settings, engine, compact: true) { LayoutTransform = _scale };
         Content = _strip;
 
         SourceInitialized += OnSourceInitialized;

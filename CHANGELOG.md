@@ -1,5 +1,9 @@
 # 更新日志 · Changelog
 
+## 1.2.12
+- 中文：桌面时间组件改为紧凑样式——只保留名称、带秒数的大号时间、一条细 24 小时日轴和关键标记（昨天 / 明天、相对本地的时差、夏令时），窗口面积约缩小一半；完整信息仍可点击卡片翻面查看。修复日轴向顶层窗口索取过宽空间的问题。
+- English: the desktop time widget now uses a compact layout — only the name, a large time with seconds, a slim 24-hour ribbon and key marks (yesterday / tomorrow, offset from local, DST) — cutting the window area by about half; the full details are still one click away on the card back. Fixed the ribbon claiming too much width in a top-level window.
+
 ## 1.2.11
 - 中文：时间组件不再使用圆形钟面，改为横贯卡片的 24 小时日轴——日照段按真实日出日落着色，已过去的时间高亮、未到的时间变暗，太阳 / 月亮标记在当前时刻，日出日落时间标在轴上，鼠标移上去可读出任意时刻。
 - English: the time widget no longer uses a round clock face; it now shows a 24-hour day ribbon across the card — the daylight segment follows real sunrise and sunset, the elapsed part is bright and the rest dimmed, a sun / moon marker sits on the current time, sunrise and sunset are printed on the ribbon, and hovering reads any moment.
