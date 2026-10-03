@@ -69,6 +69,7 @@ public sealed class AppController : IPanelHost, IDisposable
         _band.HoverChanged += _detail.SetHover;
         _tray = new TrayService(s, TogglePanel, ResetWidget, () => _ = _updates.CheckAsync(), ExitApp);
 
+        ShowPendingUpdateFailure();
         _widget.ApplyInitial(DateTimeOffset.UtcNow);
         _metrics.Sample();
         _band.Sync();
@@ -78,7 +79,7 @@ public sealed class AppController : IPanelHost, IDisposable
         RegisterHotkey();
 
         _updates.UpdateFound += info => _tray.Notify("发现新版本", $"ZoneQuanta v{info.Version} 可用，在面板「更新」页安装");
-        _updates.ReadyToExit += ExitApp;
+        _updates.PreparingToApply += () => ((App)Application.Current).PrepareExit();
 
         _ticker.Tick += OnTick;
         _ticker.Hourly += _engine.Refresh;
@@ -135,6 +136,20 @@ public sealed class AppController : IPanelHost, IDisposable
     {
         string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ZoneQuanta");
         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{dir}\"") { UseShellExecute = true });
+    }
+
+    private void ShowPendingUpdateFailure()
+    {
+        string marker = UpdateService.FailureMarker;
+        try
+        {
+            if (!File.Exists(marker)) return;
+            string text = File.ReadAllText(marker).Trim();
+            File.Delete(marker);
+            _tray.Notify("更新失败", text.Length > 0 ? text : "请稍后重试");
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 
     public void ExitApp()

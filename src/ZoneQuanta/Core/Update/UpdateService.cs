@@ -20,6 +20,15 @@ public sealed class UpdateService
     public const string Repo = "Aevorine/ZoneQuanta";
     private static readonly string[] Mirrors = { "https://ghfast.top/", "https://gh-proxy.com/" };
 
+    private static string ReleaseBase
+    {
+        get
+        {
+            string? custom = Environment.GetEnvironmentVariable("ZONEQUANTA_UPDATE_BASE");
+            return string.IsNullOrWhiteSpace(custom) ? $"https://github.com/{Repo}/releases" : custom.TrimEnd('/');
+        }
+    }
+
     private readonly HttpClient _http;
     private readonly ParallelDownloader _downloader;
 
@@ -46,7 +55,7 @@ public sealed class UpdateService
 
     public async Task<UpdateInfo?> CheckAsync(bool useMirrors, CancellationToken ct)
     {
-        string origin = $"https://github.com/{Repo}/releases/latest/download/update.json";
+        string origin = $"{ReleaseBase}/latest/download/update.json";
         var tasks = Candidates(origin, useMirrors).Select(u => FetchManifestAsync(u, ct)).ToList();
 
         while (tasks.Count > 0)
@@ -67,7 +76,7 @@ public sealed class UpdateService
 
     public async Task<string> DownloadAsync(UpdateInfo info, bool useMirrors, IProgress<double> progress, CancellationToken ct)
     {
-        string origin = $"https://github.com/{Repo}/releases/download/{info.Tag}/{info.AssetName}";
+        string origin = $"{ReleaseBase}/download/{info.Tag}/{info.AssetName}";
         string exe = Environment.ProcessPath ?? throw new InvalidOperationException();
         string target = exe + ".new";
 
@@ -147,6 +156,16 @@ public sealed class UpdateService
         catch { Retry(() => File.Move(old, exe)); throw; }
         Process.Start(new ProcessStartInfo(exe, "--updated") { UseShellExecute = true });
     }
+
+    public static void RelaunchCurrent()
+    {
+        string? exe = Environment.ProcessPath;
+        if (exe is null) return;
+        try { Process.Start(new ProcessStartInfo(exe, "--updated") { UseShellExecute = true }); }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) { Log.Error("relaunch", ex); }
+    }
+
+    public static string FailureMarker => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ZoneQuanta", "update-failed.txt");
 
     public static void CleanupLeftovers()
     {

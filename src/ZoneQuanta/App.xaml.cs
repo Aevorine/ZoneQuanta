@@ -50,7 +50,7 @@ public partial class App : Application
 
         bool updated = Array.IndexOf(e.Args, "--updated") >= 0;
         _mutex = new Mutex(true, MutexName, out bool first);
-        if (!first && updated) first = WaitForPreviousInstance(_mutex);
+        if (!first && updated) first = TakeOverFromPrevious(_mutex);
         _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
         if (!first)
         {
@@ -68,24 +68,51 @@ public partial class App : Application
             (_, _) => Dispatcher.BeginInvoke(() => _controller?.ShowPanel()), null, Timeout.Infinite, false);
     }
 
-    private static bool WaitForPreviousInstance(Mutex mutex)
+    private static bool WaitForPreviousInstance(Mutex mutex, int seconds)
     {
-        try { return mutex.WaitOne(TimeSpan.FromSeconds(20)); }
+        try { return mutex.WaitOne(TimeSpan.FromSeconds(seconds)); }
         catch (AbandonedMutexException) { return true; }
+    }
+
+    private static bool TakeOverFromPrevious(Mutex mutex)
+    {
+        if (WaitForPreviousInstance(mutex, 8)) return true;
+
+        Log.Write("previous instance did not exit, ending it");
+        try
+        {
+            foreach (var other in Process.GetProcessesByName(Process.GetCurrentProcess().ProcessName))
+            {
+                using (other)
+                {
+                    if (other.Id == Environment.ProcessId) continue;
+                    try { other.Kill(true); }
+                    catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception) { }
+                }
+            }
+        }
+        catch (InvalidOperationException) { }
+        return WaitForPreviousInstance(mutex, 10);
+    }
+
+    public void PrepareExit()
+    {
+        Exiting = true;
+        try { _wait?.Unregister(null); }
+        catch (Exception ex) { Log.Error("exit-wait", ex); }
+        try { _controller?.Dispose(); }
+        catch (Exception ex) { Log.Error("exit-dispose", ex); }
+        _controller = null;
     }
 
     public void ExitApp()
     {
-        Exiting = true;
         _ = Task.Run(async () =>
         {
             await Task.Delay(2500);
             Environment.Exit(0);
         });
-        try { _wait?.Unregister(null); }
-        catch (Exception ex) { Log.Error("exit-wait", ex); }
-        try { _controller?.Dispose(); }
-        catch (Exception ex) { Log.Error("exit-dispose", ex); }
+        PrepareExit();
         Shutdown();
     }
 

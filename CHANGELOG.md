@@ -1,5 +1,9 @@
 # 更新日志 · Changelog
 
+## 1.2.10
+- 中文：找到并修复「更新失败，请稍后重试」的真正根因——单文件程序替换自身之后，旧进程再需要加载尚未载入的系统程序集就会抛 `FileNotFoundException`，导致旧进程无法退出、占着单实例锁。现在先完成全部退出清理，再替换文件，随后立即启动新版本并强制结束旧进程；新版本若等不到旧进程退出，会主动结束残留的旧进程并接管；安装失败时自动重启当前版本并在托盘提示原因。已用「本地签名更新服务器」做过完整的真实更新测试（含分段下载失败后退回单线路下载）。
+- English: found and fixed the real cause of "update failed, please retry" — after a single-file app replaces its own executable, the old process throws `FileNotFoundException` as soon as it needs an assembly it has not loaded yet, so it never exits and keeps the single-instance lock. All shutdown work now finishes first, then the files are replaced, the new version is started and the old process is ended immediately; if the new version cannot get the lock it ends the leftover old process and takes over; on failure the current version relaunches and a tray notice explains why. Verified end to end against a local signed update server (including the fallback from segmented to single-stream download).
+
 ## 1.2.9
 - 中文：彻底修复「更新失败，请稍后重试」——替换成功后无论发生什么旧进程都会退出（不再残留占用单实例锁与旧文件导致连环失败）；下载增加整段重试、单线路兜底与已下载包复用；文件被杀毒软件短暂占用时自动重试；各阶段失败给出明确原因。降低常驻开销：任务栏位置查找限流、悬停详情去掉阴影特效、置顶重申降频、空闲时自动回收内存；关闭动画循环，改为随秒针节拍驱动。
 - English: fixed "update failed, please retry" for good — after the executable is replaced the old process always exits (no more leftover process holding the single-instance lock and old file); downloads gain whole-run retries, a single-stream fallback and reuse of an already downloaded package; transient file locks (e.g. antivirus) are retried; every stage reports a clear reason. Lower resident cost: throttled taskbar position lookup, no shadow effect on the hover details, less frequent z-order refresh, idle memory trimming, and no free-running animation loop (driven by the second tick instead).

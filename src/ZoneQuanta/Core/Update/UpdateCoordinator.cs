@@ -19,7 +19,7 @@ public sealed class UpdateCoordinator : Observable
     public UpdateCoordinator(AppSettings settings) => _settings = settings;
 
     public event Action<UpdateInfo>? UpdateFound;
-    public event Action? ReadyToExit;
+    public event Action? PreparingToApply;
 
     public string Status { get => _status; private set => Set(ref _status, value); }
     public double Progress { get => _progress; private set => Set(ref _progress, value); }
@@ -86,23 +86,26 @@ public sealed class UpdateCoordinator : Observable
         }
 
         Status = "正在安装…";
+        Traffic.HelperLauncher.RequestStop();
+
+        // Tear everything down while the executable is still intact: once it is replaced, the
+        // single-file runtime can no longer load assemblies that were not touched yet, so the
+        // old process must do nothing but start the new one and exit.
+        try { PreparingToApply?.Invoke(); }
+        catch (Exception ex) { Log.Error("install-prepare", ex); }
+
         try
         {
-            Traffic.HelperLauncher.RequestStop();
             UpdateService.ApplyAndRestart(file);
         }
         catch (Exception ex)
         {
             Log.Error("install-apply", ex);
-            Status = $"安装失败：{Brief(ex)}，请稍后重试";
-            Busy = false;
-            return;
+            try { System.IO.File.WriteAllText(UpdateService.FailureMarker, $"安装失败：{Brief(ex)}"); }
+            catch (Exception) { }
+            UpdateService.RelaunchCurrent();
         }
-
-        Status = "更新完成，正在重启";
-        try { ReadyToExit?.Invoke(); }
-        catch (Exception ex) { Log.Error("install-exit", ex); }
-        Busy = false;
+        Environment.Exit(0);
     }
 
     private static string Brief(Exception ex)
