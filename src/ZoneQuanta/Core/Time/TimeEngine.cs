@@ -13,7 +13,8 @@ public readonly record struct ZoneSnapshot(
     bool IsDst,
     bool IsLocal,
     bool IsDay,
-    double DayProgress);
+    double DayProgress,
+    SunTimes Sun);
 
 public sealed record DstInfo(string Name, bool Supports, bool IsDst, int OffsetMinutes, DateTime? NextChange, int? OffsetAfter, bool? NextIsDst, string? YearSpan);
 
@@ -37,11 +38,20 @@ public sealed class TimeEngine
         int dayDelta = (zoned.Date - localNow.Date).Days;
 
         double minutes = zoned.Hour * 60 + zoned.Minute + zoned.Second / 60.0;
-        bool isDay = minutes >= 360 && minutes < 1080;
-        double since = isDay ? minutes - 360 : (minutes >= 1080 ? minutes - 1080 : minutes + 360);
+        var (lat, lon) = Coordinates(zone, tz, zoned);
+        var sun = SunCalc.For(zoned.Date, lat, lon, offset);
+        var (isDay, progress) = SunCalc.Phase(sun, minutes);
 
         return new ZoneSnapshot(zone.Label, zoned.DateTime, offset, relative, dayDelta,
-            tz.IsDaylightSavingTime(zoned), isLocal, isDay, since / 720.0);
+            tz.IsDaylightSavingTime(zoned), isLocal, isDay, progress, sun);
+    }
+
+    private static (double Lat, double Lon) Coordinates(ZoneConfig zone, TimeZoneInfo tz, DateTimeOffset zoned)
+    {
+        if (zone.Lat is { } la && zone.Lon is { } lo) return (la, lo);
+        string id = zone.TimeZoneId == "local" ? tz.Id : zone.TimeZoneId;
+        if (CityCatalog.Locate(zone.Label, id) is { } c) return c;
+        return (35, tz.BaseUtcOffset.TotalMinutes / 4.0);
     }
 
     public DstInfo GetDstInfo(ZoneConfig zone, DateTimeOffset utcNow)

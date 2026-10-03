@@ -10,7 +10,8 @@
 
 | Feature | Details |
 |---|---|
-| Local + Los Angeles time | DST / standard time switches automatically using the Windows time zone database (per-year rules). Click a card to flip it: current state, next switch moment, and this year's DST period (2026: Mar 8 02:00 – Nov 1 02:00) |
+| Local + Los Angeles time | DST / standard time switches automatically using the Windows time zone database (per-year rules). Click a card to flip it: current state, next switch moment, this year's DST period (2026: Mar 8 02:00 – Nov 1 02:00), and today's sunrise / sunset / day length |
+| Day-night arc | Sunrise and sunset are computed per city from latitude and date (polar day / night included); the sun and moon follow the real day, with glow, rays and twinkling stars |
 | Popular countries and cities | 36 built-in cities (USA, Canada, China, Japan, Europe, Australia, ...), plus search over every system time zone. Up to 4 zones, renamable and reorderable |
 | Taskbar monitor | Placed at the far left of the taskbar by default; choose "left of Start" or "left of the notification area" and fine-tune the offset. Height adapts to the taskbar with no padding. Upload speed, download speed, total speed, memory % and CPU % can each be switched on or off |
 | Speed units | Bytes `B` or bits `b`; unit auto (B → KB → MB → GB) or fixed K / M / G |
@@ -46,7 +47,7 @@ With a local proxy or TUN adapter, traffic is attributed to the proxy process.
 src/ZoneQuanta
 ├── Core        pure logic, no UI dependency
 │   ├── Settings   settings model and persistence
-│   ├── Time       time zones, DST, city catalog, second-aligned ticker
+│   ├── Time       time zones, DST, sunrise / sunset (astronomical), city catalog, second-aligned ticker
 │   ├── Monitor    network / CPU / memory sampling, unit conversion, traffic store
 │   ├── Traffic    elevated statistics helper (ETW) and scheduled-task launcher
 │   └── Update     manifest verification, parallel download, update coordinator

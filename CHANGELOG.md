@@ -1,5 +1,9 @@
 # 更新日志 · Changelog
 
+## 1.2.3
+- 中文：昼夜弧线改为按城市经纬度与日期计算真实日出日落（含极昼极夜），不再固定 6:00–18:00；卡片背面显示日出、日落、昼长；弧线新增光晕、光线、星光等 2D 动画（仅在可见时低帧率运行）。
+- English: the day-night arc now uses real sunrise and sunset computed from each city's latitude and date (polar day / night included) instead of a fixed 06:00–18:00; card back shows sunrise, sunset and day length; the arc gains glow, rays and twinkling-star 2D animation (low frame rate, only while visible).
+
 ## 1.2.2
 - 中文：修复三指下滑 / Win+D「显示桌面」后面板被收起的问题，小组件、监控条与面板现在都会保持显示。
 - English: fixed the panel being swept away by the "Show desktop" gesture (three-finger swipe down / Win+D); the widget, taskbar monitor and panel now stay visible.

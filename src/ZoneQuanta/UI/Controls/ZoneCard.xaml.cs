@@ -27,6 +27,8 @@ public partial class ZoneCard : UserControl
     public Func<DstInfo>? InfoProvider { get; set; }
 
     private bool _flipped;
+    private ZoneSnapshot _snap;
+    private bool _hasSnap;
 
     private void WireInteraction()
     {
@@ -67,6 +69,7 @@ public partial class ZoneCard : UserControl
     private void FillBack(DstInfo i)
     {
         BackName.Text = i.Name;
+        BackSun.Text = _hasSnap ? FormatSun(_snap.Sun) : string.Empty;
         string utc = FormatUtc(i.OffsetMinutes);
         if (!i.Supports)
         {
@@ -82,6 +85,15 @@ public partial class ZoneCard : UserControl
         BackYear.Text = i.YearSpan ?? string.Empty;
     }
 
+    private static string FormatSun(SunTimes sun)
+    {
+        if (sun.PolarDay) return "极昼 · 全天日照";
+        if (sun.PolarNight) return "极夜 · 全天无日照";
+        static string Clock(double m) { int v = (int)Math.Round(m) % 1440; return $"{v / 60:00}:{v % 60:00}"; }
+        int len = (int)Math.Round(sun.SetMinutes - sun.RiseMinutes);
+        return $"日出 {Clock(sun.RiseMinutes)} · 日落 {Clock(sun.SetMinutes)} · 昼长 {len / 60} 小时 {len % 60} 分";
+    }
+
     private static string FormatUtc(int minutes)
     {
         int m = Math.Abs(minutes);
@@ -95,6 +107,8 @@ public partial class ZoneCard : UserControl
     {
         bool animate = o.Animate && _allowAnimation;
         var t = s.Time;
+        _snap = s;
+        _hasSnap = true;
 
         LabelText.Text = s.Label;
         TagText.Text = FormatTag(s);
@@ -120,6 +134,7 @@ public partial class ZoneCard : UserControl
         Arc.Visibility = o.ShowDayNight ? Visibility.Visible : Visibility.Collapsed;
         if (o.ShowDayNight)
         {
+            Arc.Animated = animate;
             Arc.IsDay = s.IsDay;
             Arc.Progress = Math.Round(s.DayProgress, 3);
         }

@@ -22,6 +22,8 @@ public sealed class ZoneConfig
 {
     public string Label { get; set; } = string.Empty;
     public string TimeZoneId { get; set; } = "local";
+    public double? Lat { get; set; }
+    public double? Lon { get; set; }
 }
 
 public sealed class AppSettings : Observable
