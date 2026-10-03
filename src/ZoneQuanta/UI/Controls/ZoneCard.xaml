@@ -18,6 +18,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <Grid>
@@ -39,17 +40,12 @@
                     </StackPanel>
                 </StackPanel>
 
-                <Grid Grid.Row="2">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <c:DayArc x:Name="Arc" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock x:Name="DateText" FontSize="13"/>
-                        <TextBlock x:Name="OffsetText" Style="{StaticResource Muted}"/>
-                    </StackPanel>
-                </Grid>
+                <c:DayBar x:Name="Arc" Grid.Row="2" Margin="0,4,0,2" HorizontalAlignment="Stretch"/>
+
+                <StackPanel Grid.Row="3" Margin="0,2,0,0">
+                    <TextBlock x:Name="DateText" FontSize="13"/>
+                    <TextBlock x:Name="OffsetText" Style="{StaticResource Muted}"/>
+                </StackPanel>
             </Grid>
 
             <StackPanel x:Name="Back" Visibility="Collapsed" VerticalAlignment="Center">

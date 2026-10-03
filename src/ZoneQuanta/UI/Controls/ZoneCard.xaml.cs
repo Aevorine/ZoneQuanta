@@ -20,7 +20,7 @@ public partial class ZoneCard : UserControl
         InitializeComponent();
         string accent = index % 2 == 0 ? "Accent1Brush" : "Accent2Brush";
         LabelText.SetResourceReference(TextBlock.ForegroundProperty, accent);
-        Arc.SetResourceReference(DayArc.AccentProperty, accent);
+        Arc.SetResourceReference(DayBar.AccentProperty, accent);
         WireInteraction();
     }
 

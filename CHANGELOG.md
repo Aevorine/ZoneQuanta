@@ -1,5 +1,9 @@
 # 更新日志 · Changelog
 
+## 1.2.11
+- 中文：时间组件不再使用圆形钟面，改为横贯卡片的 24 小时日轴——日照段按真实日出日落着色，已过去的时间高亮、未到的时间变暗，太阳 / 月亮标记在当前时刻，日出日落时间标在轴上，鼠标移上去可读出任意时刻。
+- English: the time widget no longer uses a round clock face; it now shows a 24-hour day ribbon across the card — the daylight segment follows real sunrise and sunset, the elapsed part is bright and the rest dimmed, a sun / moon marker sits on the current time, sunrise and sunset are printed on the ribbon, and hovering reads any moment.
+
 ## 1.2.10
 - 中文：找到并修复「更新失败，请稍后重试」的真正根因——单文件程序替换自身之后，旧进程再需要加载尚未载入的系统程序集就会抛 `FileNotFoundException`，导致旧进程无法退出、占着单实例锁。现在先完成全部退出清理，再替换文件，随后立即启动新版本并强制结束旧进程；新版本若等不到旧进程退出，会主动结束残留的旧进程并接管；安装失败时自动重启当前版本并在托盘提示原因。已用「本地签名更新服务器」做过完整的真实更新测试（含分段下载失败后退回单线路下载）。
 - English: found and fixed the real cause of "update failed, please retry" — after a single-file app replaces its own executable, the old process throws `FileNotFoundException` as soon as it needs an assembly it has not loaded yet, so it never exits and keeps the single-instance lock. All shutdown work now finishes first, then the files are replaced, the new version is started and the old process is ended immediately; if the new version cannot get the lock it ends the leftover old process and takes over; on failure the current version relaunches and a tray notice explains why. Verified end to end against a local signed update server (including the fallback from segmented to single-stream download).
