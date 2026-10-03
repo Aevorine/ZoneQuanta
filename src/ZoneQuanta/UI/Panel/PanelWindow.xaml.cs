@@ -61,7 +61,7 @@ public partial class PanelWindow : Window
 
         MinButton.Click += (_, _) => HidePanel();
         CloseButton.Click += (_, _) => HidePanel();
-        StateChanged += (_, _) => { if (WindowState == WindowState.Minimized) HidePanel(); };
+        StateChanged += (_, _) => Revive();
         SourceInitialized += (_, _) => Native.RoundCorners(new WindowInteropHelper(this).Handle);
         Closing += OnClosing;
     }
@@ -72,6 +72,13 @@ public partial class PanelWindow : Window
         ShowInTaskbar = true;
         Show();
         Activate();
+    }
+
+    public void Revive()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero || !IsVisible || !Native.IsIconic(hwnd)) return;
+        Native.ShowWindow(hwnd, Native.SW_SHOWNOACTIVATE);
     }
 
     public void HidePanel()

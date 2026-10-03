@@ -1,5 +1,9 @@
 # 更新日志 · Changelog
 
+## 1.2.2
+- 中文：修复三指下滑 / Win+D「显示桌面」后面板被收起的问题，小组件、监控条与面板现在都会保持显示。
+- English: fixed the panel being swept away by the "Show desktop" gesture (three-finger swipe down / Win+D); the widget, taskbar monitor and panel now stay visible.
+
 ## 1.2.1
 - 中文：重新打包发布；清理旧版本与本地备份；完善中英文 README 与仓库检索标签。
 - English: rebuilt and republished; old versions and local backups removed; refined bilingual README and repository topics.

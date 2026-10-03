@@ -40,6 +40,7 @@ public sealed class WidgetWindow : Window
         Content = _strip;
 
         SourceInitialized += OnSourceInitialized;
+        StateChanged += (_, _) => Revive();
         LocationChanged += OnLocationChanged;
         SizeChanged += OnSizeChanged;
         MouseLeftButtonDown += OnMouseDown;
@@ -56,6 +57,13 @@ public sealed class WidgetWindow : Window
         if (_suppressed == suppressed) return;
         _suppressed = suppressed;
         SyncVisibility();
+    }
+
+    public void Revive()
+    {
+        if (_hwnd == IntPtr.Zero || !IsVisible || !Native.IsIconic(_hwnd)) return;
+        Native.ShowWindow(_hwnd, Native.SW_SHOWNOACTIVATE);
+        ReassertTopmost();
     }
 
     public void ReassertTopmost()

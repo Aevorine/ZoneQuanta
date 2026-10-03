@@ -155,6 +155,10 @@ public sealed class AppController : IPanelHost, IDisposable
         _widget.SetSuppressed(fullscreen);
         _band.SetSuppressed(fullscreen);
 
+        _widget.Revive();
+        _band.Revive();
+        _panel?.Revive();
+
         Latest = _metrics.Sample();
         _totals.Add(Latest);
         _band.Update(Latest);

@@ -76,6 +76,7 @@ public sealed class BandWindow : Window
             Native.SetExStyle(_hwnd, Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE | Native.WS_EX_TRANSPARENT, true);
         };
         SizeChanged += (_, _) => Reposition();
+        StateChanged += (_, _) => Revive();
         _settings.PropertyChanged += OnSettingChanged;
         ApplyChipVisibility();
     }
@@ -170,6 +171,13 @@ public sealed class BandWindow : Window
         bool moved = r.Left != _lastTray.Left || r.Top != _lastTray.Top || r.Right != _lastTray.Right || r.Bottom != _lastTray.Bottom;
         _lastTray = r;
         return moved;
+    }
+
+    public void Revive()
+    {
+        if (_hwnd == IntPtr.Zero || !IsVisible || !Native.IsIconic(_hwnd)) return;
+        Native.ShowWindow(_hwnd, Native.SW_SHOWNOACTIVATE);
+        KeepOnTop();
     }
 
     private void KeepOnTop()
