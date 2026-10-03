@@ -26,7 +26,10 @@ Windows 桌面时钟组件（本地 + 洛杉矶），WPF / .NET 8 单文件 exe�
 关键决策：WPF + .NET 8；轻量版 / 独立版并行发布；更新清单用 ECDSA P-256 签名，私钥与密码在仓库外的 `ZONEQUANTA_SECRET_DIR`；`Core` 不依赖 `UI`。
 已知错误：无。
 <!-- wf:resume:start -->
-（机器快照，PreCompact 钩子写，勿手改）
+（机器快照，PreCompact 钩子写，勿手改；恢复时以真实 Git 与代码为准）
+- 快照时间：2026-10-03T04:07:55.191Z（PreCompact/auto，会话 0c5205e0）
+- Git：main → origin/main @ ba0a366（+0 -0）；未提交 0 个
+- 最近 3 小时改过的文件（项目根，前 15）：CHANGELOG.md，README.en.md，README.md，src\ZoneQuanta\UI\Controls\DayBar.cs，src\ZoneQuanta\UI\Controls\ZoneCard.xaml.cs，src\ZoneQuanta\obj\ZoneQuanta.csproj.nuget.dgspec.json，src\ZoneQuanta\obj\ZoneQuanta_5mrepy34_wpftmp.csproj.nuget.dgspec.json，src\ZoneQuanta\obj\project.nuget.cache，src\ZoneQuanta\obj\project.assets.json，src\ZoneQuanta\obj\ZoneQuanta.csproj.nuget.g.targets，src\ZoneQuanta\obj\ZoneQuanta_5mrepy34_wpftmp.csproj.nuget.g.targets，src\ZoneQuanta\obj\ZoneQuanta.csproj.nuget.g.props，src\ZoneQuanta\obj\ZoneQuanta_5mrepy34_wpftmp.csproj.nuget.g.props，src\ZoneQuanta\UI\Controls\ClockStrip.cs，src\ZoneQuanta\UI\Widget\WidgetWindow.cs
 <!-- wf:resume:end -->
 
 ## 明确不做
