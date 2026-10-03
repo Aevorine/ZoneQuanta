@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -33,10 +34,10 @@ public sealed class DayArc : FrameworkElement
     public double Reveal { get => (double)GetValue(RevealProperty); set => SetValue(RevealProperty, value); }
     public bool Animated { get => (bool)GetValue(AnimatedProperty); set => SetValue(AnimatedProperty, value); }
 
-    private const double Size0 = 40, C = 20, R = 15.5, Thick = 3.2;
+    private const double Box = 56, C = 28, R = 22, Thick = 3.4;
 
     private static readonly (double X, double Y, double Offset)[] Stars =
-        { (-4.5, -3.5, 0.0), (3.5, -5.0, 0.35), (5.5, 2.0, 0.7), (-2.5, 4.5, 0.15) };
+        { (-5.5, 3.5, 0.0), (4.5, 5.5, 0.35), (6.5, -1.5, 0.7), (-3.0, -5.5, 0.15) };
 
     public DayArc()
     {
@@ -44,7 +45,7 @@ public sealed class DayArc : FrameworkElement
         Loaded += (_, _) => SyncAnimation();
     }
 
-    protected override Size MeasureOverride(Size availableSize) => new(Size0, Size0);
+    protected override Size MeasureOverride(Size availableSize) => new(Box, Box);
 
     private void SyncAnimation()
     {
@@ -54,7 +55,7 @@ public sealed class DayArc : FrameworkElement
             Timeline.SetDesiredFrameRate(phase, 12);
             BeginAnimation(PhaseProperty, phase);
 
-            var reveal = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(800)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+            var reveal = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(900)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
             Timeline.SetDesiredFrameRate(reveal, 30);
             BeginAnimation(RevealProperty, reveal);
         }
@@ -68,7 +69,13 @@ public sealed class DayArc : FrameworkElement
 
     private static Point At(double hour, double radius)
     {
-        double phi = (hour - 12) / 24.0 * 2 * Math.PI;
+        double phi = hour / 24.0 * 2 * Math.PI;
+        return new Point(C + radius * Math.Sin(phi), C - radius * Math.Cos(phi));
+    }
+
+    private static Point AtTurn(double turn, double radius)
+    {
+        double phi = turn * 2 * Math.PI;
         return new Point(C + radius * Math.Sin(phi), C - radius * Math.Cos(phi));
     }
 
@@ -76,15 +83,17 @@ public sealed class DayArc : FrameworkElement
     {
         var line = (Brush)(TryFindResource("LineBrush") ?? Brushes.DimGray);
         var muted = (Brush)(TryFindResource("MutedBrush") ?? Brushes.Gray);
+        var text = (Brush)(TryFindResource("TextBrush") ?? Brushes.White);
         var sun = (SolidColorBrush)(TryFindResource("SunBrush") ?? Brushes.Gold);
         var moon = (SolidColorBrush)(TryFindResource("MoonBrush") ?? Brushes.LightSteelBlue);
         var card = (Brush)(TryFindResource("CardBrush") ?? Brushes.Black);
+        var second = (Brush)(TryFindResource("Accent2Brush") ?? Brushes.Orange);
 
         double reveal = Math.Clamp(Reveal, 0, 1);
         var center = new Point(C, C);
 
         var face = new RadialGradientBrush(IsDay ? sun.Color : moon.Color, Colors.Transparent) { Opacity = IsDay ? 0.16 : 0.12 };
-        dc.DrawEllipse(face, null, center, R + 3.5, R + 3.5);
+        dc.DrawEllipse(face, null, center, R + 4, R + 4);
 
         dc.DrawEllipse(null, new Pen(line, Thick), center, R, R);
 
@@ -101,24 +110,50 @@ public sealed class DayArc : FrameworkElement
             if (span > 0.05) dc.DrawGeometry(null, dayPen, Arc(Rise, Rise + span));
         }
 
-        var tick = new Pen(muted, 0.9) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
-        for (int i = 0; i < 8; i++)
+        var minor = new Pen(muted, 0.6) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+        var major = new Pen(muted, 1.1) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+        for (int h = 0; h < 24; h++)
         {
-            bool major = i % 2 == 0;
-            dc.DrawLine(tick, At(i * 3, R - 3.6), At(i * 3, R - (major ? 6.6 : 5.2)));
+            bool big = h % 6 == 0;
+            dc.DrawLine(big ? major : minor, At(h, R - 3.4), At(h, R - (big ? 6.4 : 5.0)));
         }
+
+        DrawNumerals(dc, muted);
 
         double wave = Math.Sin(Phase * 2 * Math.PI);
         if (!IsDay) DrawStars(dc, moon);
 
         double now = ((Now % 24) + 24) % 24;
-        var hand = new Pen(Accent, 1.5) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
-        dc.DrawLine(hand, center, At(now, R - 7.5));
-        dc.DrawEllipse(Accent, null, center, 1.7, 1.7);
+        double minutesTurn = (now * 60 % 60) / 60.0;
+        double secondsTurn = (now * 3600 % 60) / 60.0;
+
+        var hourHand = new Pen(Accent, 2.0) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+        dc.DrawLine(hourHand, center, At(now, R - 10.5));
+
+        var minuteHand = new Pen(text, 1.3) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+        dc.DrawLine(minuteHand, center, AtTurn(minutesTurn, R - 6.6));
+
+        var secondHand = new Pen(second, 0.7) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+        dc.DrawLine(secondHand, AtTurn(secondsTurn + 0.5, 3.0), AtTurn(secondsTurn, R - 5.6));
+        dc.DrawEllipse(Accent, null, center, 2.0, 2.0);
+        dc.DrawEllipse(card, null, center, 0.8, 0.8);
 
         var marker = At(now, R);
         if (IsDay) DrawSun(dc, marker, sun, wave, reveal);
         else DrawMoon(dc, marker, moon, card, reveal);
+    }
+
+    private void DrawNumerals(DrawingContext dc, Brush brush)
+    {
+        var font = TryFindResource("AppFont") as FontFamily ?? new FontFamily("Segoe UI");
+        var face = new Typeface(font, FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
+        double ppd = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        foreach (int h in new[] { 0, 6, 12, 18 })
+        {
+            var t = new FormattedText(h.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture, FlowDirection.LeftToRight, face, 7.2, brush, ppd);
+            var p = At(h, R - 11.6);
+            dc.DrawText(t, new Point(p.X - t.Width / 2, p.Y - t.Height / 2));
+        }
     }
 
     private void DrawStars(DrawingContext dc, Brush moon)
@@ -126,8 +161,8 @@ public sealed class DayArc : FrameworkElement
         foreach (var (x, y, off) in Stars)
         {
             double tw = 0.5 + 0.5 * Math.Sin((Phase + off) * 2 * Math.PI);
-            dc.PushOpacity(0.25 + 0.6 * tw);
-            dc.DrawEllipse(moon, null, new Point(C + x, C + y), 0.85, 0.85);
+            dc.PushOpacity(0.2 + 0.5 * tw);
+            dc.DrawEllipse(moon, null, new Point(C + x, C + y), 0.8, 0.8);
             dc.Pop();
         }
     }
@@ -135,26 +170,26 @@ public sealed class DayArc : FrameworkElement
     private void DrawSun(DrawingContext dc, Point c, Brush sun, double wave, double reveal)
     {
         var glow = new RadialGradientBrush(((SolidColorBrush)sun).Color, Colors.Transparent) { Opacity = 0.6 + 0.15 * wave };
-        dc.DrawEllipse(glow, null, c, 8 * reveal, 8 * reveal);
+        dc.DrawEllipse(glow, null, c, 8.5 * reveal, 8.5 * reveal);
 
         var ray = new Pen(sun, 1.0) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
         double spin = Phase * Math.PI / 4;
         for (int i = 0; i < 8; i++)
         {
             double a = spin + i * Math.PI / 4;
-            double from = 4.2 * reveal, to = (5.6 + 0.9 * wave) * reveal;
+            double from = 4.4 * reveal, to = (5.8 + 0.9 * wave) * reveal;
             dc.DrawLine(ray, new Point(c.X + from * Math.Cos(a), c.Y + from * Math.Sin(a)),
                              new Point(c.X + to * Math.Cos(a), c.Y + to * Math.Sin(a)));
         }
-        dc.DrawEllipse(sun, null, c, 3.2 * reveal, 3.2 * reveal);
+        dc.DrawEllipse(sun, null, c, 3.4 * reveal, 3.4 * reveal);
     }
 
     private static void DrawMoon(DrawingContext dc, Point c, Brush moon, Brush card, double reveal)
     {
         var glow = new RadialGradientBrush(((SolidColorBrush)moon).Color, Colors.Transparent) { Opacity = 0.4 };
-        dc.DrawEllipse(glow, null, c, 7.5 * reveal, 7.5 * reveal);
-        dc.DrawEllipse(moon, null, c, 3.8 * reveal, 3.8 * reveal);
-        dc.DrawEllipse(card, null, new Point(c.X + 1.8, c.Y - 1.2), 3.1 * reveal, 3.1 * reveal);
+        dc.DrawEllipse(glow, null, c, 8 * reveal, 8 * reveal);
+        dc.DrawEllipse(moon, null, c, 4.0 * reveal, 4.0 * reveal);
+        dc.DrawEllipse(card, null, new Point(c.X + 1.9, c.Y - 1.3), 3.3 * reveal, 3.3 * reveal);
     }
 
     private static Geometry Arc(double fromHour, double toHour)

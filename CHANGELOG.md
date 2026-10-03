@@ -1,5 +1,9 @@
 # 更新日志 · Changelog
 
+## 1.2.6
+- 中文：时间图改为标准 24 小时表盘（0 点在上、顺时针，标 0 / 6 / 12 / 18，每小时一格），时针、分针、秒针精确指示当前时间；日照段仍按真实日出日落着色，表盘放大便于读数。
+- English: the time graphic is now a standard 24-hour dial (0 at the top, clockwise, labelled 0 / 6 / 12 / 18, one tick per hour) with hour, minute and second hands for an exact reading; the daylight segment still follows real sunrise and sunset, and the dial is larger for readability.
+
 ## 1.2.5
 - 中文：全新应用图标——24 小时表盘（日照段 / 夜间段 / 太阳标记 / 指针）加三格信号条角标，对应世界时钟与系统监控；角标位可随后续功能扩展。
 - English: new app icon — a 24-hour dial (daylight / night segments, sun marker, hand) with a three-bar signal badge for the world clock and system monitor; the badge slot can grow with future features.
