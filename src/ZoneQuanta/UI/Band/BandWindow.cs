@@ -30,10 +30,11 @@ public sealed class BandWindow : Window
     private readonly StackPanel _row = new() { Orientation = Orientation.Horizontal };
     private IntPtr _hwnd;
     private Rect _start = Rect.Empty;
+    private long _startTriedAt = -60000;
     private int _ticks;
     private bool _suppressed;
     private Metrics _last;
-    private readonly DispatcherTimer _hover = new() { Interval = TimeSpan.FromMilliseconds(120) };
+    private readonly DispatcherTimer _hover = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private int _inside, _outside;
     private bool _hovering;
 
@@ -129,7 +130,7 @@ public sealed class BandWindow : Window
 
         if (TrayMoved()) Reposition(refreshStart: true);
         else if (++_ticks % 30 == 0) Reposition(refreshStart: true);
-        else if (_ticks % 2 == 0) KeepOnTop();
+        else if (_ticks % 6 == 0) KeepOnTop();
     }
 
     private void PollHover()
@@ -138,8 +139,8 @@ public sealed class BandWindow : Window
         if (_hwnd != IntPtr.Zero && IsVisible && Native.GetCursorPos(out var p) && Native.GetWindowRect(_hwnd, out var r))
             over = p.X >= r.Left && p.X < r.Right && p.Y >= r.Top && p.Y < r.Bottom;
 
-        if (over) { _outside = 0; if (++_inside >= 2) SetHovering(true); }
-        else { _inside = 0; if (++_outside >= 3) SetHovering(false); }
+        if (over) { _outside = 0; if (++_inside >= 1) SetHovering(true); }
+        else { _inside = 0; if (++_outside >= 2) SetHovering(false); }
     }
 
     private void SetHovering(bool on)
@@ -245,7 +246,11 @@ public sealed class BandWindow : Window
         if (trayH > trayW) trayH = Math.Min(trayH, 48 * sy);
 
         ApplyFonts(trayH / sy);
-        if (refreshStart || _start.IsEmpty) _start = FindStartButton(tray);
+        if (_settings.BandPosition == "Start" && (refreshStart || (_start.IsEmpty && Environment.TickCount64 - _startTriedAt > 30000)))
+        {
+            _start = FindStartButton(tray);
+            _startTriedAt = Environment.TickCount64;
+        }
 
         double widthPx = ActualWidth * sx;
         double gap = 6 * sx;

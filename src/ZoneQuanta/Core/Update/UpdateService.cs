@@ -36,7 +36,7 @@ public sealed class UpdateService
         {
             MaxConnectionsPerServer = 16,
             PooledConnectionLifetime = TimeSpan.FromMinutes(2),
-            ConnectTimeout = TimeSpan.FromSeconds(8),
+            ConnectTimeout = TimeSpan.FromSeconds(15),
             AllowAutoRedirect = true,
         };
         _http = new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(10) };
@@ -71,15 +71,68 @@ public sealed class UpdateService
         string exe = Environment.ProcessPath ?? throw new InvalidOperationException();
         string target = exe + ".new";
 
-        await _downloader.DownloadAsync(Candidates(origin, useMirrors).ToList(), info.Size, target, progress, ct);
+        var urls = Candidates(origin, useMirrors).ToList();
 
-        string actual = await ComputeSha256Async(target, ct);
-        if (!string.Equals(actual, info.Sha256, StringComparison.OrdinalIgnoreCase))
+        if (await IsValidAsync(target, info, ct))
         {
-            File.Delete(target);
-            throw new CryptographicException("文件校验失败");
+            progress.Report(1);
+            return target;
         }
-        return target;
+
+        Exception? last = null;
+        for (int round = 0; round < 3; round++)
+        {
+            try
+            {
+                try { await _downloader.DownloadAsync(urls, info.Size, target, progress, ct); }
+                catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+                {
+                    Log.Error("download", ex);
+                    await _downloader.DownloadSingleAsync(urls, info.Size, target, progress, ct);
+                }
+
+                if (await IsValidAsync(target, info, ct)) return target;
+                last = new CryptographicException("文件校验失败");
+                TryDelete(target);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                last = ex;
+                Log.Error("download-retry", ex);
+                await Task.Delay(1500 * (round + 1), ct);
+            }
+        }
+        throw last ?? new HttpRequestException("下载失败");
+    }
+
+    private static async Task<bool> IsValidAsync(string path, UpdateInfo info, CancellationToken ct)
+    {
+        try
+        {
+            if (!File.Exists(path) || new FileInfo(path).Length != info.Size) return false;
+            return string.Equals(await ComputeSha256Async(path, ct), info.Sha256, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try { File.Delete(path); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
+
+    private static void Retry(Action action)
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            try { action(); return; }
+            catch (Exception ex) when (attempt < 5 && ex is IOException or UnauthorizedAccessException)
+            {
+                Thread.Sleep(400);
+            }
+        }
     }
 
     public static void ApplyAndRestart(string newFile)
@@ -89,9 +142,9 @@ public sealed class UpdateService
         string old = exe + ".old";
         try { if (File.Exists(old)) File.Delete(old); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { old = $"{exe}.old{DateTime.Now:HHmmssfff}"; }
-        File.Move(exe, old);
-        try { File.Move(newFile, exe); }
-        catch { File.Move(old, exe); throw; }
+        Retry(() => File.Move(exe, old));
+        try { Retry(() => File.Move(newFile, exe)); }
+        catch { Retry(() => File.Move(old, exe)); throw; }
         Process.Start(new ProcessStartInfo(exe, "--updated") { UseShellExecute = true });
     }
 

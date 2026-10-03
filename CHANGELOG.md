@@ -1,5 +1,9 @@
 # 更新日志 · Changelog
 
+## 1.2.9
+- 中文：彻底修复「更新失败，请稍后重试」——替换成功后无论发生什么旧进程都会退出（不再残留占用单实例锁与旧文件导致连环失败）；下载增加整段重试、单线路兜底与已下载包复用；文件被杀毒软件短暂占用时自动重试；各阶段失败给出明确原因。降低常驻开销：任务栏位置查找限流、悬停详情去掉阴影特效、置顶重申降频、空闲时自动回收内存；关闭动画循环，改为随秒针节拍驱动。
+- English: fixed "update failed, please retry" for good — after the executable is replaced the old process always exits (no more leftover process holding the single-instance lock and old file); downloads gain whole-run retries, a single-stream fallback and reuse of an already downloaded package; transient file locks (e.g. antivirus) are retried; every stage reports a clear reason. Lower resident cost: throttled taskbar position lookup, no shadow effect on the hover details, less frequent z-order refresh, idle memory trimming, and no free-running animation loop (driven by the second tick instead).
+
 ## 1.2.8
 - 中文：修复在线更新后程序没有自动重新启动的问题——新版本启动时旧版本仍占用单实例锁，导致新进程立即退出；现在新进程会等待旧进程退出后接管，更新完成即自动运行。
 - English: fixed the app not restarting after an online update — the new process started while the old one still held the single-instance lock and exited immediately; it now waits for the old process to exit and takes over, so the app is running as soon as the update finishes.

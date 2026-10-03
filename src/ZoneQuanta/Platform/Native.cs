@@ -92,6 +92,9 @@ internal static class Native
         public uint HandleCount, ProcessCount, ThreadCount;
     }
 
+    [DllImport("kernel32.dll")]
+    public static extern bool SetProcessWorkingSetSize(IntPtr process, nint min, nint max);
+
     [DllImport("user32.dll")]
     public static extern bool GetCursorPos(out POINT p);
 

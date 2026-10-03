@@ -19,7 +19,10 @@
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <Flavor Condition="'$(Flavor)' == ''">full</Flavor>
-    <TieredPGO>true</TieredPGO>
+    <TieredPGO>false</TieredPGO>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <EventSourceSupport>false</EventSourceSupport>
+    <AutoreleasePoolSupport>false</AutoreleasePoolSupport>
     <UseSystemResourceKeys>true</UseSystemResourceKeys>
     <DebugType>none</DebugType>
     <PublishSingleFile>true</PublishSingleFile>

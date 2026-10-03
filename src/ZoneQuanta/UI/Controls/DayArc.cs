@@ -19,7 +19,6 @@ public sealed class DayArc : FrameworkElement
     public static readonly DependencyProperty PolarNightProperty = Reg("PolarNight", false);
     public static readonly DependencyProperty IsDayProperty = Reg("IsDay", true);
     public static readonly DependencyProperty AccentProperty = Reg<Brush>("Accent", Brushes.Gray);
-    public static readonly DependencyProperty PhaseProperty = Reg("Phase", 0.0);
     public static readonly DependencyProperty RevealProperty = Reg("Reveal", 1.0);
     public static readonly DependencyProperty AnimatedProperty = Reg("Animated", false, false, (d, _) => ((DayArc)d).SyncAnimation());
 
@@ -30,7 +29,7 @@ public sealed class DayArc : FrameworkElement
     public bool PolarNight { get => (bool)GetValue(PolarNightProperty); set => SetValue(PolarNightProperty, value); }
     public bool IsDay { get => (bool)GetValue(IsDayProperty); set => SetValue(IsDayProperty, value); }
     public Brush Accent { get => (Brush)GetValue(AccentProperty); set => SetValue(AccentProperty, value); }
-    public double Phase { get => (double)GetValue(PhaseProperty); set => SetValue(PhaseProperty, value); }
+    private double Phase => Now * 3600 % 6 / 6.0;
     public double Reveal { get => (double)GetValue(RevealProperty); set => SetValue(RevealProperty, value); }
     public bool Animated { get => (bool)GetValue(AnimatedProperty); set => SetValue(AnimatedProperty, value); }
 
@@ -51,17 +50,12 @@ public sealed class DayArc : FrameworkElement
     {
         if (Animated && IsVisible && IsLoaded)
         {
-            var phase = new DoubleAnimation(0, 1, TimeSpan.FromSeconds(6)) { RepeatBehavior = RepeatBehavior.Forever };
-            Timeline.SetDesiredFrameRate(phase, 12);
-            BeginAnimation(PhaseProperty, phase);
-
             var reveal = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(900)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
             Timeline.SetDesiredFrameRate(reveal, 30);
             BeginAnimation(RevealProperty, reveal);
         }
         else
         {
-            BeginAnimation(PhaseProperty, null);
             BeginAnimation(RevealProperty, null);
             SetCurrentValue(RevealProperty, 1.0);
         }
@@ -143,15 +137,28 @@ public sealed class DayArc : FrameworkElement
         else DrawMoon(dc, marker, moon, card, reveal);
     }
 
+    private FormattedText[]? _numerals;
+    private Brush? _numeralBrush;
+    private double _numeralDpi;
+
     private void DrawNumerals(DrawingContext dc, Brush brush)
     {
-        var font = TryFindResource("AppFont") as FontFamily ?? new FontFamily("Segoe UI");
-        var face = new Typeface(font, FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
         double ppd = VisualTreeHelper.GetDpi(this).PixelsPerDip;
-        foreach (int h in new[] { 0, 6, 12, 18 })
+        if (_numerals is null || !ReferenceEquals(_numeralBrush, brush) || _numeralDpi != ppd)
         {
-            var t = new FormattedText(h.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture, FlowDirection.LeftToRight, face, 7.2, brush, ppd);
-            var p = At(h, R - 11.6);
+            var font = TryFindResource("AppFont") as FontFamily ?? new FontFamily("Segoe UI");
+            var face = new Typeface(font, FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
+            _numerals = new FormattedText[4];
+            for (int i = 0; i < 4; i++)
+                _numerals[i] = new FormattedText((i * 6).ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture, FlowDirection.LeftToRight, face, 7.2, brush, ppd);
+            _numeralBrush = brush;
+            _numeralDpi = ppd;
+        }
+
+        for (int i = 0; i < 4; i++)
+        {
+            var t = _numerals[i];
+            var p = At(i * 6, R - 11.6);
             dc.DrawText(t, new Point(p.X - t.Width / 2, p.Y - t.Height / 2));
         }
     }

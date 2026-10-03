@@ -66,6 +66,8 @@ public sealed class UpdateCoordinator : Observable
         Busy = true;
         Progress = 0;
         Status = "正在下载…";
+
+        string file;
         try
         {
             var progress = new Progress<double>(p =>
@@ -73,21 +75,41 @@ public sealed class UpdateCoordinator : Observable
                 Progress = p;
                 Status = $"正在下载 {p:P0}";
             });
-            string file = await _service.DownloadAsync(Available, _settings.UseMirrors, progress, CancellationToken.None);
-            Status = "正在安装…";
-            Traffic.HelperLauncher.RequestStop();
-            UpdateService.ApplyAndRestart(file);
-            Status = "更新完成，正在重启";
-            ReadyToExit?.Invoke();
+            file = await _service.DownloadAsync(Available, _settings.UseMirrors, progress, CancellationToken.None);
         }
         catch (Exception ex)
         {
-            Log.Error("install", ex);
-            Status = ex is CryptographicException ? "文件校验失败，已取消" : "更新失败，请稍后重试";
-        }
-        finally
-        {
+            Log.Error("install-download", ex);
+            Status = ex is CryptographicException ? "文件校验失败，已取消" : $"下载失败：{Brief(ex)}，请稍后重试";
             Busy = false;
+            return;
         }
+
+        Status = "正在安装…";
+        try
+        {
+            Traffic.HelperLauncher.RequestStop();
+            UpdateService.ApplyAndRestart(file);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("install-apply", ex);
+            Status = $"安装失败：{Brief(ex)}，请稍后重试";
+            Busy = false;
+            return;
+        }
+
+        Status = "更新完成，正在重启";
+        try { ReadyToExit?.Invoke(); }
+        catch (Exception ex) { Log.Error("install-exit", ex); }
+        Busy = false;
+    }
+
+    private static string Brief(Exception ex)
+    {
+        Exception e = ex;
+        while (e.InnerException is not null) e = e.InnerException;
+        string text = e.Message.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        return text.Length > 48 ? text[..48] + "…" : text;
     }
 }

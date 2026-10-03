@@ -45,6 +45,37 @@ internal sealed class ParallelDownloader
         await Task.WhenAll(tasks);
     }
 
+    public async Task DownloadSingleAsync(IReadOnlyList<string> urls, long size, string dest, IProgress<double> progress, CancellationToken ct)
+    {
+        Exception? last = null;
+        foreach (string url in urls)
+        {
+            try
+            {
+                using var res = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+                res.EnsureSuccessStatusCode();
+                await using var src = await res.Content.ReadAsStreamAsync(ct);
+                await using var dst = new FileStream(dest, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16, true);
+                byte[] buffer = new byte[1 << 16];
+                long total = 0;
+                int read;
+                while ((read = await src.ReadAsync(buffer, ct)) > 0)
+                {
+                    await dst.WriteAsync(buffer.AsMemory(0, read), ct);
+                    total += read;
+                    progress.Report(Math.Min(1.0, (double)total / size));
+                }
+                if (total == size) return;
+                last = new IOException($"下载不完整 {total}/{size}");
+            }
+            catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException && !ct.IsCancellationRequested)
+            {
+                last = ex;
+            }
+        }
+        throw new HttpRequestException("所有线路均下载失败", last);
+    }
+
     private async Task<string> PickFastestAsync(IReadOnlyList<string> urls, CancellationToken ct)
     {
         if (urls.Count == 1) return urls[0];

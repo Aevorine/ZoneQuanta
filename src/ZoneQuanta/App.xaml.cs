@@ -77,8 +77,15 @@ public partial class App : Application
     public void ExitApp()
     {
         Exiting = true;
-        _wait?.Unregister(null);
-        _controller?.Dispose();
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(2500);
+            Environment.Exit(0);
+        });
+        try { _wait?.Unregister(null); }
+        catch (Exception ex) { Log.Error("exit-wait", ex); }
+        try { _controller?.Dispose(); }
+        catch (Exception ex) { Log.Error("exit-dispose", ex); }
         Shutdown();
     }
 

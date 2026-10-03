@@ -69,7 +69,6 @@ public sealed class BandDetailWindow : Window
             Padding = new Thickness(16, 14, 16, 14),
             CornerRadius = new CornerRadius(14),
             BorderThickness = new Thickness(1),
-            Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 18, ShadowDepth = 3, Opacity = 0.35, Color = Colors.Black },
             RenderTransform = _slide,
             Child = Build(),
         };

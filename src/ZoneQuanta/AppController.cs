@@ -35,6 +35,9 @@ public sealed class AppController : IPanelHost, IDisposable
     private TrayService _tray = null!;
     private int _lastMinute = -1;
     private int _topmostTicks;
+    private int _trimIn = 20;
+    private int _trimTicks;
+    private bool _panelWasVisible;
 
     public AppController()
     {
@@ -179,6 +182,12 @@ public sealed class AppController : IPanelHost, IDisposable
             }
         }
         Tick?.Invoke(now);
+
+        bool panelVisible = _panel?.IsVisible == true;
+        if (_panelWasVisible && !panelVisible) _trimIn = 4;
+        _panelWasVisible = panelVisible;
+        if (++_trimTicks % 600 == 0 && _trimIn == 0) _trimIn = 1;
+        if (_trimIn > 0 && --_trimIn == 0 && !panelVisible) MemoryTrim.Run();
 
         int minute = now.Minute;
         if (minute != _lastMinute)
