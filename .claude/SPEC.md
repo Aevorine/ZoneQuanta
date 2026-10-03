@@ -32,3 +32,8 @@ Windows 桌面时钟组件（本地 + 洛杉矶），WPF / .NET 8 单文件 exe�
 ## 明确不做
 - [2026-10-02] 代码签名证书（Authenticode）｜代码签名、SmartScreen、证书 — 需付费证书，用户未选择
 - [2026-10-02] 托盘右键菜单截图复核｜托盘菜单、截图复核、右键菜单外观 — 用户未选择
+
+## 学习候选
+- [2026-10-03] 复现系统行为类 bug（如三指下滑=Win+D）先用真实按键端到端复现并确认到底哪个窗口消失，再改；本例小组件本无问题，消失的是主面板｜复现 1 次｜依据：keybd_event 发 Win+D 后逐窗口读 IsIconic/IsWindowVisible｜范围：项目
+- [2026-10-03] WPF 没有 PlaneProjection，3D 质感用 SkewTransform 倾斜 + 跟随鼠标的高光近似，别再试 Projection｜复现 1 次｜依据：编译前已识别，改用 Skew 后构建通过｜范围：项目
+- [2026-10-03] PowerShell 工具每次调用不保留 Add-Type 类型，类型定义与调用要放进同一个脚本文件再用 pwsh -File 执行；含三引号的 python 补丁别塞进 bash heredoc，用 Write 工具落盘｜复现 1 次｜依据：两次因此整段命令未执行｜范围：全局
