@@ -1,5 +1,9 @@
 # 更新日志 · Changelog
 
+## 1.2.5
+- 中文：全新应用图标——24 小时表盘（日照段 / 夜间段 / 太阳标记 / 指针）加三格信号条角标，对应世界时钟与系统监控；角标位可随后续功能扩展。
+- English: new app icon — a 24-hour dial (daylight / night segments, sun marker, hand) with a three-bar signal badge for the world clock and system monitor; the badge slot can grow with future features.
+
 ## 1.2.4
 - 中文：时间图改为 24 小时表盘（正午在上、午夜在下），日照段按真实日出日落着色，指针指向当前时刻；卡片悬停有 3D 倾斜与高光；鼠标停在任务栏监控条上弹出详细信息（网络、今日流量、CPU、内存、开机时长、流量排行）。
 - English: the time graphic is now a 24-hour dial (noon at the top, midnight at the bottom) with the daylight segment from real sunrise and sunset and a hand at the current time; cards tilt in 3D with a highlight on hover; resting the mouse on the taskbar monitor shows detailed information (network, today's traffic, CPU, memory, uptime, top apps).

@@ -1,5 +1,7 @@
 # ZoneQuanta
 
+<img src="docs/icon.png" alt="ZoneQuanta icon" width="96" align="right">
+
 **中文** · [English](README.en.md)
 
 **Windows 桌面世界时钟 + 任务栏网速 / CPU / 内存监控 + 应用流量统计** · Windows desktop world clock (Los Angeles / local / any city, automatic DST), taskbar network-speed, CPU and RAM monitor, and per-app traffic statistics. Lightweight WPF / .NET 8, single-file exe, signed auto-update.
