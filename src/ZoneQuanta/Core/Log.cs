@@ -26,5 +26,10 @@ public static class Log
         catch (UnauthorizedAccessException) { }
     }
 
-    public static void Error(string context, Exception ex) => Write($"{context}: {ex.GetType().Name}: {ex.Message}");
+    public static void Error(string context, Exception ex)
+    {
+        string frame = ex.StackTrace?.Split(Environment.NewLine, 2)[0].Trim() ?? string.Empty;
+        string file = ex is FileNotFoundException f && f.FileName is { Length: > 0 } n ? $" [{n}]" : string.Empty;
+        Write($"{context}: {ex.GetType().Name}: {ex.Message}{file} {frame}".TrimEnd());
+    }
 }

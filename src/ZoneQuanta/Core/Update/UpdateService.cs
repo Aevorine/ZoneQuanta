@@ -85,8 +85,10 @@ public sealed class UpdateService
     public static void ApplyAndRestart(string newFile)
     {
         string exe = Environment.ProcessPath ?? throw new InvalidOperationException();
+        if (!File.Exists(newFile)) throw new FileNotFoundException("更新文件不存在", newFile);
         string old = exe + ".old";
-        if (File.Exists(old)) File.Delete(old);
+        try { if (File.Exists(old)) File.Delete(old); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { old = $"{exe}.old{DateTime.Now:HHmmssfff}"; }
         File.Move(exe, old);
         try { File.Move(newFile, exe); }
         catch { File.Move(old, exe); throw; }
@@ -97,7 +99,12 @@ public sealed class UpdateService
     {
         string? exe = Environment.ProcessPath;
         if (exe is null) return;
-        foreach (string f in new[] { exe + ".old", exe + ".new" })
+        string dir = Path.GetDirectoryName(exe) ?? ".";
+        string name = Path.GetFileName(exe);
+        var leftovers = new List<string> { exe + ".new" };
+        try { leftovers.AddRange(Directory.GetFiles(dir, name + ".old*")); }
+        catch (IOException) { }
+        foreach (string f in leftovers)
         {
             try { if (File.Exists(f)) File.Delete(f); }
             catch (IOException) { }

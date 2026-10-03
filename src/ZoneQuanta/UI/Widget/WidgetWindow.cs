@@ -20,6 +20,7 @@ public sealed class WidgetWindow : Window
     private IntPtr _hwnd;
     private bool _suppressed;
     private bool _applyingPosition;
+    private bool _lift;
 
     public WidgetWindow(AppSettings settings, TimeEngine engine)
     {
@@ -45,6 +46,36 @@ public sealed class WidgetWindow : Window
         SizeChanged += OnSizeChanged;
         MouseLeftButtonDown += OnMouseDown;
         _settings.PropertyChanged += OnSettingChanged;
+
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplayChanged;
+        Microsoft.Win32.SystemEvents.SessionSwitch += OnSessionSwitch;
+        Closed += (_, _) =>
+        {
+            Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplayChanged;
+            Microsoft.Win32.SystemEvents.SessionSwitch -= OnSessionSwitch;
+        };
+    }
+
+    public void SetDesktopLift(bool lift)
+    {
+        if (_lift == lift) return;
+        _lift = lift;
+        ApplyTopmost();
+    }
+
+    private void ApplyTopmost() => Topmost = _settings.Topmost || _lift;
+
+    private void OnDisplayChanged(object? sender, EventArgs e) => Dispatcher.BeginInvoke(() =>
+    {
+        if (!IsVisible) return;
+        if (!_settings.AllowOffScreen) MoveTo(Left, Top);
+        ReassertTopmost();
+    });
+
+    private void OnSessionSwitch(object sender, Microsoft.Win32.SessionSwitchEventArgs e)
+    {
+        if (e.Reason is Microsoft.Win32.SessionSwitchReason.SessionUnlock or Microsoft.Win32.SessionSwitchReason.ConsoleConnect or Microsoft.Win32.SessionSwitchReason.RemoteConnect)
+            Dispatcher.BeginInvoke(() => { Revive(); ReassertTopmost(); });
     }
 
     public void Tick(DateTimeOffset now)
@@ -68,7 +99,7 @@ public sealed class WidgetWindow : Window
 
     public void ReassertTopmost()
     {
-        if (_hwnd != IntPtr.Zero && _settings.Topmost && IsVisible)
+        if (_hwnd != IntPtr.Zero && Topmost && IsVisible)
             Native.SetWindowPos(_hwnd, Native.HWND_TOPMOST, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
     }
 
@@ -96,7 +127,7 @@ public sealed class WidgetWindow : Window
     public void ApplyInitial(DateTimeOffset now)
     {
         ApplyScaleAndOpacity();
-        Topmost = _settings.Topmost;
+        ApplyTopmost();
         _strip.Update(now);
         Show();
         SyncVisibility();
@@ -135,7 +166,7 @@ public sealed class WidgetWindow : Window
                 if (_hwnd != IntPtr.Zero) Native.SetExStyle(_hwnd, Native.WS_EX_TRANSPARENT, _settings.ClickThrough);
                 break;
             case nameof(AppSettings.Topmost):
-                Topmost = _settings.Topmost;
+                ApplyTopmost();
                 break;
             case nameof(AppSettings.Scale):
             case nameof(AppSettings.Opacity):

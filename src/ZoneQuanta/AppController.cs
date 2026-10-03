@@ -160,6 +160,7 @@ public sealed class AppController : IPanelHost, IDisposable
         _band.SetSuppressed(fullscreen);
 
         _widget.Revive();
+        _widget.SetDesktopLift(FullscreenWatcher.IsDesktopForeground());
         _band.Revive();
         _panel?.Revive();
 
@@ -171,7 +172,7 @@ public sealed class AppController : IPanelHost, IDisposable
         if (!fullscreen)
         {
             _widget.Tick(now);
-            if (s.Topmost && ++_topmostTicks >= 3)
+            if (++_topmostTicks >= 3)
             {
                 _topmostTicks = 0;
                 _widget.ReassertTopmost();

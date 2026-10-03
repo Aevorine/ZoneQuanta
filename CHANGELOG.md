@@ -1,5 +1,9 @@
 # 更新日志 · Changelog
 
+## 1.2.7
+- 中文：修复回到桌面（Win+D、三指下滑、点击桌面）后时钟组件被桌面层盖住而不显示的问题——桌面在前台时组件自动浮到桌面之上，离开桌面后恢复原有层级；显示器 / 分辨率变化、解锁、远程重连后自动校正位置与层级；自更新在旧文件被占用时不再中断，日志记录更详细。
+- English: fixed the clock widget being hidden behind the desktop layer after returning to the desktop (Win+D, three-finger swipe, clicking the desktop) — it now rises above the desktop while the desktop is in front and returns to its configured layer afterwards; position and layer are re-corrected after display / resolution changes, unlock and remote reconnect; self-update no longer aborts when an old file is locked, and logs are more detailed.
+
 ## 1.2.6
 - 中文：时间图改为标准 24 小时表盘（0 点在上、顺时针，标 0 / 6 / 12 / 18，每小时一格），时针、分针、秒针精确指示当前时间；日照段仍按真实日出日落着色，表盘放大便于读数。
 - English: the time graphic is now a standard 24-hour dial (0 at the top, clockwise, labelled 0 / 6 / 12 / 18, one tick per hour) with hour, minute and second hands for an exact reading; the daylight segment still follows real sunrise and sunset, and the dial is larger for readability.
