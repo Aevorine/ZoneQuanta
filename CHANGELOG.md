@@ -1,5 +1,9 @@
 # 更新日志 · Changelog
 
+## 1.2.8
+- 中文：修复在线更新后程序没有自动重新启动的问题——新版本启动时旧版本仍占用单实例锁，导致新进程立即退出；现在新进程会等待旧进程退出后接管，更新完成即自动运行。
+- English: fixed the app not restarting after an online update — the new process started while the old one still held the single-instance lock and exited immediately; it now waits for the old process to exit and takes over, so the app is running as soon as the update finishes.
+
 ## 1.2.7
 - 中文：修复回到桌面（Win+D、三指下滑、点击桌面）后时钟组件被桌面层盖住而不显示的问题——桌面在前台时组件自动浮到桌面之上，离开桌面后恢复原有层级；显示器 / 分辨率变化、解锁、远程重连后自动校正位置与层级；自更新在旧文件被占用时不再中断，日志记录更详细。
 - English: fixed the clock widget being hidden behind the desktop layer after returning to the desktop (Win+D, three-finger swipe, clicking the desktop) — it now rises above the desktop while the desktop is in front and returns to its configured layer afterwards; position and layer are re-corrected after display / resolution changes, unlock and remote reconnect; self-update no longer aborts when an old file is locked, and logs are more detailed.

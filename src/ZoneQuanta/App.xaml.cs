@@ -48,7 +48,9 @@ public partial class App : Application
             return;
         }
 
+        bool updated = Array.IndexOf(e.Args, "--updated") >= 0;
         _mutex = new Mutex(true, MutexName, out bool first);
+        if (!first && updated) first = WaitForPreviousInstance(_mutex);
         _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
         if (!first)
         {
@@ -64,6 +66,12 @@ public partial class App : Application
 
         _wait = ThreadPool.RegisterWaitForSingleObject(_showEvent,
             (_, _) => Dispatcher.BeginInvoke(() => _controller?.ShowPanel()), null, Timeout.Infinite, false);
+    }
+
+    private static bool WaitForPreviousInstance(Mutex mutex)
+    {
+        try { return mutex.WaitOne(TimeSpan.FromSeconds(20)); }
+        catch (AbandonedMutexException) { return true; }
     }
 
     public void ExitApp()
