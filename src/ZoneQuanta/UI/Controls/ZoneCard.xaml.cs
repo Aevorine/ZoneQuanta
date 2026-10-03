@@ -32,9 +32,36 @@ public partial class ZoneCard : UserControl
 
     private void WireInteraction()
     {
-        Root.MouseEnter += (_, _) => AnimateHover(1.035);
-        Root.MouseLeave += (_, _) => AnimateHover(1.0);
+        Root.MouseEnter += (_, _) => { AnimateHover(1.035); FadeGlow(0.22); };
+        Root.MouseLeave += (_, _) => { AnimateHover(1.0); Untilt(); FadeGlow(0); };
+        Root.MouseMove += (_, e) => Tilt(e.GetPosition(Root));
         Root.MouseLeftButtonUp += (_, _) => Flip();
+    }
+
+    private readonly RadialGradientBrush _glowBrush = new(Color.FromArgb(255, 255, 255, 255), Colors.Transparent) { RadiusX = 0.7, RadiusY = 0.9 };
+
+    private void FadeGlow(double to)
+    {
+        if (!_allowAnimation) return;
+        if (Glow.Background is null) Glow.Background = _glowBrush;
+        Glow.BeginAnimation(OpacityProperty, new DoubleAnimation(to, TimeSpan.FromMilliseconds(160)));
+    }
+
+    private void Tilt(Point p)
+    {
+        if (!_allowAnimation || Root.ActualWidth < 1 || Root.ActualHeight < 1) return;
+        double nx = p.X / Root.ActualWidth, ny = p.Y / Root.ActualHeight;
+        var span = TimeSpan.FromMilliseconds(80);
+        TiltSkew.BeginAnimation(SkewTransform.AngleXProperty, new DoubleAnimation((ny - 0.5) * 5, span));
+        TiltSkew.BeginAnimation(SkewTransform.AngleYProperty, new DoubleAnimation((nx - 0.5) * -4, span));
+        _glowBrush.GradientOrigin = _glowBrush.Center = new Point(nx, ny);
+    }
+
+    private void Untilt()
+    {
+        var span = TimeSpan.FromMilliseconds(220);
+        TiltSkew.BeginAnimation(SkewTransform.AngleXProperty, new DoubleAnimation(0, span) { EasingFunction = new QuadraticEase() });
+        TiltSkew.BeginAnimation(SkewTransform.AngleYProperty, new DoubleAnimation(0, span) { EasingFunction = new QuadraticEase() });
     }
 
     private void AnimateHover(double to)
@@ -136,7 +163,11 @@ public partial class ZoneCard : UserControl
         {
             Arc.Animated = animate;
             Arc.IsDay = s.IsDay;
-            Arc.Progress = Math.Round(s.DayProgress, 3);
+            Arc.Now = t.Hour + t.Minute / 60.0 + t.Second / 3600.0;
+            Arc.Rise = s.Sun.RiseMinutes / 60.0;
+            Arc.Set = s.Sun.SetMinutes / 60.0;
+            Arc.PolarDay = s.Sun.PolarDay;
+            Arc.PolarNight = s.Sun.PolarNight;
         }
 
         DateText.Visibility = o.ShowDate ? Visibility.Visible : Visibility.Collapsed;

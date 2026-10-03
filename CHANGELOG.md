@@ -1,5 +1,9 @@
 # 更新日志 · Changelog
 
+## 1.2.4
+- 中文：时间图改为 24 小时表盘（正午在上、午夜在下），日照段按真实日出日落着色，指针指向当前时刻；卡片悬停有 3D 倾斜与高光；鼠标停在任务栏监控条上弹出详细信息（网络、今日流量、CPU、内存、开机时长、流量排行）。
+- English: the time graphic is now a 24-hour dial (noon at the top, midnight at the bottom) with the daylight segment from real sunrise and sunset and a hand at the current time; cards tilt in 3D with a highlight on hover; resting the mouse on the taskbar monitor shows detailed information (network, today's traffic, CPU, memory, uptime, top apps).
+
 ## 1.2.3
 - 中文：昼夜弧线改为按城市经纬度与日期计算真实日出日落（含极昼极夜），不再固定 6:00–18:00；卡片背面显示日出、日落、昼长；弧线新增光晕、光线、星光等 2D 动画（仅在可见时低帧率运行）。
 - English: the day-night arc now uses real sunrise and sunset computed from each city's latitude and date (polar day / night included) instead of a fixed 06:00–18:00; card back shows sunrise, sunset and day length; the arc gains glow, rays and twinkling-star 2D animation (low frame rate, only while visible).

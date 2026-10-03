@@ -8,9 +8,11 @@
             <TransformGroup>
                 <ScaleTransform x:Name="FlipScale" ScaleX="1"/>
                 <ScaleTransform x:Name="HoverScale" ScaleX="1" ScaleY="1"/>
+                <SkewTransform x:Name="TiltSkew"/>
             </TransformGroup>
         </Border.RenderTransform>
         <Grid>
+            <Border x:Name="Glow" IsHitTestVisible="False" CornerRadius="10" Opacity="0" Margin="-14,-10"/>
             <Grid x:Name="Front">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>

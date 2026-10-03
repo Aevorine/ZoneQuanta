@@ -29,6 +29,7 @@ public sealed class AppController : IPanelHost, IDisposable
     private readonly SystemMetrics _metrics = new();
     private readonly TotalsRecorder _totals = new();
     private BandWindow _band = null!;
+    private BandDetailWindow _detail = null!;
     private WidgetWindow _widget = null!;
     private PanelWindow? _panel;
     private TrayService _tray = null!;
@@ -61,6 +62,8 @@ public sealed class AppController : IPanelHost, IDisposable
 
         _widget = new WidgetWindow(s, _engine);
         _band = new BandWindow(s);
+        _detail = new BandDetailWindow(s, _totals.File, _metrics, () => _band.BoundsPx);
+        _band.HoverChanged += _detail.SetHover;
         _tray = new TrayService(s, TogglePanel, ResetWidget, () => _ = _updates.CheckAsync(), ExitApp);
 
         _widget.ApplyInitial(DateTimeOffset.UtcNow);
@@ -142,6 +145,7 @@ public sealed class AppController : IPanelHost, IDisposable
         _totals.Flush();
         _hotkey.Dispose();
         _tray.Dispose();
+        _detail.Close();
         _band.Close();
         _widget.Close();
         _panel?.Close();
@@ -162,6 +166,7 @@ public sealed class AppController : IPanelHost, IDisposable
         Latest = _metrics.Sample();
         _totals.Add(Latest);
         _band.Update(Latest);
+        _detail.Update(Latest);
 
         if (!fullscreen)
         {

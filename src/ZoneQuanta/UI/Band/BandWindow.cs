@@ -6,6 +6,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using ZoneQuanta.Core.Monitor;
 using ZoneQuanta.Core.Settings;
 using ZoneQuanta.Platform;
@@ -32,6 +33,15 @@ public sealed class BandWindow : Window
     private int _ticks;
     private bool _suppressed;
     private Metrics _last;
+    private readonly DispatcherTimer _hover = new() { Interval = TimeSpan.FromMilliseconds(120) };
+    private int _inside, _outside;
+    private bool _hovering;
+
+    public event Action<bool>? HoverChanged;
+
+    public Rect BoundsPx => _hwnd != IntPtr.Zero && Native.GetWindowRect(_hwnd, out var r)
+        ? new Rect(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top)
+        : Rect.Empty;
 
     public BandWindow(AppSettings settings)
     {
@@ -78,6 +88,7 @@ public sealed class BandWindow : Window
         SizeChanged += (_, _) => Reposition();
         StateChanged += (_, _) => Revive();
         _settings.PropertyChanged += OnSettingChanged;
+        _hover.Tick += (_, _) => PollHover();
         ApplyChipVisibility();
     }
 
@@ -94,10 +105,13 @@ public sealed class BandWindow : Window
         {
             Show();
             Reposition();
+            _hover.Start();
         }
         else if (!show && IsVisible)
         {
             Hide();
+            _hover.Stop();
+            SetHovering(false);
         }
     }
 
@@ -116,6 +130,23 @@ public sealed class BandWindow : Window
         if (TrayMoved()) Reposition(refreshStart: true);
         else if (++_ticks % 30 == 0) Reposition(refreshStart: true);
         else if (_ticks % 2 == 0) KeepOnTop();
+    }
+
+    private void PollHover()
+    {
+        bool over = false;
+        if (_hwnd != IntPtr.Zero && IsVisible && Native.GetCursorPos(out var p) && Native.GetWindowRect(_hwnd, out var r))
+            over = p.X >= r.Left && p.X < r.Right && p.Y >= r.Top && p.Y < r.Bottom;
+
+        if (over) { _outside = 0; if (++_inside >= 2) SetHovering(true); }
+        else { _inside = 0; if (++_outside >= 3) SetHovering(false); }
+    }
+
+    private void SetHovering(bool on)
+    {
+        if (_hovering == on) return;
+        _hovering = on;
+        HoverChanged?.Invoke(on);
     }
 
     private static Brush? Load(double percent) => percent >= 90 ? Danger : percent >= 70 ? Warn : null;

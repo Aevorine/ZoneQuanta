@@ -8,7 +8,7 @@ using ZoneQuanta.Platform;
 
 namespace ZoneQuanta.Core.Monitor;
 
-public readonly record struct Metrics(double UpBps, double DownBps, double Cpu, double Mem, long UpBytes, long DownBytes);
+public readonly record struct Metrics(double UpBps, double DownBps, double Cpu, double Mem, long UpBytes, long DownBytes, long MemUsed = 0, long MemTotal = 0);
 
 public sealed class SystemMetrics
 {
@@ -57,7 +57,8 @@ public sealed class SystemMetrics
         }
         _lastUp = up; _lastDown = down; _lastTicks = now; _haveNet = true;
 
-        return new Metrics(upBps, downBps, SampleCpu(), SampleMem(), dUp, dDown);
+        var (memPercent, memUsed, memTotal) = SampleMem();
+        return new Metrics(upBps, downBps, SampleCpu(), memPercent, dUp, dDown, memUsed, memTotal);
     }
 
     private double SampleCpu()
@@ -73,10 +74,28 @@ public sealed class SystemMetrics
         return result;
     }
 
-    private static double SampleMem()
+    private static (double Percent, long Used, long Total) SampleMem()
     {
         var m = new Native.MEMORYSTATUSEX { dwLength = (uint)Marshal.SizeOf<Native.MEMORYSTATUSEX>() };
-        return Native.GlobalMemoryStatusEx(ref m) ? m.dwMemoryLoad : 0;
+        if (!Native.GlobalMemoryStatusEx(ref m)) return (0, 0, 0);
+        return (m.dwMemoryLoad, (long)(m.ullTotalPhys - m.ullAvailPhys), (long)m.ullTotalPhys);
+    }
+
+    public string AdapterSummary()
+    {
+        NetworkInterface? best = null;
+        long speed = -1;
+        foreach (var n in _nics)
+        {
+            try
+            {
+                if (n.Speed > speed) { speed = n.Speed; best = n; }
+            }
+            catch (NetworkInformationException) { }
+        }
+        if (best is null) return string.Empty;
+        string rate = speed >= 1_000_000_000 ? $"{speed / 1_000_000_000.0:0.#} Gbps" : $"{speed / 1_000_000.0:0} Mbps";
+        return $"{best.Name} · {rate}";
     }
 
     private static List<NetworkInterface> SelectInterfaces()
