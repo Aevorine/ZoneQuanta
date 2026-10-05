@@ -19,7 +19,7 @@ public sealed class BandWindow : Window
 
     private sealed record Chip(string Key, string Label, string Accent, Func<AppSettings, bool> Enabled)
     {
-        public StackPanel Panel { get; } = new() { Margin = new Thickness(7, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center };
+        public StackPanel Panel { get; } = new() { Margin = new Thickness(2, 0, 2, 0), VerticalAlignment = VerticalAlignment.Center };
         public TextBlock Value { get; } = new() { FontSize = 13, FontWeight = FontWeights.SemiBold, Style = null };
         public Brush? Tint { get; set; }
         public bool TintSet { get; set; }
@@ -32,7 +32,10 @@ public sealed class BandWindow : Window
     private TaskbarLayout? _layout;
     private bool _readingLayout, _canPaint;
     private int _layoutGeneration;
-    private readonly Viewbox _fit = new() { Stretch = Stretch.Uniform, StretchDirection = StretchDirection.DownOnly };
+    private readonly Border _pill;
+    private double _fitWidth = -1, _fitHeight = -1;
+    private int _contentRevision, _fitRevision = -1;
+    private bool _fits;
     private readonly DispatcherTimer _layoutTimer = new() { Interval = TimeSpan.FromMilliseconds(750) };
     private int _ticks;
     private bool _suppressed;
@@ -79,7 +82,8 @@ public sealed class BandWindow : Window
         };
         foreach (var c in _chips)
         {
-            var label = new TextBlock { Text = c.Label, FontSize = 10, Style = null };
+            var label = new TextBlock { Text = c.Label, FontSize = 10, Style = null, HorizontalAlignment = HorizontalAlignment.Center };
+            c.Value.HorizontalAlignment = HorizontalAlignment.Center;
             label.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
             c.Value.SetResourceReference(TextBlock.ForegroundProperty, c.Accent);
             c.Panel.Children.Add(label);
@@ -87,10 +91,11 @@ public sealed class BandWindow : Window
             _row.Children.Add(c.Panel);
         }
 
-        var pill = new Border { Padding = new Thickness(3, 0, 3, 0), VerticalAlignment = VerticalAlignment.Stretch, Child = _row };
-        System.Windows.Documents.TextElement.SetFontFamily(pill, (FontFamily)Application.Current.FindResource("AppFont"));
-        _fit.Child = pill;
-        Content = _fit;
+        _pill = new Border { Padding = new Thickness(1, 0, 1, 0), VerticalAlignment = VerticalAlignment.Stretch, Child = _row };
+        System.Windows.Documents.TextElement.SetFontFamily(_pill, (FontFamily)Application.Current.FindResource("AppFont"));
+        UseLayoutRounding = true;
+        SnapsToDevicePixels = true;
+        Content = _pill;
 
         SourceInitialized += (_, _) =>
         {
@@ -193,7 +198,7 @@ public sealed class BandWindow : Window
     private void Set(string key, string text, Brush? tint)
     {
         var chip = _chips.Find(c => c.Key == key)!;
-        if (chip.Value.Text != text) chip.Value.Text = text;
+        if (chip.Value.Text != text) { chip.Value.Text = text; ++_contentRevision; }
         if (chip.TintSet && ReferenceEquals(chip.Tint, tint)) return;
         chip.Tint = tint;
         chip.TintSet = true;
@@ -205,6 +210,7 @@ public sealed class BandWindow : Window
 
     private void ApplyChipVisibility()
     {
+        ++_contentRevision;
         foreach (var c in _chips) c.Panel.Visibility = c.Enabled(_settings) ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -247,20 +253,48 @@ public sealed class BandWindow : Window
             Native.SetWindowPos(_hwnd, Native.HWND_TOPMOST, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
     }
 
-    private double _fontFor;
-
-    private void ApplyFonts(double heightDip)
+    private void SetFontSize(double value)
     {
-        if (Math.Abs(_fontFor - heightDip) < 0.5) return;
-        _fontFor = heightDip;
-        double value = Math.Clamp(heightDip * 0.40, 12, 24);
-        double label = Math.Clamp(heightDip * 0.24, 9, 14);
         foreach (var c in _chips)
         {
             c.Value.FontSize = value;
-            ((TextBlock)c.Panel.Children[0]).FontSize = label;
-            c.Panel.MinWidth = c.Key is "mem" or "cpu" ? value * 2.9 : value * 5.4;
+            ((TextBlock)c.Panel.Children[0]).FontSize = value * 0.60;
         }
+    }
+
+    private bool FitContent(double widthDip, double heightDip)
+    {
+        if (Math.Abs(_fitWidth - widthDip) < 0.1 && Math.Abs(_fitHeight - heightDip) < 0.1 &&
+            _fitRevision == _contentRevision) return _fits;
+        _fitWidth = widthDip;
+        _fitHeight = heightDip;
+        _fitRevision = _contentRevision;
+        foreach (var c in _chips) { c.Panel.Width = double.NaN; c.Panel.MinWidth = 0; }
+        // Measure real glyphs, not estimated minimum widths. Pick the largest
+        // font that fits BOTH dimensions, then distribute remaining width.
+        bool Fits(double font)
+        {
+            SetFontSize(font);
+            _pill.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            return _pill.DesiredSize.Width <= widthDip && _pill.DesiredSize.Height <= heightDip - 2;
+        }
+        double low = 8, high = Math.Max(low, heightDip);
+        if (!Fits(low)) return _fits = false;
+        for (int i = 0; i < 10; ++i)
+        {
+            double mid = (low + high) / 2;
+            if (Fits(mid)) low = mid;
+            else high = mid;
+        }
+        Fits(low);
+        int count = 0;
+        foreach (var c in _chips) if (c.Enabled(_settings)) ++count;
+        if (count == 0) return _fits = false;
+        double extra = Math.Max(0, widthDip - _pill.DesiredSize.Width) / count;
+        foreach (var c in _chips)
+            if (c.Enabled(_settings))
+                c.Panel.Width = Math.Max(0, c.Panel.DesiredSize.Width - c.Panel.Margin.Left - c.Panel.Margin.Right + extra);
+        return _fits = true;
     }
 
     private void HideNative()
@@ -315,15 +349,12 @@ public sealed class BandWindow : Window
             }
             Rect area = _layout.FreeArea(_settings.BandPosition, 6 * sx);
             if (area.IsEmpty) { HideNative(); return; }
-            ApplyFonts(trayH / sy);
-            _fit.Child.Measure(new Size(double.PositiveInfinity, trayH / sy));
-            double naturalWidth = _fit.Child.DesiredSize.Width * sx;
-            if (naturalWidth <= 0 || area.Width < naturalWidth * 0.55)
+            double widthPx = Math.Floor(area.Width);
+            if (!FitContent(widthPx / sx, trayH / sy))
             {
                 HideNative();
                 return;
             }
-            double widthPx = Math.Min(naturalWidth, area.Width);
             double preferred = _settings.BandPosition is "Right" or "Start" ? area.Right - widthPx : area.Left;
             double x = t.Left + Math.Clamp(preferred + _settings.BandOffset * sx, area.Left, area.Right - widthPx);
             Width = widthPx / sx;

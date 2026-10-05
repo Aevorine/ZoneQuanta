@@ -1,5 +1,9 @@
 # 更新日志 · Changelog
 
+## 1.2.16 — 2026-10-05
+- 中文：任务栏监控条字体改为根据实际文字尺寸、安全区域宽度与任务栏高度选择最大可用字号；取消固定宽列和只缩小限制，剩余宽度均分到可见项，减少留白。保留图标避让与自动隐藏跟随，缓存字体测量结果。
+- English: taskbar text now uses the largest font fitting the measured text, safe gap width and taskbar height. Removed fixed wide columns and shrink-only scaling; remaining width is shared by visible items. Preserved icon avoidance and auto-hide tracking, with cached text measurements.
+
 ## 1.2.15 — 2026-10-05
 - 中文：任务栏监控条改为根据开始、应用、搜索和通知区按钮的实际边界选择空闲区域，并按可用宽度缩小；位置微调限制在空闲区域，布局变化时先收起再重新计算。布局识别放到后台，空间不足或布局不可靠时暂时隐藏，避免遮住按钮。
 - English: the band now selects free taskbar space from actual control bounds, scales to the available width and clamps position offsets to the safe gap. Layout changes hide the old position before background recalculation. Insufficient space or an unrecognized layout hides the band rather than covering buttons.

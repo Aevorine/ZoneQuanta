@@ -26,6 +26,10 @@
 | Auto-update | Parallel multi-mirror download, ECDSA signature + SHA-256 verification |
 | Low footprint | Second-aligned timer, redraws only what changes; about 0.3% of one CPU core and ~75 MB RAM when idle |
 
+## v1.2.16
+
+Taskbar text now adapts to both the safe gap width and taskbar height. Actual text measurements select the largest font that fits without clipping. Fixed wide columns and the shrink-only limit have been removed; remaining horizontal space is shared across the enabled items. Safety margins around Start, app buttons and the notification area remain in place. Text, unit and item changes recalculate the fit; taskbar movement reuses cached measurements.
+
 ## v1.2.15
 
 The taskbar band finds free space using the actual bounds of Start, application buttons, search and the notification area, with a safety margin. Its content scales down to the available width. Position offsets stay inside the safe gap. When taskbar controls move or change, the old position is hidden until the layout is recalculated in the background. If space is too narrow, the layout cannot be identified reliably, or the taskbar is vertical, the band stays hidden; the desktop clock and tray panel remain available.
