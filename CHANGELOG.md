@@ -1,5 +1,9 @@
 # 更新日志 · Changelog
 
+## 1.2.15 — 2026-10-05
+- 中文：任务栏监控条改为根据开始、应用、搜索和通知区按钮的实际边界选择空闲区域，并按可用宽度缩小；位置微调限制在空闲区域，布局变化时先收起再重新计算。布局识别放到后台，空间不足或布局不可靠时暂时隐藏，避免遮住按钮。
+- English: the band now selects free taskbar space from actual control bounds, scales to the available width and clamps position offsets to the safe gap. Layout changes hide the old position before background recalculation. Insufficient space or an unrecognized layout hides the band rather than covering buttons.
+
 ## 1.2.14 — 2026-10-05
 - 中文：下载与总速之间新增默认开启的今日流量（上传 + 下载），监控页增加独立开关与实时预览；流量逐次入账，显示不再等待十秒提交。任务栏跟随从每秒采样改为 Windows 窗口事件 + 16 ms 位置检查，按任务栏所在屏幕裁剪，隐藏后无残留，支持 Explorer 重启后重新连接。补充包元数据、中英文说明与隐私排除规则。
 - English: added today’s recorded upload + download usage between download and total speed, enabled by default with its own switch and live preview. Samples update the in-memory totals immediately. Taskbar tracking now uses Windows window events plus a 16 ms geometry fallback instead of the one-second sampling tick, clips to the taskbar monitor and reconnects after Explorer restarts. Updated package metadata, bilingual documentation and privacy exclusions.

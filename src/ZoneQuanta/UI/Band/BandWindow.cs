@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Windows;
-using System.Windows.Automation;
+using System.Threading.Tasks;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -29,8 +29,11 @@ public sealed class BandWindow : Window
     private readonly List<Chip> _chips;
     private readonly StackPanel _row = new() { Orientation = Orientation.Horizontal };
     private IntPtr _hwnd;
-    private Rect _start = Rect.Empty;
-    private long _startTriedAt = -60000;
+    private TaskbarLayout? _layout;
+    private bool _readingLayout, _canPaint;
+    private int _layoutGeneration;
+    private readonly Viewbox _fit = new() { Stretch = Stretch.Uniform, StretchDirection = StretchDirection.DownOnly };
+    private readonly DispatcherTimer _layoutTimer = new() { Interval = TimeSpan.FromMilliseconds(750) };
     private int _ticks;
     private bool _suppressed;
     private Metrics _last;
@@ -59,7 +62,9 @@ public sealed class BandWindow : Window
         ShowInTaskbar = false;
         ShowActivated = false;
         Topmost = true;
-        SizeToContent = SizeToContent.Width;
+        SizeToContent = SizeToContent.Manual;
+        Width = 1;
+        Height = 1;
         Focusable = false;
         Title = "ZoneQuanta Band";
 
@@ -84,18 +89,29 @@ public sealed class BandWindow : Window
 
         var pill = new Border { Padding = new Thickness(3, 0, 3, 0), VerticalAlignment = VerticalAlignment.Stretch, Child = _row };
         System.Windows.Documents.TextElement.SetFontFamily(pill, (FontFamily)Application.Current.FindResource("AppFont"));
-        Content = new Grid { Children = { pill } };
+        _fit.Child = pill;
+        Content = _fit;
 
         SourceInitialized += (_, _) =>
         {
             _hwnd = new WindowInteropHelper(this).Handle;
             Native.SetExStyle(_hwnd, Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE, true);
+            HideNative();
         };
         _taskbar.Changed += () => Reposition();
+        _taskbar.LayoutChanged += () =>
+        {
+            ++_layoutGeneration;
+            _layout = null;
+            HideNative();
+            RefreshLayout();
+        };
+        _layoutTimer.Tick += (_, _) => RefreshLayout();
         Closed += (_, _) =>
         {
             _taskbar.Dispose();
             _hover.Stop();
+            _layoutTimer.Stop();
             _settings.PropertyChanged -= OnSettingChanged;
         };
         SizeChanged += (_, _) => Reposition();
@@ -119,6 +135,8 @@ public sealed class BandWindow : Window
         {
             Show();
             _taskbar.Start();
+            _layoutTimer.Start();
+            RefreshLayout();
             Reposition();
             _hover.Start();
         }
@@ -126,6 +144,10 @@ public sealed class BandWindow : Window
         {
             Hide();
             _taskbar.Stop();
+            _layoutTimer.Stop();
+            ++_layoutGeneration;
+            _layout = null;
+            _canPaint = false;
             _hover.Stop();
             SetHovering(false);
         }
@@ -145,14 +167,14 @@ public sealed class BandWindow : Window
         Set("mem", $"{m.Mem:0}%", Load(m.Mem));
         Set("cpu", $"{m.Cpu:0}%", Load(m.Cpu));
 
-        if (++_ticks % 30 == 0) Reposition(refreshStart: true);
-        else if (_ticks % 6 == 0) KeepOnTop();
+        Reposition();
+        if (++_ticks % 6 == 0 && _canPaint) KeepOnTop();
     }
 
     private void PollHover()
     {
         bool over = false;
-        if (_hwnd != IntPtr.Zero && IsVisible && Native.GetCursorPos(out var p) && Native.GetWindowRect(_hwnd, out var r))
+        if (_hwnd != IntPtr.Zero && IsVisible && _canPaint && Native.GetCursorPos(out var p) && Native.GetWindowRect(_hwnd, out var r))
             over = p.X >= r.Left && p.X < r.Right && p.Y >= r.Top && p.Y < r.Bottom;
 
         if (over) { _outside = 0; if (++_inside >= 1) SetHovering(true); }
@@ -199,10 +221,11 @@ public sealed class BandWindow : Window
             case nameof(AppSettings.BandCpu):
                 ApplyChipVisibility();
                 Sync();
+                Reposition();
                 break;
             case nameof(AppSettings.BandOffset):
             case nameof(AppSettings.BandPosition):
-                Reposition(refreshStart: true);
+                Reposition();
                 break;
             case nameof(AppSettings.SpeedBits):
             case nameof(AppSettings.SpeedUnit):
@@ -213,7 +236,7 @@ public sealed class BandWindow : Window
 
     public void Revive()
     {
-        if (_hwnd == IntPtr.Zero || !IsVisible || !Native.IsIconic(_hwnd)) return;
+        if (_hwnd == IntPtr.Zero || !IsVisible || !_canPaint || !Native.IsIconic(_hwnd)) return;
         Native.ShowWindow(_hwnd, Native.SW_SHOWNOACTIVATE);
         KeepOnTop();
     }
@@ -240,94 +263,91 @@ public sealed class BandWindow : Window
         }
     }
 
-    private void Reposition(bool refreshStart = false)
+    private void HideNative()
+    {
+        _canPaint = false;
+        if (_hwnd != IntPtr.Zero) Native.ShowWindow(_hwnd, Native.SW_HIDE);
+        SetHovering(false);
+    }
+
+    private async void RefreshLayout()
+    {
+        if (_readingLayout || !IsVisible) return;
+        IntPtr tray = _taskbar.Handle;
+        if (tray == IntPtr.Zero || !Native.GetWindowRect(tray, out var t)) return;
+        var info = new Native.MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<Native.MONITORINFO>() };
+        if (!Native.GetMonitorInfo(Native.MonitorFromWindow(tray, 2), ref info) ||
+            Math.Min(t.Bottom, info.rcMonitor.Bottom) - Math.Max(t.Top, info.rcMonitor.Top) <= 2) return;
+        _readingLayout = true;
+        int generation = _layoutGeneration;
+        try
+        {
+            var layout = await Task.Run(() => TaskbarLayout.Read(tray));
+            if (!IsVisible || generation != _layoutGeneration || tray != _taskbar.Handle) return;
+            _layout = layout;
+            Reposition();
+        }
+        finally { _readingLayout = false; }
+    }
+
+    private void Reposition()
     {
         if (_hwnd == IntPtr.Zero || !IsVisible || _repositioning) return;
         IntPtr tray = _taskbar.Handle;
-        if (tray == IntPtr.Zero || !Native.GetWindowRect(tray, out var t))
+        if (tray == IntPtr.Zero || _layout is null || !Native.GetWindowRect(tray, out var t))
         {
-            Native.ShowWindow(_hwnd, Native.SW_HIDE);
-            SetHovering(false);
+            HideNative();
             return;
         }
         _repositioning = true;
         try
         {
-
-        var dpi = VisualTreeHelper.GetDpi(this);
-        double sx = dpi.DpiScaleX, sy = dpi.DpiScaleY;
-        double trayW = t.Right - t.Left, trayH = t.Bottom - t.Top;
-        if (trayH > trayW) trayH = Math.Min(trayH, 48 * sy);
-
-        ApplyFonts(trayH / sy);
-        if (_settings.BandPosition == "Start" && (refreshStart || (_start.IsEmpty && Environment.TickCount64 - _startTriedAt > 30000)))
-        {
-            _start = FindStartButton(tray);
-            _startTriedAt = Environment.TickCount64;
-        }
-
-        double widthPx = ActualWidth * sx;
-        double gap = 6 * sx;
-        double x = t.Left;
-        switch (_settings.BandPosition)
-        {
-            case "Start":
-                if (!_start.IsEmpty && _start.Left - widthPx - gap > t.Left) x = _start.Left - widthPx - gap;
-                break;
-            case "Right":
-                IntPtr notify = Native.FindWindowEx(tray, IntPtr.Zero, "TrayNotifyWnd", null);
-                x = notify != IntPtr.Zero && Native.GetWindowRect(notify, out var n) ? n.Left - widthPx - gap : t.Right - widthPx - 220 * sx;
-                break;
-        }
-        x += _settings.BandOffset * sx;
-
-        Height = trayH / sy;
-        Left = x / sx;
-        Top = t.Top / sy;
-        // Clip to the taskbar monitor so the sliding band cannot spill onto
-        // another display or remain visible over the auto-hide reveal strip.
-        var info = new Native.MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<Native.MONITORINFO>() };
-        if (Native.GetMonitorInfo(Native.MonitorFromWindow(tray, 2), ref info))
-        {
-            int left = Math.Max(t.Left, info.rcMonitor.Left);
-            int top = Math.Max(t.Top, info.rcMonitor.Top);
-            int right = Math.Min(t.Right, info.rcMonitor.Right);
-            int bottom = Math.Min(t.Bottom, info.rcMonitor.Bottom);
-            bool visible = Native.IsWindowVisible(tray) && right - left > 2 && bottom - top > 2;
-            if (visible)
+            var dpi = VisualTreeHelper.GetDpi(this);
+            double sx = dpi.DpiScaleX, sy = dpi.DpiScaleY;
+            double trayW = t.Right - t.Left, trayH = t.Bottom - t.Top;
+            // A resized or vertical taskbar needs a new safe layout.
+            if (trayH > trayW || Math.Abs(_layout.Width - trayW) > 1 || Math.Abs(_layout.Height - trayH) > 1)
             {
-                IntPtr region = Native.CreateRectRgn((int)Math.Max(0, left - x), top - t.Top,
-                    (int)Math.Min(widthPx, right - x), bottom - t.Top);
-                if (Native.SetWindowRgn(_hwnd, region, true) == 0) Native.DeleteObject(region);
-                Native.SetWindowPos(_hwnd, Native.HWND_TOPMOST, (int)Math.Round(x), t.Top,
-                    (int)Math.Ceiling(widthPx), (int)trayH, Native.SWP_NOACTIVATE | Native.SWP_SHOWWINDOW);
+                _layout = null;
+                ++_layoutGeneration;
+                HideNative();
+                return;
             }
-            else
+            Rect area = _layout.FreeArea(_settings.BandPosition, 6 * sx);
+            if (area.IsEmpty) { HideNative(); return; }
+            ApplyFonts(trayH / sy);
+            _fit.Child.Measure(new Size(double.PositiveInfinity, trayH / sy));
+            double naturalWidth = _fit.Child.DesiredSize.Width * sx;
+            if (naturalWidth <= 0 || area.Width < naturalWidth * 0.55)
             {
-                Native.ShowWindow(_hwnd, Native.SW_HIDE);
-                SetHovering(false);
+                HideNative();
+                return;
             }
-        }
+            double widthPx = Math.Min(naturalWidth, area.Width);
+            double preferred = _settings.BandPosition is "Right" or "Start" ? area.Right - widthPx : area.Left;
+            double x = t.Left + Math.Clamp(preferred + _settings.BandOffset * sx, area.Left, area.Right - widthPx);
+            Width = widthPx / sx;
+            Height = trayH / sy;
+            Left = x / sx;
+            Top = t.Top / sy;
+            var info = new Native.MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<Native.MONITORINFO>() };
+            if (!Native.GetMonitorInfo(Native.MonitorFromWindow(tray, 2), ref info)) { HideNative(); return; }
+            int top = Math.Max(t.Top, info.rcMonitor.Top), bottom = Math.Min(t.Bottom, info.rcMonitor.Bottom);
+            if (!Native.IsWindowVisible(tray) || bottom - top <= 2) { HideNative(); return; }
+            int pixelX = (int)Math.Ceiling(x), pixelWidth = (int)Math.Floor(widthPx);
+            IntPtr region = Native.CreateRectRgn(0, top - t.Top, pixelWidth, bottom - t.Top);
+            if (region == IntPtr.Zero) { HideNative(); return; }
+            if (Native.SetWindowRgn(_hwnd, region, true) == 0)
+            {
+                Native.DeleteObject(region);
+                HideNative();
+                return;
+            }
+            Native.SetWindowPos(_hwnd, Native.HWND_TOPMOST, pixelX, t.Top, pixelWidth,
+                (int)trayH, Native.SWP_NOACTIVATE | Native.SWP_SHOWWINDOW);
+            _canPaint = true;
         }
         finally { _repositioning = false; }
-    }
-
-    private static Rect FindStartButton(IntPtr tray)
-    {
-        try
-        {
-            var root = AutomationElement.FromHandle(tray);
-            var el = root.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "StartButton"))
-                     ?? root.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.NameProperty, "开始"))
-                     ?? root.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.NameProperty, "Start"));
-            if (el is not null)
-            {
-                var r = el.Current.BoundingRectangle;
-                if (!r.IsEmpty && r.Width > 0) return r;
-            }
-        }
-        catch (Exception ex) when (ex is ElementNotAvailableException or InvalidOperationException or System.Runtime.InteropServices.COMException) { }
-        return Rect.Empty;
     }
 
     private static Brush Frozen(string hex)

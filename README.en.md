@@ -26,6 +26,10 @@
 | Auto-update | Parallel multi-mirror download, ECDSA signature + SHA-256 verification |
 | Low footprint | Second-aligned timer, redraws only what changes; about 0.3% of one CPU core and ~75 MB RAM when idle |
 
+## v1.2.15
+
+The taskbar band finds free space using the actual bounds of Start, application buttons, search and the notification area, with a safety margin. Its content scales down to the available width. Position offsets stay inside the safe gap. When taskbar controls move or change, the old position is hidden until the layout is recalculated in the background. If space is too narrow, the layout cannot be identified reliably, or the taskbar is vertical, the band stays hidden; the desktop clock and tray panel remain available.
+
 ## v1.2.14
 
 The taskbar order is upload, download, **today’s data usage**, total speed, memory and CPU. Today’s usage is enabled by default and has its own switch on the Monitor page. It sums recorded upload and download bytes for the local date, persists across restarts and uses automatic byte units independently of speed settings. Only traffic observed on selected adapters while the app runs is counted. Historical records are hourly; date boundaries in time zones with fractional-hour offsets have one-hour precision.

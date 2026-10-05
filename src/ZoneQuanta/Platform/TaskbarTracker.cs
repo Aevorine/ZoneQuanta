@@ -15,6 +15,7 @@ internal sealed class TaskbarTracker : IDisposable
     private bool _visible, _haveRect;
     public IntPtr Handle { get; private set; }
     public event Action? Changed;
+    public event Action? LayoutChanged;
 
     public TaskbarTracker()
     {
@@ -40,6 +41,7 @@ internal sealed class TaskbarTracker : IDisposable
             if (_hook != IntPtr.Zero) Native.UnhookWinEvent(_hook);
             _hook = IntPtr.Zero;
             Handle = tray;
+            LayoutChanged?.Invoke();
             _haveRect = false;
             if (tray != IntPtr.Zero)
             {
@@ -60,7 +62,10 @@ internal sealed class TaskbarTracker : IDisposable
 
     private void OnWindowEvent(IntPtr hook, uint evt, IntPtr hwnd, int objectId, int childId, uint thread, uint time)
     {
-        if (hwnd == Handle && objectId == 0 && childId == 0) Check();
+        if (hwnd == Handle && objectId == 0 && childId == 0 && evt == 0x800B) Check();
+        else if ((evt <= 0x8004 || evt == 0x800B) && Handle != IntPtr.Zero &&
+            (hwnd == Handle || Native.IsChild(Handle, hwnd)))
+            LayoutChanged?.Invoke();
     }
 
     public void Dispose() { Stop(); GC.KeepAlive(_callback); }
