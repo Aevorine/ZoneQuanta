@@ -258,7 +258,7 @@ public sealed class BandWindow : Window
         foreach (var c in _chips)
         {
             c.Value.FontSize = value;
-            ((TextBlock)c.Panel.Children[0]).FontSize = value * 0.60;
+            ((TextBlock)c.Panel.Children[0]).FontSize = Math.Clamp(value * 0.72, 8, 11);
         }
     }
 
@@ -270,15 +270,18 @@ public sealed class BandWindow : Window
         _fitHeight = heightDip;
         _fitRevision = _contentRevision;
         foreach (var c in _chips) { c.Panel.Width = double.NaN; c.Panel.MinWidth = 0; }
-        // Measure real glyphs, not estimated minimum widths. Pick the largest
-        // font that fits BOTH dimensions, then distribute remaining width.
+        // Start from a normal Windows UI size, rather than enlarging text to
+        // consume the whole taskbar. Measure both dimensions and shrink only
+        // when necessary; spare space belongs to spacing, not oversized glyphs.
         bool Fits(double font)
         {
             SetFontSize(font);
             _pill.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            return _pill.DesiredSize.Width <= widthDip && _pill.DesiredSize.Height <= heightDip - 2;
+            return _pill.DesiredSize.Width <= widthDip - 4 && _pill.DesiredSize.Height <= heightDip - 4;
         }
-        double low = 8, high = Math.Max(low, heightDip);
+        double low = 9;
+        double preferred = Math.Clamp(SystemFonts.MessageFontSize * 1.15, 12, 16);
+        double high = Math.Min(preferred, Math.Max(low, heightDip * 0.34));
         if (!Fits(low)) return _fits = false;
         for (int i = 0; i < 10; ++i)
         {
@@ -286,6 +289,9 @@ public sealed class BandWindow : Window
             if (Fits(mid)) low = mid;
             else high = mid;
         }
+        // Half-DIP steps keep small changes in sampled numbers from making
+        // the font visibly pulse. Never round upwards past the measured fit.
+        low = Math.Max(9, Math.Floor(low * 2) / 2);
         Fits(low);
         int count = 0;
         foreach (var c in _chips) if (c.Enabled(_settings)) ++count;

@@ -26,6 +26,10 @@
 | Auto-update | Parallel multi-mirror download, ECDSA signature + SHA-256 verification |
 | Low footprint | Second-aligned timer, redraws only what changes; about 0.3% of one CPU core and ~75 MB RAM when idle |
 
+## v1.2.17
+
+Corrected oversized taskbar text. The preferred size is based on the Windows UI font, with values bounded to 9–16 DIP and labels to 8–11 DIP. Actual text measurements shrink the size when the taskbar is short or the safe gap is narrow. Half-DIP steps reduce font jitter, and measurements reserve space on both axes. Spare space is used for spacing while Start and app buttons remain protected.
+
 ## v1.2.16
 
 Taskbar text now adapts to both the safe gap width and taskbar height. Actual text measurements select the largest font that fits without clipping. Fixed wide columns and the shrink-only limit have been removed; remaining horizontal space is shared across the enabled items. Safety margins around Start, app buttons and the notification area remain in place. Text, unit and item changes recalculate the fit; taskbar movement reuses cached measurements.

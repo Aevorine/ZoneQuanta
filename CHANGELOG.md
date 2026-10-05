@@ -1,5 +1,9 @@
 # 更新日志 · Changelog
 
+## 1.2.17 — 2026-10-05
+- 中文：修正上一版字体过度放大：改用 Windows 界面字号作为基准，限制数值与标签字号；按任务栏高度和安全宽度测量缩小，并保留四周余量。半 DIP 步进减轻字号跳动，剩余空间仅用于间距，保留图标避让。
+- English: corrected oversized text by using a bounded Windows UI font baseline, shrinking from measured taskbar constraints and reserving margins. Half-DIP font steps reduce jitter; spare space is used for spacing, with icon avoidance preserved.
+
 ## 1.2.16 — 2026-10-05
 - 中文：任务栏监控条字体改为根据实际文字尺寸、安全区域宽度与任务栏高度选择最大可用字号；取消固定宽列和只缩小限制，剩余宽度均分到可见项，减少留白。保留图标避让与自动隐藏跟随，缓存字体测量结果。
 - English: taskbar text now uses the largest font fitting the measured text, safe gap width and taskbar height. Removed fixed wide columns and shrink-only scaling; remaining width is shared by visible items. Preserved icon avoidance and auto-hide tracking, with cached text measurements.
