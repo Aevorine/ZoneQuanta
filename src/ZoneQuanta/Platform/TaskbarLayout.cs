@@ -19,9 +19,22 @@ internal sealed record TaskbarLayout(double Width, double Height, Rect[] Occupie
             var elements = root.FindAll(TreeScope.Descendants, System.Windows.Automation.Condition.TrueCondition);
             var occupied = new List<Rect>();
             bool startFound = false, trayFound = false;
+            // UI Automation may omit Start while Explorer's composition bridge
+            // is hidden, or replace the shell fragment with our WPF fragment.
+            // Native button/container rectangles remain available in that case.
+            foreach (string cls in new[] { "Start", "ReBarWindow32", "TrayDummySearchControl", "TrayNotifyWnd" })
+            {
+                IntPtr child = Native.FindWindowEx(tray, IntPtr.Zero, cls, null);
+                if (child == IntPtr.Zero || !Native.GetWindowRect(child, out var r)) continue;
+                if (r.Right <= r.Left || r.Bottom <= r.Top) continue;
+                occupied.Add(new Rect(r.Left - bounds.Left, r.Top - bounds.Top, r.Right - r.Left, r.Bottom - r.Top));
+                startFound |= cls == "Start";
+                trayFound |= cls == "TrayNotifyWnd";
+            }
             foreach (AutomationElement element in elements)
             {
                 var info = element.Current;
+                if (info.ProcessId == Environment.ProcessId) continue;
                 var rect = info.BoundingRectangle;
                 if (rect.IsEmpty || rect.Width <= 0 || rect.Height <= 0) continue;
                 string id = info.AutomationId, cls = info.ClassName;

@@ -11,10 +11,13 @@
     <Nullable>enable</Nullable>
     <AssemblyName>ZoneQuanta</AssemblyName>
     <RootNamespace>ZoneQuanta</RootNamespace>
-    <Version>1.2.19</Version>
+    <Version>1.2.20</Version>
     <NoWarn>$(NoWarn);WFAC010</NoWarn>
     <Product>ZoneQuanta</Product>
-    <Description>Windows world clock with adaptive taskbar speed, daily data usage, CPU and memory monitoring with taskbar child-window monitoring, fitted text and safe icon avoidance.</Description>
+    <Description>Windows world clock with a visible taskbar network, daily data, CPU and memory monitor, fitted text, safe icon avoidance and direct right-click settings navigation.</Description>
+    <PackageReleaseNotes>Fix Explorer composition covering taskbar text; use an independent software-rendered host, native safe-area detection and direct right-click settings pages.</PackageReleaseNotes>
+    <Deterministic>true</Deterministic>
+    <PathMap>$(MSBuildProjectDirectory)=/_/ZoneQuanta</PathMap>
     <RepositoryUrl>https://github.com/Aevorine/ZoneQuanta</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://github.com/Aevorine/ZoneQuanta</PackageProjectUrl>

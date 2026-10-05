@@ -22,39 +22,15 @@
 | Desktop widget | Click-through, always on top, lock position, may extend past screen edges, auto-hide when a full-screen app runs |
 | Start with Windows | Per-user startup entry, no administrator rights needed |
 | Look and feel | Four eye-friendly low-saturation themes; rolling digits, card flip, hover and page transitions (2D animation), all optional |
-| Tray and hotkey | Left-click the tray icon to show / hide the panel; right-click for common switches; global hotkey `Ctrl + Alt + Z` by default; right-click the ZoneQuanta area on the taskbar to open settings too |
+| Tray and hotkey | Left-click the tray icon to show / hide the panel; right-click for common switches; global hotkey `Ctrl + Alt + Z` by default; right-click today's data to open Traffic; right-click speed / CPU / RAM to open Monitor settings |
 | Auto-update | Parallel multi-mirror download, ECDSA signature + SHA-256 verification |
 | Low footprint | Second-aligned timer, redraws only what changes; about 0.3% of one CPU core and ~75 MB RAM when idle |
 
-## v1.2.19
+## v1.2.20
 
-Fixed clipped or apparently blank text in the native taskbar host. A root control can report stale or zero desired sizes before layout completes, causing oversized font selection. The fit now measures each label and value directly, totals their actual bounds and selects the largest fitting font. The host uses manual sizing with explicit Measure / Arrange / UpdateLayout after its dimensions are set.
+Fixed taskbar content being blank on the actual desktop despite readable automation text and a visible child window. Explorer's composition layer can cover foreign child surfaces. The monitor now uses an independent software-rendered host in a measured safe gap. It hides during auto-hide motion and returns when the taskbar is fully shown. Geometry tracking remains independent of one-second metrics sampling.
 
-Diagnostics using the same rendering code showed all six items fitting at 125% DPI and fitting again after values changed. A private diagnostic parent confirmed immediate inherited child movement and hiding. The diagnostic did not move the system taskbar or capture the full desktop. Icon avoidance and the safe-area cache during auto-hide motion remain in place.
-
-## v1.2.18
-
-The monitor now lives in a native taskbar child window created with HwndSource. Windows carries it with the parent taskbar when the taskbar moves, shows or hides, replacing the independent floating-window animation chase. Auto-hide motion retains the cached safe gap instead of invalidating it for descendant animation events. Actual icon layout changes still trigger safe-area detection.
-
-Text uses the largest size fitting actual glyph measurements and both safe-area dimensions, with labels scaling alongside values. Previous fixed host dimensions are cleared before measuring content. Edge and button margins remain, font sizes use half-DIP steps, and spare width is shared across visible items. The native host is recreated when Explorer rebuilds the taskbar.
-
-## v1.2.17
-
-Corrected oversized taskbar text. The preferred size is based on the Windows UI font, with values bounded to 9–16 DIP and labels to 8–11 DIP. Actual text measurements shrink the size when the taskbar is short or the safe gap is narrow. Half-DIP steps reduce font jitter, and measurements reserve space on both axes. Spare space is used for spacing while Start and app buttons remain protected.
-
-## v1.2.16
-
-Taskbar text now adapts to both the safe gap width and taskbar height. Actual text measurements select the largest font that fits without clipping. Fixed wide columns and the shrink-only limit have been removed; remaining horizontal space is shared across the enabled items. Safety margins around Start, app buttons and the notification area remain in place. Text, unit and item changes recalculate the fit; taskbar movement reuses cached measurements.
-
-## v1.2.15
-
-The taskbar band finds free space using the actual bounds of Start, application buttons, search and the notification area, with a safety margin. Its content scales down to the available width. Position offsets stay inside the safe gap. When taskbar controls move or change, the old position is hidden until the layout is recalculated in the background. If space is too narrow, the layout cannot be identified reliably, or the taskbar is vertical, the band stays hidden; the desktop clock and tray panel remain available.
-
-## v1.2.14
-
-The taskbar order is upload, download, **today’s data usage**, total speed, memory and CPU. Today’s usage is enabled by default and has its own switch on the Monitor page. It sums recorded upload and download bytes for the local date, persists across restarts and uses automatic byte units independently of speed settings. Only traffic observed on selected adapters while the app runs is counted. Historical records are hourly; date boundaries in time zones with fractional-hour offsets have one-hour precision.
-
-Windows window events now drive taskbar show, hide and movement tracking, with a lightweight 16 ms geometry check for animations that omit events. Position tracking no longer waits for the one-second metrics tick. The band is clipped to the taskbar monitor, disappears at the auto-hide reveal strip and reconnects after Explorer restarts.
+Native Start, app-container, search and notification bounds supplement automation; the monitor excludes its own controls from occupied space. Right-click today's data to open Traffic; right-click upload, download, total speed, RAM, CPU or spacing to open Monitor. The actual taskbar capture showed all six items, and real right-click navigation passed on the current machine.
 
 ## Install
 

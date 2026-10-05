@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory)][string]$Version,
     [string]$Notes = '',
     [string]$SecretDir = $env:ZONEQUANTA_SECRET_DIR,
-    [int]$Keep = 2,
+    [ValidateRange(2,100)][int]$Keep = 2,
     [switch]$SkipPublish
 )
 
@@ -13,6 +13,14 @@ $proj = Join-Path $root 'src\ZoneQuanta\ZoneQuanta.csproj'
 $dist = Join-Path $root 'dist'
 $repo = 'Aevorine/ZoneQuanta'
 $tag = "v$Version"
+if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'Version must be major.minor.patch' }
+$secretPath = [IO.Path]::GetFullPath($SecretDir)
+if ($secretPath.StartsWith($root.Path.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Signing secrets must remain outside the repository'
+}
+foreach ($name in 'update-signing-key.p8', 'update-signing-key-password.txt') {
+    if (-not (Test-Path -LiteralPath (Join-Path $secretPath $name) -PathType Leaf)) { throw 'Signing material unavailable' }
+}
 
 function Remove-WorkspaceArtifact([string]$Path) {
     $resolved = [IO.Path]::GetFullPath($Path)

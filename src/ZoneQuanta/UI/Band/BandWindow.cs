@@ -52,7 +52,7 @@ public sealed class BandWindow : IDisposable
     private bool _hovering;
 
     public event Action<bool>? HoverChanged;
-    public event Action? SettingsRequested;
+    public event Action<string>? SettingsRequested;
 
     public Rect BoundsPx => _hwnd != IntPtr.Zero && Native.GetWindowRect(_hwnd, out var r)
         ? new Rect(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top)
@@ -79,6 +79,11 @@ public sealed class BandWindow : IDisposable
             c.Value.SetResourceReference(TextBlock.ForegroundProperty, c.Accent);
             c.Panel.Children.Add(label);
             c.Panel.Children.Add(c.Value);
+            c.Panel.MouseRightButtonUp += (_, e) =>
+            {
+                e.Handled = true;
+                SettingsRequested?.Invoke(c.Key == "today" ? "流量" : "监控");
+            };
             _row.Children.Add(c.Panel);
         }
 
@@ -101,7 +106,7 @@ public sealed class BandWindow : IDisposable
             RefreshLayout();
         };
         _layoutTimer.Tick += (_, _) => RefreshLayout();
-        _pill.MouseRightButtonUp += (_, e) => { e.Handled = true; SettingsRequested?.Invoke(); };
+        _pill.MouseRightButtonUp += (_, e) => { e.Handled = true; SettingsRequested?.Invoke("监控"); };
         _settings.PropertyChanged += OnSettingChanged;
         _hover.Tick += (_, _) => PollHover();
         ApplyChipVisibility();
@@ -242,12 +247,15 @@ public sealed class BandWindow : IDisposable
         _parent = tray;
         var parameters = new HwndSourceParameters("ZoneQuanta Band")
         {
-            ParentWindow = tray,
-            WindowStyle = 0x40000000 | 0x04000000, // WS_CHILD | WS_CLIPSIBLINGS
-            ExtendedWindowStyle = (int)Native.WS_EX_NOACTIVATE,
+            ParentWindow = IntPtr.Zero,
+            WindowStyle = unchecked((int)0x80000000), // WS_POPUP
+            ExtendedWindowStyle = (int)(Native.WS_EX_NOACTIVATE | Native.WS_EX_TOOLWINDOW | 0x8),
             PositionX = 0, PositionY = 2, Width = 1, Height = 1,
         };
         _source = new HwndSource(parameters) { RootVisual = _pill, SizeToContent = SizeToContent.Manual };
+        // Explorer's composition bridge can cover foreign child surfaces even
+        // when UI Automation reports their text. Use an independent target.
+        _source.CompositionTarget.RenderMode = RenderMode.SoftwareOnly;
         _source.AddHook((IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled) =>
         {
             if (message == 0x21) { handled = true; return new IntPtr(3); } // MA_NOACTIVATE
@@ -379,6 +387,13 @@ public sealed class BandWindow : IDisposable
             var dpi = VisualTreeHelper.GetDpi(_pill);
             double sx = dpi.DpiScaleX, sy = dpi.DpiScaleY;
             double trayW = t.Right - t.Left, trayH = t.Bottom - t.Top;
+            var monitor = new Native.MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<Native.MONITORINFO>() };
+            if (!Native.IsWindowVisible(tray) || !Native.GetMonitorInfo(Native.MonitorFromWindow(tray, 2), ref monitor) ||
+                Math.Min(t.Bottom, monitor.rcMonitor.Bottom) - Math.Max(t.Top, monitor.rcMonitor.Top) < trayH - 2)
+            {
+                HideNative();
+                return;
+            }
             // A resized or vertical taskbar needs a new safe layout.
             if (trayH > trayW || Math.Abs(_layout.Width - trayW) > 1 || Math.Abs(_layout.Height - trayH) > 1)
             {
@@ -397,9 +412,8 @@ public sealed class BandWindow : IDisposable
             }
             double preferred = _settings.BandPosition is "Right" or "Start" ? area.Right - widthPx : area.Left;
             double x = Math.Clamp(preferred + _settings.BandOffset * sx, area.Left, area.Right - widthPx);
-            // Child coordinates are relative to the taskbar client area.
-            // Windows moves and hides the host along with Explorer, without
-            // waiting for a DispatcherTimer or a UI Automation refresh.
+            // Follow the taskbar in physical screen coordinates. The tracker
+            // checks geometry independently of the metrics sampling tick.
             int pixelX = (int)Math.Ceiling(x), pixelWidth = (int)Math.Floor(widthPx);
             int pixelHeight = Math.Max(1, (int)trayH - 4);
             _pill.Width = pixelWidth / sx;
@@ -407,7 +421,7 @@ public sealed class BandWindow : IDisposable
             _pill.Measure(new Size(_pill.Width, _pill.Height));
             _pill.Arrange(new Rect(0, 0, _pill.Width, _pill.Height));
             _pill.UpdateLayout();
-            Native.SetWindowPos(_hwnd, IntPtr.Zero, pixelX, 2, pixelWidth, pixelHeight,
+            Native.SetWindowPos(_hwnd, Native.HWND_TOPMOST, t.Left + pixelX, t.Top + 2, pixelWidth, pixelHeight,
                 Native.SWP_NOACTIVATE | Native.SWP_SHOWWINDOW);
             _canPaint = true;
         }

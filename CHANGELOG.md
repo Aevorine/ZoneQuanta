@@ -1,5 +1,11 @@
 # 更新日志 · Changelog
 
+## 1.2.20 — 2026-10-05
+- 中文：修复 Explorer 合成层覆盖原生子窗口造成的真实任务栏空白，改用独立软件渲染宿主；自动隐藏期间收起、任务栏完整显示后恢复，保留图标避让与自适应字体。
+- 中文：原生按钮边界补充 UI Automation，排除自身控件与自身窗口事件；右键今日流量直达流量页，右键网速 / CPU / 内存直达监控页。
+- English: fixed invisible taskbar child surfaces covered by Explorer composition with an independent software-rendered host. Added native safe-area bounds, excluded self events/controls and opened the corresponding settings page on right-click.
+- Validation: actual desktop taskbar capture showed all six items; real right-click Traffic and Monitor navigation passed. Release builds and signed-manifest checks completed separately during delivery.
+
 ## 1.2.19 — 2026-10-05
 - 中文：修复任务栏内容被裁切或看起来空白：字号计算改为直接测量标签和数值，不再使用原生宿主根控件的过期 DesiredSize；宿主使用手动尺寸并显式完成布局。诊断确认 125% DPI 六项显示完整、数值变化后无裁切，以及私有父窗口移动 / 隐藏时子窗口即时继承。
 - English: fixed clipped or apparently blank taskbar content by measuring leaf text rather than stale root DesiredSize, and explicitly arranging the manually sized native host. Diagnostics confirmed all six items fitting at 125% DPI, fitting after value changes, and immediate inherited child movement / hiding.

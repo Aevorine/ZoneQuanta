@@ -67,6 +67,8 @@ internal sealed class TaskbarTracker : IDisposable
     private void OnWindowEvent(IntPtr hook, uint evt, IntPtr hwnd, int objectId, int childId, uint thread, uint time)
     {
         if (Handle == IntPtr.Zero || (hwnd != Handle && !Native.IsChild(Handle, hwnd))) return;
+        Native.GetWindowThreadProcessId(hwnd, out uint owner);
+        if (owner == (uint)Environment.ProcessId) return;
         Check();
         // Show/hide and descendant movement during an auto-hide slide do not
         // change the safe horizontal gap. Keep the cached layout alive.
