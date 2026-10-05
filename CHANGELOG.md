@@ -1,5 +1,9 @@
 # 更新日志 · Changelog
 
+## 1.2.19 — 2026-10-05
+- 中文：修复任务栏内容被裁切或看起来空白：字号计算改为直接测量标签和数值，不再使用原生宿主根控件的过期 DesiredSize；宿主使用手动尺寸并显式完成布局。诊断确认 125% DPI 六项显示完整、数值变化后无裁切，以及私有父窗口移动 / 隐藏时子窗口即时继承。
+- English: fixed clipped or apparently blank taskbar content by measuring leaf text rather than stale root DesiredSize, and explicitly arranging the manually sized native host. Diagnostics confirmed all six items fitting at 125% DPI, fitting after value changes, and immediate inherited child movement / hiding.
+
 ## 1.2.18 — 2026-10-05
 - 中文：监控内容改为任务栏原生子窗口，由父窗口带动移动与显示隐藏；区分自动隐藏动画与实际布局变化，滑动期间保留安全区域缓存。字体改为按真实文字宽高最大化，测量前清除宿主固定尺寸，保留边界与图标避让。支持任务栏重建后重新创建宿主。
 - English: moved the monitor into a native taskbar child window, inheriting parent movement and visibility. Auto-hide motion preserves the safe-area cache. Fonts maximize within actual measured bounds with host dimensions cleared before measuring; edge margins and icon avoidance remain. Recreates the host when the taskbar is rebuilt.

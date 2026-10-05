@@ -247,7 +247,7 @@ public sealed class BandWindow : IDisposable
             ExtendedWindowStyle = (int)Native.WS_EX_NOACTIVATE,
             PositionX = 0, PositionY = 2, Width = 1, Height = 1,
         };
-        _source = new HwndSource(parameters) { RootVisual = _pill };
+        _source = new HwndSource(parameters) { RootVisual = _pill, SizeToContent = SizeToContent.Manual };
         _source.AddHook((IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled) =>
         {
             if (message == 0x21) { handled = true; return new IntPtr(3); } // MA_NOACTIVATE
@@ -290,18 +290,28 @@ public sealed class BandWindow : IDisposable
         _fitWidth = widthDip;
         _fitHeight = heightDip;
         _fitRevision = _contentRevision;
-        // Remove the previous host dimensions before measuring content; a
-        // fixed-size border reports its assigned size instead of glyph size.
-        _pill.Width = double.NaN;
-        _pill.Height = double.NaN;
         foreach (var c in _chips) { c.Panel.Width = double.NaN; c.Panel.MinWidth = 0; }
-        // Use actual text bounds on both axes. The host is already confined
-        // to the taskbar, so large text cannot extend beyond the safe area.
+        // A HwndSource root can report a stale/zero DesiredSize while its
+        // layout is pending. Measure the actual leaf text controls directly.
+        var widths = new Dictionary<Chip, double>();
+        double measuredWidth = 0;
         bool Fits(double font)
         {
             SetFontSize(font);
-            _pill.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            return _pill.DesiredSize.Width <= widthDip - 4 && _pill.DesiredSize.Height <= heightDip - 4;
+            measuredWidth = _pill.Padding.Left + _pill.Padding.Right;
+            double measuredHeight = 0;
+            foreach (var c in _chips)
+            {
+                if (!c.Enabled(_settings)) continue;
+                var label = (TextBlock)c.Panel.Children[0];
+                label.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                c.Value.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                double width = Math.Max(label.DesiredSize.Width, c.Value.DesiredSize.Width);
+                widths[c] = width;
+                measuredWidth += width + c.Panel.Margin.Left + c.Panel.Margin.Right;
+                measuredHeight = Math.Max(measuredHeight, label.DesiredSize.Height + c.Value.DesiredSize.Height);
+            }
+            return measuredWidth <= widthDip - 2 && measuredHeight <= heightDip - 2;
         }
         double low = 9;
         double high = Math.Max(low, heightDip);
@@ -319,10 +329,10 @@ public sealed class BandWindow : IDisposable
         int count = 0;
         foreach (var c in _chips) if (c.Enabled(_settings)) ++count;
         if (count == 0) return _fits = false;
-        double extra = Math.Max(0, widthDip - _pill.DesiredSize.Width) / count;
+        double extra = Math.Max(0, widthDip - measuredWidth) / count;
         foreach (var c in _chips)
             if (c.Enabled(_settings))
-                c.Panel.Width = Math.Max(0, c.Panel.DesiredSize.Width - c.Panel.Margin.Left - c.Panel.Margin.Right + extra);
+                c.Panel.Width = widths[c] + extra;
         return _fits = true;
     }
 
@@ -394,6 +404,9 @@ public sealed class BandWindow : IDisposable
             int pixelHeight = Math.Max(1, (int)trayH - 4);
             _pill.Width = pixelWidth / sx;
             _pill.Height = pixelHeight / sy;
+            _pill.Measure(new Size(_pill.Width, _pill.Height));
+            _pill.Arrange(new Rect(0, 0, _pill.Width, _pill.Height));
+            _pill.UpdateLayout();
             Native.SetWindowPos(_hwnd, IntPtr.Zero, pixelX, 2, pixelWidth, pixelHeight,
                 Native.SWP_NOACTIVATE | Native.SWP_SHOWWINDOW);
             _canPaint = true;

@@ -26,6 +26,12 @@
 | Auto-update | Parallel multi-mirror download, ECDSA signature + SHA-256 verification |
 | Low footprint | Second-aligned timer, redraws only what changes; about 0.3% of one CPU core and ~75 MB RAM when idle |
 
+## v1.2.19
+
+Fixed clipped or apparently blank text in the native taskbar host. A root control can report stale or zero desired sizes before layout completes, causing oversized font selection. The fit now measures each label and value directly, totals their actual bounds and selects the largest fitting font. The host uses manual sizing with explicit Measure / Arrange / UpdateLayout after its dimensions are set.
+
+Diagnostics using the same rendering code showed all six items fitting at 125% DPI and fitting again after values changed. A private diagnostic parent confirmed immediate inherited child movement and hiding. The diagnostic did not move the system taskbar or capture the full desktop. Icon avoidance and the safe-area cache during auto-hide motion remain in place.
+
 ## v1.2.18
 
 The monitor now lives in a native taskbar child window created with HwndSource. Windows carries it with the parent taskbar when the taskbar moves, shows or hides, replacing the independent floating-window animation chase. Auto-hide motion retains the cached safe gap instead of invalidating it for descendant animation events. Actual icon layout changes still trigger safe-area detection.
