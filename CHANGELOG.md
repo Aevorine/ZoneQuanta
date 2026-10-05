@@ -1,5 +1,9 @@
 # 更新日志 · Changelog
 
+## 1.2.14 — 2026-10-05
+- 中文：下载与总速之间新增默认开启的今日流量（上传 + 下载），监控页增加独立开关与实时预览；流量逐次入账，显示不再等待十秒提交。任务栏跟随从每秒采样改为 Windows 窗口事件 + 16 ms 位置检查，按任务栏所在屏幕裁剪，隐藏后无残留，支持 Explorer 重启后重新连接。补充包元数据、中英文说明与隐私排除规则。
+- English: added today’s recorded upload + download usage between download and total speed, enabled by default with its own switch and live preview. Samples update the in-memory totals immediately. Taskbar tracking now uses Windows window events plus a 16 ms geometry fallback instead of the one-second sampling tick, clips to the taskbar monitor and reconnects after Explorer restarts. Updated package metadata, bilingual documentation and privacy exclusions.
+
 ## 1.2.13
 - 中文：修复锁定位置后桌面组件仍会偏离设定位置的问题——位置改为由「你选定的坐标 / 九宫格贴边」直接决定，文字、缩放、翻面等引起的尺寸变化不再挪动窗口，也不再改写已保存的坐标；多显示器与分辨率变化后按同一设定重新定位。任务栏 ZoneQuanta 显示区现在可右键直接打开设置界面。
 - English: fixed the desktop widget drifting away from its chosen spot even when position is locked — the position is now derived from the coordinates or edge/corner you picked, so size changes (text, scale, card flip) no longer move the window or overwrite the saved coordinates; display changes re-place it from the same setting. Right-clicking the ZoneQuanta area on the taskbar now opens the settings window.

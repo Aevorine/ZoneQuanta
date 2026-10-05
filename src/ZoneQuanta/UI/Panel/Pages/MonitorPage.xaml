@@ -23,6 +23,7 @@
                     <ToggleButton Style="{StaticResource SwitchRow}" Content="任务栏监控条" IsChecked="{Binding BandVisible, Mode=TwoWay}"/>
                     <ToggleButton Style="{StaticResource SwitchRow}" Content="上传速度" IsChecked="{Binding BandUp, Mode=TwoWay}"/>
                     <ToggleButton Style="{StaticResource SwitchRow}" Content="下载速度" IsChecked="{Binding BandDown, Mode=TwoWay}"/>
+                    <ToggleButton Style="{StaticResource SwitchRow}" Content="今日流量" IsChecked="{Binding BandToday, Mode=TwoWay}"/>
                     <ToggleButton Style="{StaticResource SwitchRow}" Content="总网速" IsChecked="{Binding BandTotal, Mode=TwoWay}"/>
                     <ToggleButton Style="{StaticResource SwitchRow}" Content="内存占用率" IsChecked="{Binding BandMem, Mode=TwoWay}"/>
                     <ToggleButton Style="{StaticResource SwitchRow}" Content="CPU 占用率" IsChecked="{Binding BandCpu, Mode=TwoWay}"/>

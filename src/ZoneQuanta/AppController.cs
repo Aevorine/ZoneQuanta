@@ -185,7 +185,7 @@ public sealed class AppController : IPanelHost, IDisposable
 
         Latest = _metrics.Sample();
         _totals.Add(Latest);
-        _band.Update(Latest);
+        _band.Update(Latest, _totals.File.TodayTotal());
         _detail.Update(Latest);
 
         if (!fullscreen)

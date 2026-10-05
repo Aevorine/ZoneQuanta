@@ -16,7 +16,7 @@
 | 24-hour day ribbon | A ribbon across each card covering 0–24 h (one tick per hour, labelled 0 / 6 / 12 / 18 / 24): the daylight segment is computed per city from latitude and date (polar day / night included), the part of the day already gone is bright and the rest dimmed, a sun / moon marker sits on the current time, and sunrise / sunset times are printed on the ribbon; hover the ribbon to read any moment; cards tilt in 3D with a moving highlight; the desktop widget uses a compact layout (name + time + slim ribbon + key marks, about half the previous area) and flips on click for DST and sunrise / sunset details |
 | Taskbar hover details | Rest the mouse on the taskbar monitor to see upload / download / total speed with a live chart, today's traffic, adapter and link rate, CPU usage with cores / processes / threads, memory used / available / committed, uptime and today's top apps |
 | Popular countries and cities | 36 built-in cities (USA, Canada, China, Japan, Europe, Australia, ...), plus search over every system time zone. Up to 4 zones, renamable and reorderable |
-| Taskbar monitor | Placed at the far left of the taskbar by default; choose "left of Start" or "left of the notification area" and fine-tune the offset. Height adapts to the taskbar with no padding. Upload speed, download speed, total speed, memory % and CPU % can each be switched on or off |
+| Taskbar monitor | Placed at the far left of the taskbar by default; choose "left of Start" or "left of the notification area" and fine-tune the offset. Height adapts to the taskbar with no padding. Upload speed, download speed, today’s data usage, total speed, memory % and CPU % can each be switched on or off |
 | Speed units | Bytes `B` or bits `b`; unit auto (B → KB → MB → GB) or fixed K / M / G |
 | Per-app traffic | Upload / download per application over: today, 24 hours, this week, this month, this year, all time. Live speed chart and animated bars |
 | Desktop widget | Click-through, always on top, lock position, may extend past screen edges, auto-hide when a full-screen app runs |
@@ -25,6 +25,12 @@
 | Tray and hotkey | Left-click the tray icon to show / hide the panel; right-click for common switches; global hotkey `Ctrl + Alt + Z` by default; right-click the ZoneQuanta area on the taskbar to open settings too |
 | Auto-update | Parallel multi-mirror download, ECDSA signature + SHA-256 verification |
 | Low footprint | Second-aligned timer, redraws only what changes; about 0.3% of one CPU core and ~75 MB RAM when idle |
+
+## v1.2.14
+
+The taskbar order is upload, download, **today’s data usage**, total speed, memory and CPU. Today’s usage is enabled by default and has its own switch on the Monitor page. It sums recorded upload and download bytes for the local date, persists across restarts and uses automatic byte units independently of speed settings. Only traffic observed on selected adapters while the app runs is counted. Historical records are hourly; date boundaries in time zones with fractional-hour offsets have one-hour precision.
+
+Windows window events now drive taskbar show, hide and movement tracking, with a lightweight 16 ms geometry check for animations that omit events. Position tracking no longer waits for the one-second metrics tick. The band is clipped to the taskbar monitor, disappears at the auto-hide reveal strip and reconnects after Explorer restarts.
 
 ## Install
 

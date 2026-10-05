@@ -80,13 +80,28 @@ public sealed class TrafficFile
     public Dictionary<string, (long Up, long Down)> Query(long fromUnix)
     {
         var result = new Dictionary<string, (long Up, long Down)>();
+        long cutoff = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - HourlyKeepSeconds;
         foreach (var kv in _data)
         {
-            if (kv.Key.Bucket + (kv.Key.Bucket % Day == 0 ? Day : Hour) <= fromUnix) continue;
+            long duration = kv.Key.Bucket < cutoff && kv.Key.Bucket % Day == 0 ? Day : Hour;
+            if (kv.Key.Bucket + duration <= fromUnix) continue;
             result.TryGetValue(kv.Key.App, out var cur);
             result[kv.Key.App] = (cur.Up + kv.Value.Up, cur.Down + kv.Value.Down);
         }
         return result;
+    }
+
+    // Recent records use hourly buckets. Do not treat a UTC-midnight bucket
+    // as a whole day: doing so includes yesterday in local today queries.
+    public long TodayTotal()
+    {
+        long from = RangeStart("Today");
+        long until = new DateTimeOffset(DateTime.Now.Date.AddDays(1)).ToUnixTimeSeconds();
+        long total = 0;
+        foreach (var kv in _data)
+            if (kv.Key.App == TotalKey && kv.Key.Bucket + Hour > from && kv.Key.Bucket < until)
+                total += kv.Value.Up + kv.Value.Down;
+        return total;
     }
 
     public static long RangeStart(string range)

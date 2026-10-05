@@ -19,7 +19,7 @@ public partial class MonitorPage : UserControl
         DataContext = s;
 
         foreach (var (key, title, accent) in new[]
-                 { ("up", "上传", "Accent2Brush"), ("down", "下载", "Accent1Brush"), ("total", "总速", "TextBrush"), ("mem", "内存", "TextBrush"), ("cpu", "CPU", "TextBrush") })
+                 { ("up", "上传", "Accent2Brush"), ("down", "下载", "Accent1Brush"), ("today", "今日流量", "TextBrush"), ("total", "总速", "TextBrush"), ("mem", "内存", "TextBrush"), ("cpu", "CPU", "TextBrush") })
         {
             var label = new TextBlock { Text = title, FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center };
             label.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
@@ -72,6 +72,7 @@ public partial class MonitorPage : UserControl
         var s = _host.Settings;
         _values["up"].Text = UnitFormat.Speed(m.UpBps, s.SpeedBits, s.SpeedUnit);
         _values["down"].Text = UnitFormat.Speed(m.DownBps, s.SpeedBits, s.SpeedUnit);
+        _values["today"].Text = UnitFormat.Size(_host.Totals.TodayTotal(), false, "Auto");
         _values["total"].Text = UnitFormat.Speed(m.UpBps + m.DownBps, s.SpeedBits, s.SpeedUnit);
         _values["mem"].Text = $"{m.Mem:0}%";
         _values["cpu"].Text = $"{m.Cpu:0}%";

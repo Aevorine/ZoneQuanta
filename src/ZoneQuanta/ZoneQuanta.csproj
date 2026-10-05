@@ -11,9 +11,16 @@
     <Nullable>enable</Nullable>
     <AssemblyName>ZoneQuanta</AssemblyName>
     <RootNamespace>ZoneQuanta</RootNamespace>
-    <Version>1.2.13</Version>
+    <Version>1.2.14</Version>
     <NoWarn>$(NoWarn);WFAC010</NoWarn>
     <Product>ZoneQuanta</Product>
+    <Description>Windows world clock with taskbar speed, daily data usage, CPU and memory monitoring.</Description>
+    <RepositoryUrl>https://github.com/Aevorine/ZoneQuanta</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/Aevorine/ZoneQuanta</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>windows;wpf;world-clock;taskbar;network-monitor;data-usage</PackageTags>
     <Authors>Aevorine</Authors>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
@@ -56,6 +63,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
     <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.2.8" />
   </ItemGroup>
 

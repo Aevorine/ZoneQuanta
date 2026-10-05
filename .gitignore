@@ -25,3 +25,10 @@ publish/
 *.key
 *password*
 .env
+.env.*
+.codex/
+*.log
+*.tsv
+settings.json
+backups/
+backup/

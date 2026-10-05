@@ -36,7 +36,22 @@ internal static class Native
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
     public static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr value);
 
-    public const int SW_SHOWNOACTIVATE = 4;
+    public const int SW_HIDE = 0, SW_SHOWNOACTIVATE = 4;
+    public const uint SWP_SHOWWINDOW = 0x40;
+    public delegate void WinEventProc(IntPtr hook, uint evt, IntPtr hwnd, int objectId, int childId, uint thread, uint time);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr SetWinEventHook(uint min, uint max, IntPtr module, WinEventProc callback, uint process, uint thread, uint flags);
+    [DllImport("user32.dll")]
+    public static extern bool UnhookWinEvent(IntPtr hook);
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowVisible(IntPtr hwnd);
+    [DllImport("gdi32.dll")]
+    public static extern IntPtr CreateRectRgn(int left, int top, int right, int bottom);
+    [DllImport("gdi32.dll")]
+    public static extern bool DeleteObject(IntPtr obj);
+    [DllImport("user32.dll")]
+    public static extern int SetWindowRgn(IntPtr hwnd, IntPtr region, bool redraw);
 
     [DllImport("user32.dll")]
     public static extern bool IsIconic(IntPtr hWnd);

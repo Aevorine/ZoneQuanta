@@ -14,6 +14,15 @@ $dist = Join-Path $root 'dist'
 $repo = 'Aevorine/ZoneQuanta'
 $tag = "v$Version"
 
+function Remove-WorkspaceArtifact([string]$Path) {
+    $resolved = [IO.Path]::GetFullPath($Path)
+    $prefix = [IO.Path]::GetFullPath($root.Path).TrimEnd('\') + '\'
+    if (-not $resolved.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw '拒绝删除工作区以外的路径'
+    }
+    if (Test-Path -LiteralPath $resolved) { Remove-Item -LiteralPath $resolved -Recurse -Force }
+}
+
 function Invoke-Native([scriptblock]$Cmd) {
     & $Cmd
     if ($LASTEXITCODE -ne 0) { throw "命令失败 ($LASTEXITCODE)：$Cmd" }
@@ -21,15 +30,15 @@ function Invoke-Native([scriptblock]$Cmd) {
 
 (Get-Content $proj -Raw) -replace '<Version>[^<]*</Version>', "<Version>$Version</Version>" | Set-Content $proj -NoNewline
 
-if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
+Remove-WorkspaceArtifact $dist
 New-Item -ItemType Directory -Path $dist | Out-Null
 
 $obj = Join-Path $root 'src\ZoneQuanta\obj'
-if (Test-Path $obj) { Remove-Item $obj -Recurse -Force }
+Remove-WorkspaceArtifact $obj
 $out = Join-Path $dist 'build'
 Invoke-Native { dotnet publish $proj -c Release -o $out -p:Flavor=full -p:PublishReadyToRun=true -nologo -v q }
 Move-Item (Join-Path $out 'ZoneQuanta.exe') (Join-Path $dist 'ZoneQuanta.exe')
-Remove-Item $out -Recurse -Force
+Remove-WorkspaceArtifact $out
 
 $file = Join-Path $dist 'ZoneQuanta.exe'
 $entry = [ordered]@{
@@ -53,16 +62,20 @@ if ($SkipPublish) { Write-Output "构建完成（未发布）：$dist"; return }
 
 $files = @('ZoneQuanta.exe', 'update.json') | ForEach-Object { Join-Path $dist $_ }
 $body = if ($Notes) { $Notes } else { "ZoneQuanta $tag" }
-Invoke-Native { gh release create $tag @files --repo $repo --title "ZoneQuanta $tag" --notes $body --latest }
+$notesFile = Join-Path $dist 'release-notes.md'
+$body | Set-Content -LiteralPath $notesFile -Encoding utf8
+Invoke-Native { gh release create $tag @files --repo $repo --title "ZoneQuanta $tag" --notes-file $notesFile --latest }
+Remove-Item -LiteralPath $notesFile
 
 $releases = gh release list --repo $repo --limit 100 --json tagName,publishedAt | ConvertFrom-Json | Sort-Object publishedAt -Descending
 $releases | Select-Object -Skip $Keep | ForEach-Object {
-    gh release delete $_.tagName --repo $repo --yes --cleanup-tag
+    $oldTag = $_.tagName
+    Invoke-Native { gh release delete $oldTag --repo $repo --yes --cleanup-tag }
 }
 
-Remove-Item $dist -Recurse -Force
+# Keep the current package locally; remove obsolete build outputs.
 foreach ($d in 'bin', 'obj') {
     $p = Join-Path $root "src\ZoneQuanta\$d"
-    if (Test-Path $p) { Remove-Item $p -Recurse -Force }
+    Remove-WorkspaceArtifact $p
 }
 Write-Output "已发布 $tag，保留最近 $Keep 个版本"

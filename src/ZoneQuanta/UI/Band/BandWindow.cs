@@ -34,6 +34,9 @@ public sealed class BandWindow : Window
     private int _ticks;
     private bool _suppressed;
     private Metrics _last;
+    private long _todayBytes;
+    private readonly TaskbarTracker _taskbar = new();
+    private bool _repositioning;
     private readonly DispatcherTimer _hover = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private int _inside, _outside;
     private bool _hovering;
@@ -64,6 +67,7 @@ public sealed class BandWindow : Window
         {
             new("up", "上传", "Accent2Brush", s => s.BandUp),
             new("down", "下载", "Accent1Brush", s => s.BandDown),
+            new("today", "今日流量", "TextBrush", s => s.BandToday),
             new("total", "总速", "TextBrush", s => s.BandTotal),
             new("mem", "内存", "TextBrush", s => s.BandMem),
             new("cpu", "CPU", "TextBrush", s => s.BandCpu),
@@ -87,6 +91,13 @@ public sealed class BandWindow : Window
             _hwnd = new WindowInteropHelper(this).Handle;
             Native.SetExStyle(_hwnd, Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE, true);
         };
+        _taskbar.Changed += () => Reposition();
+        Closed += (_, _) =>
+        {
+            _taskbar.Dispose();
+            _hover.Stop();
+            _settings.PropertyChanged -= OnSettingChanged;
+        };
         SizeChanged += (_, _) => Reposition();
         MouseRightButtonUp += (_, e) => { e.Handled = true; SettingsRequested?.Invoke(); };
         StateChanged += (_, _) => Revive();
@@ -107,31 +118,34 @@ public sealed class BandWindow : Window
         if (show && !IsVisible)
         {
             Show();
+            _taskbar.Start();
             Reposition();
             _hover.Start();
         }
         else if (!show && IsVisible)
         {
             Hide();
+            _taskbar.Stop();
             _hover.Stop();
             SetHovering(false);
         }
     }
 
-    public void Update(Metrics m)
+    public void Update(Metrics m, long? todayBytes = null)
     {
-        if (!IsVisible) return;
         _last = m;
+        if (todayBytes.HasValue) _todayBytes = todayBytes.Value;
+        if (!IsVisible) return;
         bool bits = _settings.SpeedBits;
         string unit = _settings.SpeedUnit;
         Set("up", UnitFormat.Speed(m.UpBps, bits, unit), null);
         Set("down", UnitFormat.Speed(m.DownBps, bits, unit), null);
+        Set("today", UnitFormat.Size(_todayBytes, false, "Auto"), null);
         Set("total", UnitFormat.Speed(m.UpBps + m.DownBps, bits, unit), null);
         Set("mem", $"{m.Mem:0}%", Load(m.Mem));
         Set("cpu", $"{m.Cpu:0}%", Load(m.Cpu));
 
-        if (TrayMoved()) Reposition(refreshStart: true);
-        else if (++_ticks % 30 == 0) Reposition(refreshStart: true);
+        if (++_ticks % 30 == 0) Reposition(refreshStart: true);
         else if (_ticks % 6 == 0) KeepOnTop();
     }
 
@@ -179,6 +193,7 @@ public sealed class BandWindow : Window
             case nameof(AppSettings.BandVisible):
             case nameof(AppSettings.BandUp):
             case nameof(AppSettings.BandDown):
+            case nameof(AppSettings.BandToday):
             case nameof(AppSettings.BandTotal):
             case nameof(AppSettings.BandMem):
             case nameof(AppSettings.BandCpu):
@@ -194,17 +209,6 @@ public sealed class BandWindow : Window
                 Update(_last);
                 break;
         }
-    }
-
-    private Native.RECT _lastTray;
-
-    private bool TrayMoved()
-    {
-        IntPtr tray = Native.FindWindow("Shell_TrayWnd", null);
-        if (tray == IntPtr.Zero || !Native.GetWindowRect(tray, out var r)) return false;
-        bool moved = r.Left != _lastTray.Left || r.Top != _lastTray.Top || r.Right != _lastTray.Right || r.Bottom != _lastTray.Bottom;
-        _lastTray = r;
-        return moved;
     }
 
     public void Revive()
@@ -238,9 +242,17 @@ public sealed class BandWindow : Window
 
     private void Reposition(bool refreshStart = false)
     {
-        if (_hwnd == IntPtr.Zero || !IsVisible) return;
-        IntPtr tray = Native.FindWindow("Shell_TrayWnd", null);
-        if (tray == IntPtr.Zero || !Native.GetWindowRect(tray, out var t)) return;
+        if (_hwnd == IntPtr.Zero || !IsVisible || _repositioning) return;
+        IntPtr tray = _taskbar.Handle;
+        if (tray == IntPtr.Zero || !Native.GetWindowRect(tray, out var t))
+        {
+            Native.ShowWindow(_hwnd, Native.SW_HIDE);
+            SetHovering(false);
+            return;
+        }
+        _repositioning = true;
+        try
+        {
 
         var dpi = VisualTreeHelper.GetDpi(this);
         double sx = dpi.DpiScaleX, sy = dpi.DpiScaleY;
@@ -272,7 +284,32 @@ public sealed class BandWindow : Window
         Height = trayH / sy;
         Left = x / sx;
         Top = t.Top / sy;
-        KeepOnTop();
+        // Clip to the taskbar monitor so the sliding band cannot spill onto
+        // another display or remain visible over the auto-hide reveal strip.
+        var info = new Native.MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<Native.MONITORINFO>() };
+        if (Native.GetMonitorInfo(Native.MonitorFromWindow(tray, 2), ref info))
+        {
+            int left = Math.Max(t.Left, info.rcMonitor.Left);
+            int top = Math.Max(t.Top, info.rcMonitor.Top);
+            int right = Math.Min(t.Right, info.rcMonitor.Right);
+            int bottom = Math.Min(t.Bottom, info.rcMonitor.Bottom);
+            bool visible = Native.IsWindowVisible(tray) && right - left > 2 && bottom - top > 2;
+            if (visible)
+            {
+                IntPtr region = Native.CreateRectRgn((int)Math.Max(0, left - x), top - t.Top,
+                    (int)Math.Min(widthPx, right - x), bottom - t.Top);
+                if (Native.SetWindowRgn(_hwnd, region, true) == 0) Native.DeleteObject(region);
+                Native.SetWindowPos(_hwnd, Native.HWND_TOPMOST, (int)Math.Round(x), t.Top,
+                    (int)Math.Ceiling(widthPx), (int)trayH, Native.SWP_NOACTIVATE | Native.SWP_SHOWWINDOW);
+            }
+            else
+            {
+                Native.ShowWindow(_hwnd, Native.SW_HIDE);
+                SetHovering(false);
+            }
+        }
+        }
+        finally { _repositioning = false; }
     }
 
     private static Rect FindStartButton(IntPtr tray)

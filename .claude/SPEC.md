@@ -22,24 +22,5 @@ Windows 桌面时钟组件（本地 + 洛杉矶），WPF / .NET 8 单文件 exe�
 - 镜像线路（ghfast.top、gh-proxy.com）为第三方，可用性随时变化；已有签名校验，失效时自动回退直连
 
 ## 恢复点
-下一步：等用户验收反馈（按 T-20261002-4 继续）。2026-10-03：已发布 v1.2.11（时间组件改为横向 24 小时日轴；Release 仅 v1.2.11 + v1.2.10），本地产物已清理。
-关键决策：WPF + .NET 8；轻量版 / 独立版并行发布；更新清单用 ECDSA P-256 签名，私钥与密码在仓库外的 `ZONEQUANTA_SECRET_DIR`；`Core` 不依赖 `UI`。
-已知错误：无。
-<!-- wf:resume:start -->
-（机器快照，PreCompact 钩子写，勿手改；恢复时以真实 Git 与代码为准）
-- 快照时间：2026-10-03T04:07:55.191Z（PreCompact/auto，会话 0c5205e0）
-- Git：main → origin/main @ ba0a366（+0 -0）；未提交 0 个
-- 最近 3 小时改过的文件（项目根，前 15）：CHANGELOG.md，README.en.md，README.md，src\ZoneQuanta\UI\Controls\DayBar.cs，src\ZoneQuanta\UI\Controls\ZoneCard.xaml.cs，src\ZoneQuanta\obj\ZoneQuanta.csproj.nuget.dgspec.json，src\ZoneQuanta\obj\ZoneQuanta_5mrepy34_wpftmp.csproj.nuget.dgspec.json，src\ZoneQuanta\obj\project.nuget.cache，src\ZoneQuanta\obj\project.assets.json，src\ZoneQuanta\obj\ZoneQuanta.csproj.nuget.g.targets，src\ZoneQuanta\obj\ZoneQuanta_5mrepy34_wpftmp.csproj.nuget.g.targets，src\ZoneQuanta\obj\ZoneQuanta.csproj.nuget.g.props，src\ZoneQuanta\obj\ZoneQuanta_5mrepy34_wpftmp.csproj.nuget.g.props，src\ZoneQuanta\UI\Controls\ClockStrip.cs，src\ZoneQuanta\UI\Widget\WidgetWindow.cs
-<!-- wf:resume:end -->
-
-## 明确不做
-- [2026-10-02] 代码签名证书（Authenticode）｜代码签名、SmartScreen、证书 — 需付费证书，用户未选择
-- [2026-10-02] 托盘右键菜单截图复核｜托盘菜单、截图复核、右键菜单外观 — 用户未选择
-
-## 学习候选
-- [2026-10-03] 复现系统行为类 bug（如三指下滑=Win+D）先用真实按键端到端复现并确认到底哪个窗口消失，再改；本例小组件本无问题，消失的是主面板｜复现 1 次｜依据：keybd_event 发 Win+D 后逐窗口读 IsIconic/IsWindowVisible｜范围：项目
-- [2026-10-03] WPF 没有 PlaneProjection，3D 质感用 SkewTransform 倾斜 + 跟随鼠标的高光近似，别再试 Projection｜复现 1 次｜依据：编译前已识别，改用 Skew 后构建通过｜范围：项目
-- [2026-10-03] PowerShell 工具每次调用不保留 Add-Type 类型，类型定义与调用要放进同一个脚本文件再用 pwsh -File 执行；含三引号的 python 补丁别塞进 bash heredoc，用 Write 工具落盘｜复现 1 次｜依据：两次因此整段命令未执行｜范围：全局
-- [2026-10-03] 复现用户报告的问题前先读用户真实 settings.json（本例「总是置顶」是关的，默认设置下根本复现不了），并用截图而不是窗口可见标志判断「是否真的显示」｜复现 1 次｜依据：IsWindowVisible 为真但被桌面层盖住，截图才暴露｜范围：项目
-- [2026-10-03] 涉及「进程重启 / 单实例」的功能要用「新旧进程同时存在」的真实时序复现（旧进程仍持有互斥锁时拉起新进程），单看代码路径看不出新进程会立刻退出｜复现 1 次｜依据：自更新后无任何实例存活，加 WaitOne 后存活 1 个｜范围：项目
-- [2026-10-03] 自更新类问题必须在真实更新器上端到端复现（本地签名更新服务器 + `ZONEQUANTA_UPDATE_BASE`），并取旧进程日志里的完整堆栈；单文件程序替换自身 exe 后，旧进程里任何「首次加载程序集」都会失败，退出清理必须在替换之前做完｜复现 1 次｜依据：日志栈 `FileNotFoundException [System.Threading.ThreadPool] at App.ExitApp`，1.2.9 的兜底因方法 JIT 失败而失效｜范围：项目
+2026-10-05：v1.2.14 新增今日流量与独立任务栏跟随。编译通过；交互路径未实测。发布后仅保留 v1.2.14 与 v1.2.13。
+当前发布为自带运行时的单文件；旧 lite/full 更新清单键保持兼容。签名密钥只在仓库外。
