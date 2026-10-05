@@ -1,5 +1,9 @@
 # 更新日志 · Changelog
 
+## 1.2.18 — 2026-10-05
+- 中文：监控内容改为任务栏原生子窗口，由父窗口带动移动与显示隐藏；区分自动隐藏动画与实际布局变化，滑动期间保留安全区域缓存。字体改为按真实文字宽高最大化，测量前清除宿主固定尺寸，保留边界与图标避让。支持任务栏重建后重新创建宿主。
+- English: moved the monitor into a native taskbar child window, inheriting parent movement and visibility. Auto-hide motion preserves the safe-area cache. Fonts maximize within actual measured bounds with host dimensions cleared before measuring; edge margins and icon avoidance remain. Recreates the host when the taskbar is rebuilt.
+
 ## 1.2.17 — 2026-10-05
 - 中文：修正上一版字体过度放大：改用 Windows 界面字号作为基准，限制数值与标签字号；按任务栏高度和安全宽度测量缩小，并保留四周余量。半 DIP 步进减轻字号跳动，剩余空间仅用于间距，保留图标避让。
 - English: corrected oversized text by using a bounded Windows UI font baseline, shrinking from measured taskbar constraints and reserving margins. Half-DIP font steps reduce jitter; spare space is used for spacing, with icon avoidance preserved.

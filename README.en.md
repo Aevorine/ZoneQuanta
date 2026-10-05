@@ -26,6 +26,12 @@
 | Auto-update | Parallel multi-mirror download, ECDSA signature + SHA-256 verification |
 | Low footprint | Second-aligned timer, redraws only what changes; about 0.3% of one CPU core and ~75 MB RAM when idle |
 
+## v1.2.18
+
+The monitor now lives in a native taskbar child window created with HwndSource. Windows carries it with the parent taskbar when the taskbar moves, shows or hides, replacing the independent floating-window animation chase. Auto-hide motion retains the cached safe gap instead of invalidating it for descendant animation events. Actual icon layout changes still trigger safe-area detection.
+
+Text uses the largest size fitting actual glyph measurements and both safe-area dimensions, with labels scaling alongside values. Previous fixed host dimensions are cleared before measuring content. Edge and button margins remain, font sizes use half-DIP steps, and spare width is shared across visible items. The native host is recreated when Explorer rebuilds the taskbar.
+
 ## v1.2.17
 
 Corrected oversized taskbar text. The preferred size is based on the Windows UI font, with values bounded to 9–16 DIP and labels to 8–11 DIP. Actual text measurements shrink the size when the taskbar is short or the safe gap is narrow. Half-DIP steps reduce font jitter, and measurements reserve space on both axes. Spare space is used for spacing while Start and app buttons remain protected.

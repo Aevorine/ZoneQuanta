@@ -13,7 +13,7 @@ using ZoneQuanta.Platform;
 
 namespace ZoneQuanta.UI.Band;
 
-public sealed class BandWindow : Window
+public sealed class BandWindow : IDisposable
 {
     private static readonly Brush Warn = Frozen("#E2AE74"), Danger = Frozen("#E27D7D");
 
@@ -29,6 +29,10 @@ public sealed class BandWindow : Window
     private readonly List<Chip> _chips;
     private readonly StackPanel _row = new() { Orientation = Orientation.Horizontal };
     private IntPtr _hwnd;
+    private HwndSource? _source;
+    private IntPtr _parent;
+    private bool _visible, _disposed;
+    private bool IsVisible => _visible;
     private TaskbarLayout? _layout;
     private bool _readingLayout, _canPaint;
     private int _layoutGeneration;
@@ -58,19 +62,6 @@ public sealed class BandWindow : Window
     {
         _settings = settings;
 
-        WindowStyle = WindowStyle.None;
-        AllowsTransparency = false;
-        SetResourceReference(BackgroundProperty, "SurfaceBrush");
-        ResizeMode = ResizeMode.NoResize;
-        ShowInTaskbar = false;
-        ShowActivated = false;
-        Topmost = true;
-        SizeToContent = SizeToContent.Manual;
-        Width = 1;
-        Height = 1;
-        Focusable = false;
-        Title = "ZoneQuanta Band";
-
         _chips = new List<Chip>
         {
             new("up", "上传", "Accent2Brush", s => s.BandUp),
@@ -92,18 +83,16 @@ public sealed class BandWindow : Window
         }
 
         _pill = new Border { Padding = new Thickness(1, 0, 1, 0), VerticalAlignment = VerticalAlignment.Stretch, Child = _row };
+        _pill.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
         System.Windows.Documents.TextElement.SetFontFamily(_pill, (FontFamily)Application.Current.FindResource("AppFont"));
-        UseLayoutRounding = true;
-        SnapsToDevicePixels = true;
-        Content = _pill;
+        _pill.UseLayoutRounding = true;
+        _pill.SnapsToDevicePixels = true;
 
-        SourceInitialized += (_, _) =>
+        _taskbar.Changed += () =>
         {
-            _hwnd = new WindowInteropHelper(this).Handle;
-            Native.SetExStyle(_hwnd, Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE, true);
-            HideNative();
+            if (_taskbar.IsMoving) SetHovering(false);
+            Reposition();
         };
-        _taskbar.Changed += () => Reposition();
         _taskbar.LayoutChanged += () =>
         {
             ++_layoutGeneration;
@@ -112,16 +101,7 @@ public sealed class BandWindow : Window
             RefreshLayout();
         };
         _layoutTimer.Tick += (_, _) => RefreshLayout();
-        Closed += (_, _) =>
-        {
-            _taskbar.Dispose();
-            _hover.Stop();
-            _layoutTimer.Stop();
-            _settings.PropertyChanged -= OnSettingChanged;
-        };
-        SizeChanged += (_, _) => Reposition();
-        MouseRightButtonUp += (_, e) => { e.Handled = true; SettingsRequested?.Invoke(); };
-        StateChanged += (_, _) => Revive();
+        _pill.MouseRightButtonUp += (_, e) => { e.Handled = true; SettingsRequested?.Invoke(); };
         _settings.PropertyChanged += OnSettingChanged;
         _hover.Tick += (_, _) => PollHover();
         ApplyChipVisibility();
@@ -138,7 +118,7 @@ public sealed class BandWindow : Window
         bool show = _settings.BandVisible && !_suppressed && AnyChip();
         if (show && !IsVisible)
         {
-            Show();
+            _visible = true;
             _taskbar.Start();
             _layoutTimer.Start();
             RefreshLayout();
@@ -147,7 +127,8 @@ public sealed class BandWindow : Window
         }
         else if (!show && IsVisible)
         {
-            Hide();
+            HideNative();
+            _visible = false;
             _taskbar.Stop();
             _layoutTimer.Stop();
             ++_layoutGeneration;
@@ -242,15 +223,55 @@ public sealed class BandWindow : Window
 
     public void Revive()
     {
-        if (_hwnd == IntPtr.Zero || !IsVisible || !_canPaint || !Native.IsIconic(_hwnd)) return;
-        Native.ShowWindow(_hwnd, Native.SW_SHOWNOACTIVATE);
-        KeepOnTop();
+        if (_visible && _canPaint) KeepOnTop();
     }
 
     private void KeepOnTop()
     {
-        if (_hwnd != IntPtr.Zero)
-            Native.SetWindowPos(_hwnd, Native.HWND_TOPMOST, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
+        if (_hwnd != IntPtr.Zero && Native.IsWindow(_hwnd))
+            Native.SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0,
+                Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
+    }
+
+    private bool EnsureHost(IntPtr tray)
+    {
+        if (_disposed || tray == IntPtr.Zero || !Native.IsWindow(tray)) return false;
+        if (_parent == tray && _hwnd != IntPtr.Zero && Native.IsWindow(_hwnd)) return true;
+        _source?.Dispose();
+        _hwnd = IntPtr.Zero;
+        _parent = tray;
+        var parameters = new HwndSourceParameters("ZoneQuanta Band")
+        {
+            ParentWindow = tray,
+            WindowStyle = 0x40000000 | 0x04000000, // WS_CHILD | WS_CLIPSIBLINGS
+            ExtendedWindowStyle = (int)Native.WS_EX_NOACTIVATE,
+            PositionX = 0, PositionY = 2, Width = 1, Height = 1,
+        };
+        _source = new HwndSource(parameters) { RootVisual = _pill };
+        _source.AddHook((IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled) =>
+        {
+            if (message == 0x21) { handled = true; return new IntPtr(3); } // MA_NOACTIVATE
+            return IntPtr.Zero;
+        });
+        _hwnd = _source.Handle;
+        _fitRevision = -1;
+        return _hwnd != IntPtr.Zero;
+    }
+
+    public void Close() => Dispose();
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _visible = false;
+        _taskbar.Dispose();
+        _hover.Stop();
+        _layoutTimer.Stop();
+        _settings.PropertyChanged -= OnSettingChanged;
+        _source?.Dispose();
+        _source = null;
+        _hwnd = IntPtr.Zero;
     }
 
     private void SetFontSize(double value)
@@ -258,7 +279,7 @@ public sealed class BandWindow : Window
         foreach (var c in _chips)
         {
             c.Value.FontSize = value;
-            ((TextBlock)c.Panel.Children[0]).FontSize = Math.Clamp(value * 0.72, 8, 11);
+            ((TextBlock)c.Panel.Children[0]).FontSize = Math.Max(8, value * 0.60);
         }
     }
 
@@ -269,10 +290,13 @@ public sealed class BandWindow : Window
         _fitWidth = widthDip;
         _fitHeight = heightDip;
         _fitRevision = _contentRevision;
+        // Remove the previous host dimensions before measuring content; a
+        // fixed-size border reports its assigned size instead of glyph size.
+        _pill.Width = double.NaN;
+        _pill.Height = double.NaN;
         foreach (var c in _chips) { c.Panel.Width = double.NaN; c.Panel.MinWidth = 0; }
-        // Start from a normal Windows UI size, rather than enlarging text to
-        // consume the whole taskbar. Measure both dimensions and shrink only
-        // when necessary; spare space belongs to spacing, not oversized glyphs.
+        // Use actual text bounds on both axes. The host is already confined
+        // to the taskbar, so large text cannot extend beyond the safe area.
         bool Fits(double font)
         {
             SetFontSize(font);
@@ -280,8 +304,7 @@ public sealed class BandWindow : Window
             return _pill.DesiredSize.Width <= widthDip - 4 && _pill.DesiredSize.Height <= heightDip - 4;
         }
         double low = 9;
-        double preferred = Math.Clamp(SystemFonts.MessageFontSize * 1.15, 12, 16);
-        double high = Math.Min(preferred, Math.Max(low, heightDip * 0.34));
+        double high = Math.Max(low, heightDip);
         if (!Fits(low)) return _fits = false;
         for (int i = 0; i < 10; ++i)
         {
@@ -292,7 +315,7 @@ public sealed class BandWindow : Window
         // Half-DIP steps keep small changes in sampled numbers from making
         // the font visibly pulse. Never round upwards past the measured fit.
         low = Math.Max(9, Math.Floor(low * 2) / 2);
-        Fits(low);
+        if (!Fits(low)) return _fits = false;
         int count = 0;
         foreach (var c in _chips) if (c.Enabled(_settings)) ++count;
         if (count == 0) return _fits = false;
@@ -312,7 +335,7 @@ public sealed class BandWindow : Window
 
     private async void RefreshLayout()
     {
-        if (_readingLayout || !IsVisible) return;
+        if (_readingLayout || !IsVisible || _disposed || _taskbar.IsMoving) return;
         IntPtr tray = _taskbar.Handle;
         if (tray == IntPtr.Zero || !Native.GetWindowRect(tray, out var t)) return;
         var info = new Native.MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<Native.MONITORINFO>() };
@@ -323,7 +346,7 @@ public sealed class BandWindow : Window
         try
         {
             var layout = await Task.Run(() => TaskbarLayout.Read(tray));
-            if (!IsVisible || generation != _layoutGeneration || tray != _taskbar.Handle) return;
+            if (_disposed || !IsVisible || _taskbar.IsMoving || generation != _layoutGeneration || tray != _taskbar.Handle) return;
             _layout = layout;
             Reposition();
         }
@@ -332,17 +355,18 @@ public sealed class BandWindow : Window
 
     private void Reposition()
     {
-        if (_hwnd == IntPtr.Zero || !IsVisible || _repositioning) return;
+        if (!IsVisible || _disposed || _repositioning) return;
         IntPtr tray = _taskbar.Handle;
         if (tray == IntPtr.Zero || _layout is null || !Native.GetWindowRect(tray, out var t))
         {
             HideNative();
             return;
         }
+        if (!EnsureHost(tray)) { HideNative(); return; }
         _repositioning = true;
         try
         {
-            var dpi = VisualTreeHelper.GetDpi(this);
+            var dpi = VisualTreeHelper.GetDpi(_pill);
             double sx = dpi.DpiScaleX, sy = dpi.DpiScaleY;
             double trayW = t.Right - t.Left, trayH = t.Bottom - t.Top;
             // A resized or vertical taskbar needs a new safe layout.
@@ -356,32 +380,22 @@ public sealed class BandWindow : Window
             Rect area = _layout.FreeArea(_settings.BandPosition, 6 * sx);
             if (area.IsEmpty) { HideNative(); return; }
             double widthPx = Math.Floor(area.Width);
-            if (!FitContent(widthPx / sx, trayH / sy))
+            if (!FitContent(widthPx / sx, (trayH - 4) / sy))
             {
                 HideNative();
                 return;
             }
             double preferred = _settings.BandPosition is "Right" or "Start" ? area.Right - widthPx : area.Left;
-            double x = t.Left + Math.Clamp(preferred + _settings.BandOffset * sx, area.Left, area.Right - widthPx);
-            Width = widthPx / sx;
-            Height = trayH / sy;
-            Left = x / sx;
-            Top = t.Top / sy;
-            var info = new Native.MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<Native.MONITORINFO>() };
-            if (!Native.GetMonitorInfo(Native.MonitorFromWindow(tray, 2), ref info)) { HideNative(); return; }
-            int top = Math.Max(t.Top, info.rcMonitor.Top), bottom = Math.Min(t.Bottom, info.rcMonitor.Bottom);
-            if (!Native.IsWindowVisible(tray) || bottom - top <= 2) { HideNative(); return; }
+            double x = Math.Clamp(preferred + _settings.BandOffset * sx, area.Left, area.Right - widthPx);
+            // Child coordinates are relative to the taskbar client area.
+            // Windows moves and hides the host along with Explorer, without
+            // waiting for a DispatcherTimer or a UI Automation refresh.
             int pixelX = (int)Math.Ceiling(x), pixelWidth = (int)Math.Floor(widthPx);
-            IntPtr region = Native.CreateRectRgn(0, top - t.Top, pixelWidth, bottom - t.Top);
-            if (region == IntPtr.Zero) { HideNative(); return; }
-            if (Native.SetWindowRgn(_hwnd, region, true) == 0)
-            {
-                Native.DeleteObject(region);
-                HideNative();
-                return;
-            }
-            Native.SetWindowPos(_hwnd, Native.HWND_TOPMOST, pixelX, t.Top, pixelWidth,
-                (int)trayH, Native.SWP_NOACTIVATE | Native.SWP_SHOWWINDOW);
+            int pixelHeight = Math.Max(1, (int)trayH - 4);
+            _pill.Width = pixelWidth / sx;
+            _pill.Height = pixelHeight / sy;
+            Native.SetWindowPos(_hwnd, IntPtr.Zero, pixelX, 2, pixelWidth, pixelHeight,
+                Native.SWP_NOACTIVATE | Native.SWP_SHOWWINDOW);
             _canPaint = true;
         }
         finally { _repositioning = false; }

@@ -13,6 +13,8 @@ internal sealed class TaskbarTracker : IDisposable
     private IntPtr _hook;
     private Native.RECT _last;
     private bool _visible, _haveRect;
+    private long _movingUntil;
+    public bool IsMoving => Environment.TickCount64 < _movingUntil;
     public IntPtr Handle { get; private set; }
     public event Action? Changed;
     public event Action? LayoutChanged;
@@ -54,6 +56,8 @@ internal sealed class TaskbarTracker : IDisposable
         bool visible = Native.IsWindowVisible(tray);
         if (_haveRect && visible == _visible && rect.Left == _last.Left && rect.Top == _last.Top &&
             rect.Right == _last.Right && rect.Bottom == _last.Bottom) return;
+        if (_haveRect && (rect.Left != _last.Left || rect.Top != _last.Top))
+            _movingUntil = Environment.TickCount64 + 180;
         _last = rect;
         _visible = visible;
         _haveRect = true;
@@ -62,9 +66,12 @@ internal sealed class TaskbarTracker : IDisposable
 
     private void OnWindowEvent(IntPtr hook, uint evt, IntPtr hwnd, int objectId, int childId, uint thread, uint time)
     {
-        if (hwnd == Handle && objectId == 0 && childId == 0 && evt == 0x800B) Check();
-        else if ((evt <= 0x8004 || evt == 0x800B) && Handle != IntPtr.Zero &&
-            (hwnd == Handle || Native.IsChild(Handle, hwnd)))
+        if (Handle == IntPtr.Zero || (hwnd != Handle && !Native.IsChild(Handle, hwnd))) return;
+        Check();
+        // Show/hide and descendant movement during an auto-hide slide do not
+        // change the safe horizontal gap. Keep the cached layout alive.
+        if (evt is 0x8002 or 0x8003 || IsMoving) return;
+        if ((evt <= 0x8004 || evt == 0x800B) && !(hwnd == Handle && objectId == 0 && childId == 0))
             LayoutChanged?.Invoke();
     }
 

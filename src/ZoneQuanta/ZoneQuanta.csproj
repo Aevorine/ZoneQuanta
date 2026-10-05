@@ -11,10 +11,10 @@
     <Nullable>enable</Nullable>
     <AssemblyName>ZoneQuanta</AssemblyName>
     <RootNamespace>ZoneQuanta</RootNamespace>
-    <Version>1.2.17</Version>
+    <Version>1.2.18</Version>
     <NoWarn>$(NoWarn);WFAC010</NoWarn>
     <Product>ZoneQuanta</Product>
-    <Description>Windows world clock with adaptive taskbar speed, daily data usage, CPU and memory monitoring with readable, bounded adaptive text and safe icon avoidance.</Description>
+    <Description>Windows world clock with adaptive taskbar speed, daily data usage, CPU and memory monitoring with taskbar child-window monitoring, fitted text and safe icon avoidance.</Description>
     <RepositoryUrl>https://github.com/Aevorine/ZoneQuanta</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://github.com/Aevorine/ZoneQuanta</PackageProjectUrl>

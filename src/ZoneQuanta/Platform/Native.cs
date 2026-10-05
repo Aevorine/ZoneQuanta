@@ -48,6 +48,9 @@ internal static class Native
     public static extern bool IsChild(IntPtr parent, IntPtr child);
 
     [DllImport("user32.dll")]
+    public static extern bool IsWindow(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr hwnd);
     [DllImport("gdi32.dll")]
     public static extern IntPtr CreateRectRgn(int left, int top, int right, int bottom);
