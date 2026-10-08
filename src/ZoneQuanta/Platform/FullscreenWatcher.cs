@@ -10,35 +10,42 @@ internal static class FullscreenWatcher
 
     public static bool IsFullscreenActive()
     {
+        IntPtr hwnd = Native.GetForegroundWindow();
+        // Showing the desktop (Win+D, Win+M, the corner button, a click on the wallpaper) makes Windows
+        // report "busy" exactly as it does for a full-screen app. It is not one: the clock and the band
+        // must stay on screen then, so shell windows, our own windows and "no foreground" never count.
+        if (hwnd == IntPtr.Zero || IsShellWindow(hwnd) || OwnedBySelf(hwnd)) return false;
+
         if (Native.SHQueryUserNotificationState(out int state) == 0 && (state == 2 || state == 3 || state == 4))
             return true;
-        return ForegroundCoversMonitor();
+        return ForegroundCoversMonitor(hwnd);
     }
 
     public static bool IsDesktopForeground()
     {
         IntPtr hwnd = Native.GetForegroundWindow();
-        if (hwnd == IntPtr.Zero) return false;
-        Native.GetWindowThreadProcessId(hwnd, out uint pid);
-        if (pid == SelfPid) return false;
-
-        var cls = new StringBuilder(32);
-        Native.GetClassName(hwnd, cls, cls.Capacity);
-        return cls.ToString() is "Progman" or "WorkerW";
+        if (hwnd == IntPtr.Zero || OwnedBySelf(hwnd)) return false;
+        return ClassOf(hwnd) is "Progman" or "WorkerW";
     }
 
-    private static bool ForegroundCoversMonitor()
+    private static bool OwnedBySelf(IntPtr hwnd)
     {
-        IntPtr hwnd = Native.GetForegroundWindow();
-        if (hwnd == IntPtr.Zero) return false;
         Native.GetWindowThreadProcessId(hwnd, out uint pid);
-        if (pid == SelfPid) return false;
+        return pid == SelfPid;
+    }
 
+    private static bool IsShellWindow(IntPtr hwnd) =>
+        ClassOf(hwnd) is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd";
+
+    private static string ClassOf(IntPtr hwnd)
+    {
         var cls = new StringBuilder(64);
         Native.GetClassName(hwnd, cls, cls.Capacity);
-        string name = cls.ToString();
-        if (name is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd") return false;
+        return cls.ToString();
+    }
 
+    private static bool ForegroundCoversMonitor(IntPtr hwnd)
+    {
         if (!Native.GetWindowRect(hwnd, out var r)) return false;
         IntPtr mon = Native.MonitorFromWindow(hwnd, 2);
         var mi = new Native.MONITORINFO { cbSize = Marshal.SizeOf<Native.MONITORINFO>() };

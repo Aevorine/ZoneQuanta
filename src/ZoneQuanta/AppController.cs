@@ -272,6 +272,9 @@ public sealed class AppController : IPanelHost, IDisposable
             _band.SetSuppressed(fullscreen);
         }
         _widget.SetDesktopLift(FullscreenWatcher.IsDesktopForeground());
+        // Win+D / Win+M change the foreground window: bring back anything the shell just iconified or hid.
+        _widget.Revive();
+        _band.Revive();
     }
 
     private void QueueEnvironment()

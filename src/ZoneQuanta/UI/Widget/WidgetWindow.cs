@@ -93,9 +93,11 @@ public sealed class WidgetWindow : Window
         SyncVisibility();
     }
 
+    // "Show desktop" and minimize-all either iconify or hide top-level windows; the widget has to stay up.
     public void Revive()
     {
-        if (_hwnd == IntPtr.Zero || !IsVisible || !Native.IsIconic(_hwnd)) return;
+        if (_hwnd == IntPtr.Zero || !IsVisible) return;
+        if (!Native.IsIconic(_hwnd) && Native.IsWindowVisible(_hwnd)) return;
         Native.ShowWindow(_hwnd, Native.SW_SHOWNOACTIVATE);
         ReassertTopmost();
     }

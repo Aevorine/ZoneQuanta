@@ -311,7 +311,10 @@ public sealed class BandWindow : IDisposable
 
     public void Revive()
     {
-        if (_visible && _canPaint) KeepOnTop();
+        if (!_visible || !_canPaint || _hwnd == IntPtr.Zero) return;
+        // The shell may iconify or hide top-level windows when the desktop is shown; we are still wanted.
+        if (!Native.IsWindowVisible(_hwnd) || Native.IsIconic(_hwnd)) Native.ShowWindow(_hwnd, Native.SW_SHOWNOACTIVATE);
+        KeepOnTop();
     }
 
     private void KeepOnTop()

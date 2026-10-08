@@ -1,5 +1,10 @@
 # 更新日志 · Changelog
 
+## 1.3.1 — 2026-10-08
+- 中文：修复显示桌面 / 最小化时时钟组件与任务栏监控条消失：Win+D、Win+M 时系统把用户状态报告为「忙」（与全屏程序相同），程序误判为全屏而隐藏。前台为桌面、任务栏或本程序窗口时不再按全屏处理；窗口被系统最小化或隐藏时随前台变化立即恢复。
+- English: fixed the clock and the taskbar monitor disappearing when the desktop is shown or windows are minimized. Win+D / Win+M make Windows report the user state as "busy" like a full-screen app, which the program mistook for one. A foreground desktop, taskbar or own window is no longer treated as full screen, and windows iconified or hidden by the shell are restored on the foreground change.
+- Validation (real desktop, auto-hide taskbar): before, Win+D hid both windows about 0.4 s later and they stayed hidden; after, widget and band stay visible for the whole Win+D and Win+M period and a screenshot during show-desktop shows the live clock.
+
 ## 1.3.0 — 2026-10-08
 - 中文：显示速度。时钟由独立高精度线程在整秒前约 12 ms 唤醒、在界面线程最先绘制，不再排在网卡采样与监控条重排之后；进程恢复正常优先级并退出 Windows 11 效率模式节流（旧版为低于正常，CPU 满载时曾停顿 10 秒）。网速 / CPU / 内存改在后台线程采样，默认每 0.5 秒刷新，「监控」页可选 0.25 / 0.5 / 1 / 2 秒，监控条收起且面板关闭时自动降为每秒。
 - 中文：任务栏监控条。自动隐藏的任务栏隐藏期间预读布局，重新出现后几毫秒内显示；布局变化不再先收起再重算，并合并突发事件；数值变化只替换文字，字号搜索仅在空间变化时进行；悬停详情改为鼠标事件驱动并预先创建窗口；任务栏扫描改用 UI Automation 缓存请求；隐藏期间不再扫描。全屏与桌面置顶判断随前台窗口变化立即执行。
