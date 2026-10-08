@@ -12,7 +12,7 @@ internal sealed class TrayService : IDisposable
     private readonly NotifyIcon _icon;
     private readonly AppSettings _settings;
     private readonly ContextMenuStrip _menu = new();
-    private readonly ToolStripMenuItem _panel, _show, _through, _lock, _top, _fullscreen, _autostart;
+    private readonly ToolStripMenuItem _panel, _show, _band, _through, _lock, _top, _fullscreen, _autostart;
 
     public TrayService(AppSettings settings, Action togglePanel, Action resetPosition, Action checkUpdate, Action exit)
     {
@@ -20,6 +20,7 @@ internal sealed class TrayService : IDisposable
 
         _panel = Item("显示 / 隐藏面板", togglePanel);
         _show = Check("显示时钟", nameof(AppSettings.WidgetVisible), () => settings.WidgetVisible = !settings.WidgetVisible);
+        _band = Check("任务栏监控条", nameof(AppSettings.BandVisible), () => settings.BandVisible = !settings.BandVisible);
         _through = Check("鼠标穿透", nameof(AppSettings.ClickThrough), () => settings.ClickThrough = !settings.ClickThrough);
         _lock = Check("锁定位置", nameof(AppSettings.LockPosition), () => settings.LockPosition = !settings.LockPosition);
         _top = Check("总是置顶", nameof(AppSettings.Topmost), () => settings.Topmost = !settings.Topmost);
@@ -29,7 +30,7 @@ internal sealed class TrayService : IDisposable
         _menu.Items.AddRange(new ToolStripItem[]
         {
             _panel, new ToolStripSeparator(),
-            _show, _through, _lock, _top, _fullscreen, _autostart, new ToolStripSeparator(),
+            _show, _band, _through, _lock, _top, _fullscreen, _autostart, new ToolStripSeparator(),
             Item("重置位置", resetPosition), Item("检查更新", checkUpdate), new ToolStripSeparator(),
             Item("退出", exit),
         });
@@ -70,6 +71,7 @@ internal sealed class TrayService : IDisposable
         }
 
         _show.Checked = _settings.WidgetVisible;
+        _band.Checked = _settings.BandVisible;
         _through.Checked = _settings.ClickThrough;
         _lock.Checked = _settings.LockPosition;
         _top.Checked = _settings.Topmost;

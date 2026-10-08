@@ -3,21 +3,28 @@ using System.Windows.Threading;
 
 namespace ZoneQuanta.Platform;
 
-// Window events follow Explorer independently of the one-second metrics tick.
-// The small geometry-only fallback covers shell animations that omit WinEvents.
+// Window events follow Explorer independently of the metrics sampling. The geometry-only timer
+// covers shell animations that omit WinEvents: it runs at frame rate while the taskbar is moving
+// and relaxes to a slow heartbeat once it has been still for a moment.
 internal sealed class TaskbarTracker : IDisposable
 {
+    private const int FastMs = 16, IdleMs = 120, SettleMs = 700;
+
     private readonly DispatcherTimer _timer = new(DispatcherPriority.Render)
-        { Interval = TimeSpan.FromMilliseconds(16) };
+        { Interval = TimeSpan.FromMilliseconds(IdleMs) };
     private readonly Native.WinEventProc _callback;
     private IntPtr _hook;
     private Native.RECT _last;
     private bool _visible, _haveRect;
-    private long _movingUntil;
+    private long _movingUntil, _activeUntil;
     public bool IsMoving => Environment.TickCount64 < _movingUntil;
+    public int MovingRemainingMs => (int)Math.Max(0, _movingUntil - Environment.TickCount64);
     public IntPtr Handle { get; private set; }
     public event Action? Changed;
+    // The cached free-space layout may be stale (a taskbar button appeared, moved or went away).
     public event Action? LayoutChanged;
+    // A different taskbar window (Explorer restarted): nothing known about the old one applies.
+    public event Action? Rebuilt;
 
     public TaskbarTracker()
     {
@@ -43,7 +50,7 @@ internal sealed class TaskbarTracker : IDisposable
             if (_hook != IntPtr.Zero) Native.UnhookWinEvent(_hook);
             _hook = IntPtr.Zero;
             Handle = tray;
-            LayoutChanged?.Invoke();
+            Rebuilt?.Invoke();
             _haveRect = false;
             if (tray != IntPtr.Zero)
             {
@@ -52,16 +59,33 @@ internal sealed class TaskbarTracker : IDisposable
             }
             Changed?.Invoke();
         }
-        if (tray == IntPtr.Zero || !Native.GetWindowRect(tray, out var rect)) return;
+        if (tray == IntPtr.Zero || !Native.GetWindowRect(tray, out var rect))
+        {
+            Pace();
+            return;
+        }
         bool visible = Native.IsWindowVisible(tray);
         if (_haveRect && visible == _visible && rect.Left == _last.Left && rect.Top == _last.Top &&
-            rect.Right == _last.Right && rect.Bottom == _last.Bottom) return;
+            rect.Right == _last.Right && rect.Bottom == _last.Bottom)
+        {
+            Pace();
+            return;
+        }
+        long now = Environment.TickCount64;
         if (_haveRect && (rect.Left != _last.Left || rect.Top != _last.Top))
-            _movingUntil = Environment.TickCount64 + 180;
+            _movingUntil = now + 180;
+        _activeUntil = now + SettleMs;
         _last = rect;
         _visible = visible;
         _haveRect = true;
+        Pace();
         Changed?.Invoke();
+    }
+
+    private void Pace()
+    {
+        var wanted = TimeSpan.FromMilliseconds(Environment.TickCount64 < _activeUntil ? FastMs : IdleMs);
+        if (_timer.Interval != wanted) _timer.Interval = wanted;
     }
 
     private void OnWindowEvent(IntPtr hook, uint evt, IntPtr hwnd, int objectId, int childId, uint thread, uint time)

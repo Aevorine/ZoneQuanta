@@ -73,7 +73,7 @@ public sealed class RollCell : Grid
     {
         if (_inY is not null && Math.Abs(_animHeight - h) < 0.5) return;
         _animHeight = h;
-        var d = TimeSpan.FromMilliseconds(190);
+        var d = TimeSpan.FromMilliseconds(150);
         _inY = Slow(new DoubleAnimation(h, 0, d) { EasingFunction = Ease });
         _outY = Slow(new DoubleAnimation(0, -h, d) { EasingFunction = Ease });
         _inO = Slow(new DoubleAnimation(0, 1, d));
@@ -96,7 +96,6 @@ public sealed class RollCell : Grid
 
     private static DoubleAnimation Slow(DoubleAnimation a)
     {
-        Timeline.SetDesiredFrameRate(a, 30);
         a.Freeze();
         return a;
     }

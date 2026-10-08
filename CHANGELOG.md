@@ -1,5 +1,14 @@
 # 更新日志 · Changelog
 
+## 1.3.0 — 2026-10-08
+- 中文：显示速度。时钟由独立高精度线程在整秒前约 12 ms 唤醒、在界面线程最先绘制，不再排在网卡采样与监控条重排之后；进程恢复正常优先级并退出 Windows 11 效率模式节流（旧版为低于正常，CPU 满载时曾停顿 10 秒）。网速 / CPU / 内存改在后台线程采样，默认每 0.5 秒刷新，「监控」页可选 0.25 / 0.5 / 1 / 2 秒，监控条收起且面板关闭时自动降为每秒。
+- 中文：任务栏监控条。自动隐藏的任务栏隐藏期间预读布局，重新出现后几毫秒内显示；布局变化不再先收起再重算，并合并突发事件；数值变化只替换文字，字号搜索仅在空间变化时进行；悬停详情改为鼠标事件驱动并预先创建窗口；任务栏扫描改用 UI Automation 缓存请求；隐藏期间不再扫描。全屏与桌面置顶判断随前台窗口变化立即执行。
+- 中文：修复每 30 秒刷新网卡列表时出现一次 0 速度并丢失该秒流量；后台统计任务丢失时开关仍显示开启；日志满时整份清空。托盘菜单新增「任务栏监控条」；今日流量合计改为增量维护；滚动数字动画 150 ms、全帧率。
+- English: display speed. The clock is driven by a dedicated high-resolution thread that wakes ~12 ms before each second and is drawn first on the UI thread, no longer queued behind adapter sampling and band relayout; the process returns to normal priority and opts out of Windows 11 efficiency-mode throttling (it was below-normal and stalled up to 10 s under full CPU load). Network / CPU / memory are sampled on a background thread, every 0.5 s by default (0.25 / 0.5 / 1 / 2 s in Monitor), dropping to 1 s while the band is hidden and the panel closed.
+- English: taskbar monitor. An auto-hidden taskbar is read while tucked away so the band shows within milliseconds of its return; layout changes no longer hide and recompute, event bursts are coalesced, value changes only swap text (the font search runs only when the space changes), the hover card is event driven with a pre-created window, scans use UI Automation cache requests and are skipped while hidden. Fullscreen / desktop-lift detection runs on foreground changes.
+- English: fixed a zero-speed second and lost traffic at every 30 s adapter refresh, the per-app switch staying on after its scheduled task vanished, and the log being wiped when full. Tray menu gains a "Taskbar monitor" switch; today's total is maintained incrementally; digit roll is 150 ms at full frame rate.
+- Validation (real desktop, v1.2.20 vs 1.3.0, same machine, auto-hide taskbar): clock text set +13 ms mean / +29 ms max after the second flips vs -11 ms (before it); under full CPU load +53 ms mean, 160 ms p95, one 10.1 s UI stall vs -11 ms with no stall; first taskbar reveal to band visible 803 ms vs 13 ms, later reveals 10-16 ms vs 3-4 ms; hover to detail card 7-17 ms; right-click navigation to Monitor passed.
+
 ## 1.2.20 — 2026-10-05
 - 中文：修复 Explorer 合成层覆盖原生子窗口造成的真实任务栏空白，改用独立软件渲染宿主；自动隐藏期间收起、任务栏完整显示后恢复，保留图标避让与自适应字体。
 - 中文：原生按钮边界补充 UI Automation，排除自身控件与自身窗口事件；右键今日流量直达流量页，右键网速 / CPU / 内存直达监控页。

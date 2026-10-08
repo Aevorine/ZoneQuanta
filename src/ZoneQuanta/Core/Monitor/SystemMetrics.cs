@@ -10,52 +10,63 @@ namespace ZoneQuanta.Core.Monitor;
 
 public readonly record struct Metrics(double UpBps, double DownBps, double Cpu, double Mem, long UpBytes, long DownBytes, long MemUsed = 0, long MemTotal = 0);
 
+// Not thread-safe: Sample() belongs to the sampler thread. Only AdapterSummary() may be read elsewhere.
 public sealed class SystemMetrics
 {
     private static readonly string[] VirtualHints = { "tun", "tap", "vpn", "virtual", "vmware", "vethernet", "hyper-v", "wintun", "loopback", "pseudo", "bluetooth" };
 
+    private sealed class Nic
+    {
+        public NetworkInterface Interface = null!;
+        public long Sent, Received;
+        public bool HaveBaseline;
+    }
+
     private readonly Stopwatch _clock = Stopwatch.StartNew();
-    private List<NetworkInterface> _nics = new();
-    private long _nicRefreshAt = -1;
-    private long _lastTicks;
-    private long _lastUp, _lastDown;
-    private bool _haveNet;
+    private readonly Dictionary<string, Nic> _nics = new();
+    private long _nicRefreshAt = -1, _lastAt = -1;
     private long _idle, _kernel, _user;
     private bool _haveCpu;
+    private volatile string _adapter = string.Empty;
 
     public Metrics Sample()
     {
         long now = _clock.ElapsedMilliseconds;
         if (_nicRefreshAt < 0 || now - _nicRefreshAt > 30000)
         {
-            _nics = SelectInterfaces();
+            RefreshInterfaces();
             _nicRefreshAt = now;
-            _haveNet = false;
         }
 
-        long up = 0, down = 0;
-        foreach (var nic in _nics)
+        // Deltas are kept per adapter, so a refreshed adapter list (or one adapter appearing / going
+        // away) never resets the others: no phantom zero-speed second, and no lost bytes in the totals.
+        long dUp = 0, dDown = 0;
+        foreach (var nic in _nics.Values)
         {
             try
             {
-                var s = nic.GetIPStatistics();
-                up += s.BytesSent;
-                down += s.BytesReceived;
+                var s = nic.Interface.GetIPStatistics();
+                long sent = s.BytesSent, received = s.BytesReceived;
+                if (nic.HaveBaseline)
+                {
+                    dUp += Math.Max(0, sent - nic.Sent);
+                    dDown += Math.Max(0, received - nic.Received);
+                }
+                nic.Sent = sent;
+                nic.Received = received;
+                nic.HaveBaseline = true;
             }
-            catch (NetworkInformationException) { }
+            catch (NetworkInformationException) { nic.HaveBaseline = false; }
         }
 
-        long dUp = 0, dDown = 0;
         double upBps = 0, downBps = 0;
-        if (_haveNet)
+        if (_lastAt >= 0)
         {
-            double sec = Math.Max(0.2, (now - _lastTicks) / 1000.0);
-            dUp = Math.Max(0, up - _lastUp);
-            dDown = Math.Max(0, down - _lastDown);
+            double sec = Math.Max(0.05, (now - _lastAt) / 1000.0);
             upBps = dUp / sec;
             downBps = dDown / sec;
         }
-        _lastUp = up; _lastDown = down; _lastTicks = now; _haveNet = true;
+        _lastAt = now;
 
         var (memPercent, memUsed, memTotal) = SampleMem();
         return new Metrics(upBps, downBps, SampleCpu(), memPercent, dUp, dDown, memUsed, memTotal);
@@ -81,21 +92,30 @@ public sealed class SystemMetrics
         return (m.dwMemoryLoad, (long)(m.ullTotalPhys - m.ullAvailPhys), (long)m.ullTotalPhys);
     }
 
-    public string AdapterSummary()
+    public string AdapterSummary() => _adapter;
+
+    private void RefreshInterfaces()
     {
+        var fresh = SelectInterfaces();
+        var keep = new HashSet<string>();
         NetworkInterface? best = null;
         long speed = -1;
-        foreach (var n in _nics)
+        foreach (var n in fresh)
         {
+            keep.Add(n.Id);
+            if (_nics.TryGetValue(n.Id, out var existing)) existing.Interface = n;
+            else _nics[n.Id] = new Nic { Interface = n };
             try
             {
                 if (n.Speed > speed) { speed = n.Speed; best = n; }
             }
             catch (NetworkInformationException) { }
         }
-        if (best is null) return string.Empty;
+        foreach (string id in _nics.Keys.Where(id => !keep.Contains(id)).ToList()) _nics.Remove(id);
+
+        if (best is null) { _adapter = string.Empty; return; }
         string rate = speed >= 1_000_000_000 ? $"{speed / 1_000_000_000.0:0.#} Gbps" : $"{speed / 1_000_000.0:0} Mbps";
-        return $"{best.Name} · {rate}";
+        _adapter = $"{best.Name} · {rate}";
     }
 
     private static List<NetworkInterface> SelectInterfaces()

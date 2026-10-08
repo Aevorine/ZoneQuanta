@@ -83,6 +83,9 @@ public sealed class WidgetWindow : Window
         if (IsVisible) _strip.Update(now);
     }
 
+    // Unconditional repaint of the text, for the moment a hidden widget is about to be shown again.
+    public void Refresh(DateTimeOffset now) => _strip.Update(now);
+
     public void SetSuppressed(bool suppressed)
     {
         if (_suppressed == suppressed) return;

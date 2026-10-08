@@ -11,6 +11,9 @@ public sealed class TrafficFile
     private const long Hour = 3600, Day = 86400, HourlyKeepSeconds = 90L * Day;
 
     private readonly Dictionary<(long Bucket, string App), (long Up, long Down)> _data = new();
+    private DateTime _todayDate;
+    private long _todayFrom, _todayUntil, _todayTotal;
+    private bool _todayValid;
 
     public static string DefaultDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ZoneQuanta");
 
@@ -42,6 +45,8 @@ public sealed class TrafficFile
         var key = (bucket, app);
         _data.TryGetValue(key, out var cur);
         _data[key] = (cur.Up + up, cur.Down + down);
+        if (_todayValid && app == TotalKey && bucket + Hour > _todayFrom && bucket < _todayUntil)
+            _todayTotal += up + down;
     }
 
     public void AddNow(string app, long up, long down) => Add(DateTimeOffset.UtcNow.ToUnixTimeSeconds() / Hour * Hour, app, up, down);
@@ -57,6 +62,7 @@ public sealed class TrafficFile
             _data.Remove(kv.Key);
             Add(kv.Key.Bucket / Day * Day, kv.Key.App, kv.Value.Up, kv.Value.Down);
         }
+        _todayValid = false;
     }
 
     public void Save(string path)
@@ -93,15 +99,23 @@ public sealed class TrafficFile
 
     // Recent records use hourly buckets. Do not treat a UTC-midnight bucket
     // as a whole day: doing so includes yesterday in local today queries.
+    // The total is kept incrementally: Add() feeds it, and it is rebuilt only at local midnight.
     public long TodayTotal()
     {
-        long from = RangeStart("Today");
-        long until = new DateTimeOffset(DateTime.Now.Date.AddDays(1)).ToUnixTimeSeconds();
-        long total = 0;
-        foreach (var kv in _data)
-            if (kv.Key.App == TotalKey && kv.Key.Bucket + Hour > from && kv.Key.Bucket < until)
-                total += kv.Value.Up + kv.Value.Down;
-        return total;
+        var date = DateTime.Now.Date;
+        if (!_todayValid || date != _todayDate)
+        {
+            _todayDate = date;
+            _todayFrom = new DateTimeOffset(date).ToUnixTimeSeconds();
+            _todayUntil = new DateTimeOffset(date.AddDays(1)).ToUnixTimeSeconds();
+            long total = 0;
+            foreach (var kv in _data)
+                if (kv.Key.App == TotalKey && kv.Key.Bucket + Hour > _todayFrom && kv.Key.Bucket < _todayUntil)
+                    total += kv.Value.Up + kv.Value.Down;
+            _todayTotal = total;
+            _todayValid = true;
+        }
+        return _todayTotal;
     }
 
     public static long RangeStart(string range)

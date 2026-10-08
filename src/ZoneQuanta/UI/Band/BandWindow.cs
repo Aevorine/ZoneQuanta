@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Windows;
 using System.Threading.Tasks;
 using System.Windows.Controls;
@@ -17,41 +18,72 @@ public sealed class BandWindow : IDisposable
 {
     private static readonly Brush Warn = Frozen("#E2AE74"), Danger = Frozen("#E27D7D");
 
-    private sealed record Chip(string Key, string Label, string Accent, Func<AppSettings, bool> Enabled)
+    private const int Up = 0, Down = 1, Today = 2, Total = 3, Mem = 4, Cpu = 5;
+
+    private sealed class Chip
     {
+        public Chip(string key, string label, string accent, string template, Func<AppSettings, bool> enabled)
+        {
+            Key = key; Label = label; Accent = accent; Template = template; Enabled = enabled;
+        }
+
+        public string Key { get; }
+        public string Label { get; }
+        public string Accent { get; }
+        public string Template { get; }
+        public Func<AppSettings, bool> Enabled { get; }
         public StackPanel Panel { get; } = new() { Margin = new Thickness(2, 0, 2, 0), VerticalAlignment = VerticalAlignment.Center };
+        public TextBlock Caption { get; } = new() { FontSize = 10, Style = null, HorizontalAlignment = HorizontalAlignment.Center };
         public TextBlock Value { get; } = new() { FontSize = 13, FontWeight = FontWeights.SemiBold, Style = null };
         public Brush? Tint { get; set; }
         public bool TintSet { get; set; }
+        // Widest the chip has had to be at the current font. It only grows, so numbers that change
+        // every sample never make the row breathe; it is rebuilt when the layout is searched again.
+        public double Reserved { get; set; }
+        public bool Dirty { get; set; } = true;
     }
 
+    private static readonly TimeSpan ReserveLife = TimeSpan.FromSeconds(60);
+
     private readonly AppSettings _settings;
-    private readonly List<Chip> _chips;
+    private readonly Chip[] _chips;
     private readonly StackPanel _row = new() { Orientation = Orientation.Horizontal };
+    private readonly TextBlock _probe = new() { FontWeight = FontWeights.SemiBold, Style = null };
     private IntPtr _hwnd;
     private HwndSource? _source;
     private IntPtr _parent;
     private bool _visible, _disposed;
     private bool IsVisible => _visible;
     private TaskbarLayout? _layout;
-    private bool _readingLayout, _canPaint;
+    private bool _readingLayout, _layoutDirty, _canPaint;
     private int _layoutGeneration;
     private readonly Border _pill;
-    private double _fitWidth = -1, _fitHeight = -1;
+    private double _fitWidth = -1, _fitHeight = -1, _fontSize = 13;
     private int _contentRevision, _fitRevision = -1;
     private bool _fits;
-    private readonly DispatcherTimer _layoutTimer = new() { Interval = TimeSpan.FromMilliseconds(750) };
-    private int _ticks;
+    private long _reservedSince;
+    private const long MinScanGapMs = 300;
+    private readonly DispatcherTimer _layoutTimer = new() { Interval = TimeSpan.FromMilliseconds(1000) };
+    private long _lastScanAt;
+    // One-shot: re-read the layout as soon as a taskbar move has settled instead of waiting for the poll.
+    private readonly DispatcherTimer _retry = new();
+    private bool _wasShown;
     private bool _suppressed;
     private Metrics _last;
     private long _todayBytes;
     private readonly TaskbarTracker _taskbar = new();
     private bool _repositioning;
-    private readonly DispatcherTimer _hover = new() { Interval = TimeSpan.FromMilliseconds(250) };
-    private int _inside, _outside;
+    private int _shownX, _shownY, _shownW, _shownH;
+    private bool _shownValid;
+    // Hover follows the pointer events; the timer only runs while hovering to catch a missed leave.
+    private readonly DispatcherTimer _hover = new() { Interval = TimeSpan.FromMilliseconds(100) };
+    private int _outside;
     private bool _hovering;
 
     public event Action<bool>? HoverChanged;
+    // The band is actually on screen (as opposed to enabled but tucked away with an auto-hidden taskbar).
+    public event Action<bool>? PaintingChanged;
+    public bool IsPainting => _canPaint;
     public event Action<string>? SettingsRequested;
 
     public Rect BoundsPx => _hwnd != IntPtr.Zero && Native.GetWindowRect(_hwnd, out var r)
@@ -62,22 +94,22 @@ public sealed class BandWindow : IDisposable
     {
         _settings = settings;
 
-        _chips = new List<Chip>
+        _chips = new[]
         {
-            new("up", "上传", "Accent2Brush", s => s.BandUp),
-            new("down", "下载", "Accent1Brush", s => s.BandDown),
-            new("today", "今日流量", "TextBrush", s => s.BandToday),
-            new("total", "总速", "TextBrush", s => s.BandTotal),
-            new("mem", "内存", "TextBrush", s => s.BandMem),
-            new("cpu", "CPU", "TextBrush", s => s.BandCpu),
+            new Chip("up", "上传", "Accent2Brush", "000 KB/s", s => s.BandUp),
+            new Chip("down", "下载", "Accent1Brush", "000 KB/s", s => s.BandDown),
+            new Chip("today", "今日流量", "TextBrush", "00.0 GB", s => s.BandToday),
+            new Chip("total", "总速", "TextBrush", "000 KB/s", s => s.BandTotal),
+            new Chip("mem", "内存", "TextBrush", "100%", s => s.BandMem),
+            new Chip("cpu", "CPU", "TextBrush", "100%", s => s.BandCpu),
         };
         foreach (var c in _chips)
         {
-            var label = new TextBlock { Text = c.Label, FontSize = 10, Style = null, HorizontalAlignment = HorizontalAlignment.Center };
+            c.Caption.Text = c.Label;
             c.Value.HorizontalAlignment = HorizontalAlignment.Center;
-            label.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+            c.Caption.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
             c.Value.SetResourceReference(TextBlock.ForegroundProperty, c.Accent);
-            c.Panel.Children.Add(label);
+            c.Panel.Children.Add(c.Caption);
             c.Panel.Children.Add(c.Value);
             c.Panel.MouseRightButtonUp += (_, e) =>
             {
@@ -89,7 +121,9 @@ public sealed class BandWindow : IDisposable
 
         _pill = new Border { Padding = new Thickness(1, 0, 1, 0), VerticalAlignment = VerticalAlignment.Stretch, Child = _row };
         _pill.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
-        System.Windows.Documents.TextElement.SetFontFamily(_pill, (FontFamily)Application.Current.FindResource("AppFont"));
+        var font = (FontFamily)Application.Current.FindResource("AppFont");
+        System.Windows.Documents.TextElement.SetFontFamily(_pill, font);
+        _probe.FontFamily = font;
         _pill.UseLayoutRounding = true;
         _pill.SnapsToDevicePixels = true;
 
@@ -97,16 +131,37 @@ public sealed class BandWindow : IDisposable
         {
             if (_taskbar.IsMoving) SetHovering(false);
             Reposition();
+            // Coming back from auto-hide: what sits on the taskbar may have changed while it was away.
+            bool shown = TrayShown(out _);
+            if (shown && !_wasShown) RefreshLayout();
+            _wasShown = shown;
         };
         _taskbar.LayoutChanged += () =>
+        {
+            // Keep painting where we are while the free space is re-read (a few milliseconds);
+            // Reposition hides the band itself if the new layout no longer leaves room.
+            ++_layoutGeneration;
+            // An auto-hidden taskbar is re-read when it comes back (see Changed), not on every event
+            // its tray and buttons raise while nobody can see it.
+            if (_layout is null || TrayShown(out _)) RefreshLayout();
+        };
+        _taskbar.Rebuilt += () =>
         {
             ++_layoutGeneration;
             _layout = null;
             HideNative();
             RefreshLayout();
         };
-        _layoutTimer.Tick += (_, _) => RefreshLayout();
+        _layoutTimer.Tick += (_, _) =>
+        {
+            // The taskbar's own geometry is the only thing that can change while it is tucked away, and the
+            // tracker reports that; skip the cross-process scan until it is back (unless we have no layout).
+            if (_layout is null || TrayShown(out _)) RefreshLayout();
+        };
+        _retry.Tick += (_, _) => { _retry.Stop(); RefreshLayout(); };
         _pill.MouseRightButtonUp += (_, e) => { e.Handled = true; SettingsRequested?.Invoke("监控"); };
+        _pill.MouseEnter += (_, _) => { if (_canPaint && !_taskbar.IsMoving) { _outside = 0; SetHovering(true); } };
+        _pill.MouseLeave += (_, _) => { if (_hovering) _hover.Start(); };
         _settings.PropertyChanged += OnSettingChanged;
         _hover.Tick += (_, _) => PollHover();
         ApplyChipVisibility();
@@ -114,6 +169,7 @@ public sealed class BandWindow : IDisposable
 
     public void SetSuppressed(bool suppressed)
     {
+        if (_suppressed == suppressed) return;
         _suppressed = suppressed;
         Sync();
     }
@@ -128,7 +184,7 @@ public sealed class BandWindow : IDisposable
             _layoutTimer.Start();
             RefreshLayout();
             Reposition();
-            _hover.Start();
+            _wasShown = TrayShown(out _);
         }
         else if (!show && IsVisible)
         {
@@ -136,9 +192,10 @@ public sealed class BandWindow : IDisposable
             _visible = false;
             _taskbar.Stop();
             _layoutTimer.Stop();
+            _retry.Stop();
             ++_layoutGeneration;
             _layout = null;
-            _canPaint = false;
+            SetPainting(false);
             _hover.Stop();
             SetHovering(false);
         }
@@ -148,51 +205,75 @@ public sealed class BandWindow : IDisposable
     {
         _last = m;
         if (todayBytes.HasValue) _todayBytes = todayBytes.Value;
-        if (!IsVisible) return;
         bool bits = _settings.SpeedBits;
         string unit = _settings.SpeedUnit;
-        Set("up", UnitFormat.Speed(m.UpBps, bits, unit), null);
-        Set("down", UnitFormat.Speed(m.DownBps, bits, unit), null);
-        Set("today", UnitFormat.Size(_todayBytes, false, "Auto"), null);
-        Set("total", UnitFormat.Speed(m.UpBps + m.DownBps, bits, unit), null);
-        Set("mem", $"{m.Mem:0}%", Load(m.Mem));
-        Set("cpu", $"{m.Cpu:0}%", Load(m.Cpu));
+        bool changed = false;
+        changed |= Set(Up, UnitFormat.Speed(m.UpBps, bits, unit), null);
+        changed |= Set(Down, UnitFormat.Speed(m.DownBps, bits, unit), null);
+        changed |= Set(Today, UnitFormat.Size(_todayBytes, false, "Auto"), null);
+        changed |= Set(Total, UnitFormat.Speed(m.UpBps + m.DownBps, bits, unit), null);
+        changed |= Set(Mem, $"{m.Mem:0}%", Load(m.Mem));
+        changed |= Set(Cpu, $"{m.Cpu:0}%", Load(m.Cpu));
 
-        Reposition();
-        if (++_ticks % 6 == 0 && _canPaint) KeepOnTop();
+        if (!changed || !IsVisible || !_canPaint) return;
+        // Text swaps are cheap. Only a value wider than anything seen so far (at this font) needs
+        // the row re-fitted; everything else just re-renders in place.
+        if (ReserveGrew()) Reposition();
+        else _pill.UpdateLayout();
     }
 
     private void PollHover()
     {
-        bool over = false;
-        if (_hwnd != IntPtr.Zero && IsVisible && _canPaint && Native.GetCursorPos(out var p) && Native.GetWindowRect(_hwnd, out var r))
-            over = p.X >= r.Left && p.X < r.Right && p.Y >= r.Top && p.Y < r.Bottom;
+        bool over = _hwnd != IntPtr.Zero && IsVisible && _canPaint && Native.GetCursorPos(out var p) &&
+                    Native.GetWindowRect(_hwnd, out var r) && p.X >= r.Left && p.X < r.Right && p.Y >= r.Top && p.Y < r.Bottom;
+        if (over) { _outside = 0; return; }
+        if (++_outside >= 1)
+        {
+            _hover.Stop();
+            SetHovering(false);
+        }
+    }
 
-        if (over) { _outside = 0; if (++_inside >= 1) SetHovering(true); }
-        else { _inside = 0; if (++_outside >= 2) SetHovering(false); }
+    private void SetPainting(bool on)
+    {
+        if (_canPaint == on) return;
+        _canPaint = on;
+        PaintingChanged?.Invoke(on);
     }
 
     private void SetHovering(bool on)
     {
         if (_hovering == on) return;
         _hovering = on;
+        if (on) _hover.Start(); else _hover.Stop();
         HoverChanged?.Invoke(on);
     }
 
     private static Brush? Load(double percent) => percent >= 90 ? Danger : percent >= 70 ? Warn : null;
 
-    private void Set(string key, string text, Brush? tint)
+    private bool Set(int index, string text, Brush? tint)
     {
-        var chip = _chips.Find(c => c.Key == key)!;
-        if (chip.Value.Text != text) { chip.Value.Text = text; ++_contentRevision; }
-        if (chip.TintSet && ReferenceEquals(chip.Tint, tint)) return;
+        var chip = _chips[index];
+        bool changed = false;
+        if (chip.Value.Text != text)
+        {
+            chip.Value.Text = text;
+            chip.Dirty = true;
+            changed = true;
+        }
+        if (chip.TintSet && ReferenceEquals(chip.Tint, tint)) return changed;
         chip.Tint = tint;
         chip.TintSet = true;
         if (tint is not null) chip.Value.Foreground = tint;
         else chip.Value.SetResourceReference(TextBlock.ForegroundProperty, chip.Accent);
+        return true;
     }
 
-    private bool AnyChip() => _chips.Exists(c => c.Enabled(_settings));
+    private bool AnyChip()
+    {
+        foreach (var c in _chips) if (c.Enabled(_settings)) return true;
+        return false;
+    }
 
     private void ApplyChipVisibility()
     {
@@ -221,7 +302,9 @@ public sealed class BandWindow : IDisposable
                 break;
             case nameof(AppSettings.SpeedBits):
             case nameof(AppSettings.SpeedUnit):
+                ++_contentRevision; // new unit strings change the widest text
                 Update(_last);
+                Reposition();
                 break;
         }
     }
@@ -244,6 +327,7 @@ public sealed class BandWindow : IDisposable
         if (_parent == tray && _hwnd != IntPtr.Zero && Native.IsWindow(_hwnd)) return true;
         _source?.Dispose();
         _hwnd = IntPtr.Zero;
+        _shownValid = false;
         _parent = tray;
         var parameters = new HwndSourceParameters("ZoneQuanta Band")
         {
@@ -276,6 +360,7 @@ public sealed class BandWindow : IDisposable
         _taskbar.Dispose();
         _hover.Stop();
         _layoutTimer.Stop();
+        _retry.Stop();
         _settings.PropertyChanged -= OnSettingChanged;
         _source?.Dispose();
         _source = null;
@@ -284,43 +369,107 @@ public sealed class BandWindow : IDisposable
 
     private void SetFontSize(double value)
     {
+        _fontSize = value;
         foreach (var c in _chips)
         {
             c.Value.FontSize = value;
-            ((TextBlock)c.Panel.Children[0]).FontSize = Math.Max(8, value * 0.60);
+            c.Caption.FontSize = Math.Max(8, value * 0.60);
         }
+    }
+
+    private double Needed(Chip c)
+    {
+        var infinite = new Size(double.PositiveInfinity, double.PositiveInfinity);
+        c.Caption.Measure(infinite);
+        c.Value.Measure(infinite);
+        return Math.Max(c.Caption.DesiredSize.Width, c.Value.DesiredSize.Width);
+    }
+
+    private double TemplateWidth(Chip c)
+    {
+        _probe.FontSize = _fontSize;
+        _probe.Text = c.Template;
+        _probe.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        return _probe.DesiredSize.Width;
+    }
+
+    // True when a freshly changed value is wider than the room reserved for its chip.
+    private bool ReserveGrew()
+    {
+        bool grew = false;
+        foreach (var c in _chips)
+        {
+            if (!c.Dirty || !c.Enabled(_settings)) continue;
+            c.Dirty = false;
+            double need = Needed(c);
+            if (need > c.Reserved + 0.01)
+            {
+                c.Reserved = need;
+                grew = true;
+            }
+        }
+        return grew;
     }
 
     private bool FitContent(double widthDip, double heightDip)
     {
-        if (Math.Abs(_fitWidth - widthDip) < 0.1 && Math.Abs(_fitHeight - heightDip) < 0.1 &&
-            _fitRevision == _contentRevision) return _fits;
+        long now = Stopwatch.GetTimestamp();
+        bool same = Math.Abs(_fitWidth - widthDip) < 0.1 && Math.Abs(_fitHeight - heightDip) < 0.1 &&
+                    _fitRevision == _contentRevision && Stopwatch.GetElapsedTime(_reservedSince, now) < ReserveLife;
+        if (same && !_fits) return false;
+        if (same)
+        {
+            ReserveGrew();
+            if (Distribute(widthDip)) return true;
+        }
+        return SearchFont(widthDip, heightDip, now);
+    }
+
+    // Shares spare width evenly between the visible chips; false when the reserved widths no longer fit.
+    private bool Distribute(double widthDip)
+    {
+        double used = _pill.Padding.Left + _pill.Padding.Right;
+        int count = 0;
+        foreach (var c in _chips)
+        {
+            if (!c.Enabled(_settings)) continue;
+            used += c.Reserved + c.Panel.Margin.Left + c.Panel.Margin.Right;
+            ++count;
+        }
+        if (count == 0 || used > widthDip - 2) return false;
+        double extra = (widthDip - used) / count;
+        foreach (var c in _chips)
+            if (c.Enabled(_settings))
+                c.Panel.Width = c.Reserved + extra;
+        return true;
+    }
+
+    private bool SearchFont(double widthDip, double heightDip, long now)
+    {
         _fitWidth = widthDip;
         _fitHeight = heightDip;
         _fitRevision = _contentRevision;
-        foreach (var c in _chips) { c.Panel.Width = double.NaN; c.Panel.MinWidth = 0; }
+        _reservedSince = now;
+        foreach (var c in _chips) { c.Panel.Width = double.NaN; c.Panel.MinWidth = 0; c.Dirty = false; }
+
         // A HwndSource root can report a stale/zero DesiredSize while its
         // layout is pending. Measure the actual leaf text controls directly.
-        var widths = new Dictionary<Chip, double>();
-        double measuredWidth = 0;
         bool Fits(double font)
         {
             SetFontSize(font);
-            measuredWidth = _pill.Padding.Left + _pill.Padding.Right;
-            double measuredHeight = 0;
+            double width = _pill.Padding.Left + _pill.Padding.Right;
+            double height = 0;
             foreach (var c in _chips)
             {
                 if (!c.Enabled(_settings)) continue;
-                var label = (TextBlock)c.Panel.Children[0];
-                label.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-                c.Value.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-                double width = Math.Max(label.DesiredSize.Width, c.Value.DesiredSize.Width);
-                widths[c] = width;
-                measuredWidth += width + c.Panel.Margin.Left + c.Panel.Margin.Right;
-                measuredHeight = Math.Max(measuredHeight, label.DesiredSize.Height + c.Value.DesiredSize.Height);
+                double need = Needed(c);
+                c.Reserved = Math.Max(need, TemplateWidth(c));
+                width += c.Reserved + c.Panel.Margin.Left + c.Panel.Margin.Right;
+                height = Math.Max(height, c.Caption.DesiredSize.Height + c.Value.DesiredSize.Height);
             }
-            return measuredWidth <= widthDip - 2 && measuredHeight <= heightDip - 2;
+            return width <= widthDip - 2 && height <= heightDip - 2;
         }
+
         double low = 9;
         double high = Math.Max(low, heightDip);
         if (!Fits(low)) return _fits = false;
@@ -334,42 +483,91 @@ public sealed class BandWindow : IDisposable
         // the font visibly pulse. Never round upwards past the measured fit.
         low = Math.Max(9, Math.Floor(low * 2) / 2);
         if (!Fits(low)) return _fits = false;
-        int count = 0;
-        foreach (var c in _chips) if (c.Enabled(_settings)) ++count;
-        if (count == 0) return _fits = false;
-        double extra = Math.Max(0, widthDip - measuredWidth) / count;
-        foreach (var c in _chips)
-            if (c.Enabled(_settings))
-                c.Panel.Width = widths[c] + extra;
-        return _fits = true;
+        return _fits = Distribute(widthDip);
     }
 
     private void HideNative()
     {
-        _canPaint = false;
+        SetPainting(false);
+        _shownValid = false;
         if (_hwnd != IntPtr.Zero) Native.ShowWindow(_hwnd, Native.SW_HIDE);
         SetHovering(false);
     }
 
     private async void RefreshLayout()
     {
-        if (_readingLayout || !IsVisible || _disposed || _taskbar.IsMoving) return;
-        IntPtr tray = _taskbar.Handle;
-        if (tray == IntPtr.Zero || !Native.GetWindowRect(tray, out var t)) return;
-        var info = new Native.MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<Native.MONITORINFO>() };
-        if (!Native.GetMonitorInfo(Native.MonitorFromWindow(tray, 2), ref info) ||
-            Math.Min(t.Bottom, info.rcMonitor.Bottom) - Math.Max(t.Top, info.rcMonitor.Top) <= 2) return;
+        if (!IsVisible || _disposed) return;
+        if (_taskbar.IsMoving)
+        {
+            RetryAfterMove();
+            return;
+        }
+        long sinceScan = Environment.TickCount64 - _lastScanAt;
+        if (sinceScan < MinScanGapMs)
+        {
+            // Bursts of shell events collapse into one scan shortly after the burst.
+            if (!_retry.IsEnabled)
+            {
+                _retry.Interval = TimeSpan.FromMilliseconds(MinScanGapMs - sinceScan + 5);
+                _retry.Start();
+            }
+            return;
+        }
+        if (_readingLayout)
+        {
+            _layoutDirty = true; // a change arrived mid-read: read again as soon as this one lands
+            return;
+        }
         _readingLayout = true;
-        int generation = _layoutGeneration;
         try
         {
-            var layout = await Task.Run(() => TaskbarLayout.Read(tray));
-            if (_disposed || !IsVisible || _taskbar.IsMoving || generation != _layoutGeneration || tray != _taskbar.Handle) return;
-            _layout = layout;
-            Reposition();
+            do
+            {
+                _layoutDirty = false;
+                IntPtr tray = _taskbar.Handle;
+                if (tray == IntPtr.Zero || !Native.IsWindow(tray)) return;
+
+                // Control rectangles are relative to the taskbar window, so the scan works while an
+                // auto-hidden taskbar is tucked away too; the band is simply ready when it comes back.
+                int generation = _layoutGeneration;
+                _lastScanAt = Environment.TickCount64;
+                var layout = await Task.Run(() => TaskbarLayout.Read(tray));
+                if (_disposed || !IsVisible || tray != _taskbar.Handle) return;
+                if (_taskbar.IsMoving)
+                {
+                    RetryAfterMove(); // rectangles were read against a window that moved meanwhile
+                    return;
+                }
+                if (generation != _layoutGeneration)
+                {
+                    _layoutDirty = true;
+                    continue;
+                }
+                bool unchanged = layout is not null && layout.SameAs(_layout);
+                _layout = layout;
+                if (!unchanged || !_canPaint) Reposition();
+            } while (_layoutDirty);
         }
         finally { _readingLayout = false; }
     }
+
+    private void RetryAfterMove()
+    {
+        _retry.Interval = TimeSpan.FromMilliseconds(Math.Max(20, _taskbar.MovingRemainingMs + 15));
+        _retry.Start();
+    }
+
+    // The taskbar is on screen in full (an auto-hidden one leaves only a thin edge).
+    private static bool TrayShown(out Native.RECT t, IntPtr tray)
+    {
+        t = default;
+        if (tray == IntPtr.Zero || !Native.GetWindowRect(tray, out t) || !Native.IsWindowVisible(tray)) return false;
+        var monitor = new Native.MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<Native.MONITORINFO>() };
+        if (!Native.GetMonitorInfo(Native.MonitorFromWindow(tray, 2), ref monitor)) return false;
+        return Math.Min(t.Bottom, monitor.rcMonitor.Bottom) - Math.Max(t.Top, monitor.rcMonitor.Top) >= t.Bottom - t.Top - 2;
+    }
+
+    private bool TrayShown(out Native.RECT t) => TrayShown(out t, _taskbar.Handle);
 
     private void Reposition()
     {
@@ -400,6 +598,7 @@ public sealed class BandWindow : IDisposable
                 _layout = null;
                 ++_layoutGeneration;
                 HideNative();
+                RefreshLayout();
                 return;
             }
             Rect area = _layout.FreeArea(_settings.BandPosition, 6 * sx);
@@ -413,17 +612,26 @@ public sealed class BandWindow : IDisposable
             double preferred = _settings.BandPosition is "Right" or "Start" ? area.Right - widthPx : area.Left;
             double x = Math.Clamp(preferred + _settings.BandOffset * sx, area.Left, area.Right - widthPx);
             // Follow the taskbar in physical screen coordinates. The tracker
-            // checks geometry independently of the metrics sampling tick.
+            // checks geometry independently of the metrics sampling.
             int pixelX = (int)Math.Ceiling(x), pixelWidth = (int)Math.Floor(widthPx);
             int pixelHeight = Math.Max(1, (int)trayH - 4);
+            int screenX = t.Left + pixelX, screenY = t.Top + 2;
+
+            bool resized = !_shownValid || pixelWidth != _shownW || pixelHeight != _shownH;
             _pill.Width = pixelWidth / sx;
             _pill.Height = pixelHeight / sy;
             _pill.Measure(new Size(_pill.Width, _pill.Height));
             _pill.Arrange(new Rect(0, 0, _pill.Width, _pill.Height));
             _pill.UpdateLayout();
-            Native.SetWindowPos(_hwnd, Native.HWND_TOPMOST, t.Left + pixelX, t.Top + 2, pixelWidth, pixelHeight,
-                Native.SWP_NOACTIVATE | Native.SWP_SHOWWINDOW);
-            _canPaint = true;
+
+            if (resized || screenX != _shownX || screenY != _shownY)
+            {
+                Native.SetWindowPos(_hwnd, Native.HWND_TOPMOST, screenX, screenY, pixelWidth, pixelHeight,
+                    Native.SWP_NOACTIVATE | Native.SWP_SHOWWINDOW);
+                _shownX = screenX; _shownY = screenY; _shownW = pixelWidth; _shownH = pixelHeight;
+                _shownValid = true;
+            }
+            SetPainting(true);
         }
         finally { _repositioning = false; }
     }

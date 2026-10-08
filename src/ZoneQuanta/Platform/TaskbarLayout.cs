@@ -10,13 +10,60 @@ namespace ZoneQuanta.Platform;
 // not invalidate the layout. Only rectangles are retained, never app names.
 internal sealed record TaskbarLayout(double Width, double Height, Rect[] Occupied)
 {
+    // Every property the scan needs travels back in one cross-process call instead of one call per
+    // property per element. A request is activated per thread, so each scan builds its own.
+    private static CacheRequest Request()
+    {
+        var request = new CacheRequest { TreeScope = TreeScope.Element };
+        request.Add(AutomationElement.ProcessIdProperty);
+        request.Add(AutomationElement.BoundingRectangleProperty);
+        request.Add(AutomationElement.AutomationIdProperty);
+        request.Add(AutomationElement.ClassNameProperty);
+        request.Add(AutomationElement.NameProperty);
+        request.Add(AutomationElement.ControlTypeProperty);
+        request.Add(AutomationElement.IsInvokePatternAvailableProperty);
+        return request;
+    }
+
+    private static readonly System.Collections.Generic.HashSet<string> _reported = new();
+
+    private static bool FirstOccurrence(string kind)
+    {
+        lock (_reported) return _reported.Add(kind);
+    }
+
+    // Loads the UI Automation client and the provider connection before the first real layout read.
+    public static void Warmup()
+    {
+        IntPtr tray = Native.FindWindow("Shell_TrayWnd", null);
+        if (tray != IntPtr.Zero) Read(tray);
+    }
+
+    public bool SameAs(TaskbarLayout? other)
+    {
+        if (other is null || Math.Abs(Width - other.Width) > 0.5 || Math.Abs(Height - other.Height) > 0.5 ||
+            Occupied.Length != other.Occupied.Length) return false;
+        for (int i = 0; i < Occupied.Length; i++)
+        {
+            var a = Occupied[i];
+            var b = other.Occupied[i];
+            if (Math.Abs(a.Left - b.Left) > 0.5 || Math.Abs(a.Top - b.Top) > 0.5 ||
+                Math.Abs(a.Width - b.Width) > 0.5 || Math.Abs(a.Height - b.Height) > 0.5) return false;
+        }
+        return true;
+    }
+
     public static TaskbarLayout? Read(IntPtr tray)
     {
         try
         {
             if (!Native.GetWindowRect(tray, out var bounds)) return null;
-            var root = AutomationElement.FromHandle(tray);
-            var elements = root.FindAll(TreeScope.Descendants, System.Windows.Automation.Condition.TrueCondition);
+            AutomationElementCollection elements;
+            using (Request().Activate())
+            {
+                var root = AutomationElement.FromHandle(tray);
+                elements = root.FindAll(TreeScope.Descendants, System.Windows.Automation.Condition.TrueCondition);
+            }
             var occupied = new List<Rect>();
             bool startFound = false, trayFound = false;
             // UI Automation may omit Start while Explorer's composition bridge
@@ -33,7 +80,7 @@ internal sealed record TaskbarLayout(double Width, double Height, Rect[] Occupie
             }
             foreach (AutomationElement element in elements)
             {
-                var info = element.Current;
+                var info = element.Cached;
                 if (info.ProcessId == Environment.ProcessId) continue;
                 var rect = info.BoundingRectangle;
                 if (rect.IsEmpty || rect.Width <= 0 || rect.Height <= 0) continue;
@@ -47,7 +94,7 @@ internal sealed record TaskbarLayout(double Width, double Height, Rect[] Occupie
                     info.ControlType == ControlType.CheckBox || info.ControlType == ControlType.RadioButton ||
                     info.ControlType == ControlType.Edit || info.ControlType == ControlType.MenuItem ||
                     info.ControlType == ControlType.Hyperlink ||
-                    (bool)element.GetCurrentPropertyValue(AutomationElement.IsInvokePatternAvailableProperty);
+                    (bool)element.GetCachedPropertyValue(AutomationElement.IsInvokePatternAvailableProperty);
                 if (!start && !notification && !interactive) continue;
                 rect.Offset(-bounds.Left, -bounds.Top);
                 rect.Intersect(new Rect(0, 0, bounds.Right - bounds.Left, bounds.Bottom - bounds.Top));
@@ -69,6 +116,9 @@ internal sealed record TaskbarLayout(double Width, double Height, Rect[] Occupie
         }
         catch (Exception ex) when (ex is ElementNotAvailableException or InvalidOperationException or ArgumentException or COMException)
         {
+            // The shell vanishing mid-scan is routine; anything else is a bug worth one log line.
+            if (ex is not ElementNotAvailableException && FirstOccurrence(ex.GetType().Name))
+                Core.Log.Error("taskbar-layout", ex);
             return null;
         }
     }

@@ -38,7 +38,7 @@ public sealed class BandDetailWindow : Window
     private TrafficFile? _appsFile;
     private DateTime _appsStamp;
     private Dictionary<string, (long Up, long Down)> _today = new();
-    private int _ticks;
+    private long _heavyAt, _chartAt, _placeAt;
     private bool _wanted;
     private Metrics _last;
     private IntPtr _hwnd;
@@ -113,7 +113,7 @@ public sealed class BandDetailWindow : Window
         _wanted = on;
         if (on)
         {
-            _ticks = 0;
+            _heavyAt = 0;
             Refresh(_last);
             if (!IsVisible) Show();
             UpdateLayout();
@@ -134,11 +134,34 @@ public sealed class BandDetailWindow : Window
     {
         _last = m;
         if (!_wanted || !IsVisible) return;
+        long now = Environment.TickCount64;
         _chart.Bits = _settings.SpeedBits;
         _chart.Unit = _settings.SpeedUnit;
-        _chart.Push(m.UpBps, m.DownBps);
+        // The chart spans 60 samples = one minute, so it advances once a second however often we sample.
+        if (now - _chartAt >= 900)
+        {
+            _chartAt = now;
+            _chart.Push(m.UpBps, m.DownBps);
+        }
         Refresh(m);
-        if (_ticks % 5 == 0) Place();
+        if (now - _placeAt >= 2500)
+        {
+            _placeAt = now;
+            Place();
+        }
+    }
+
+    // Builds the window handle and runs one layout pass off-screen while the machine is idle, so the
+    // first hover shows the card immediately instead of paying for window creation then.
+    public void Prewarm()
+    {
+        if (_hwnd != IntPtr.Zero) return;
+        Left = -32000;
+        Top = -32000;
+        Opacity = 0;
+        Show();
+        UpdateLayout();
+        Hide();
     }
 
     private void Refresh(Metrics m)
@@ -150,8 +173,10 @@ public sealed class BandDetailWindow : Window
         _down.Text = UnitFormat.Speed(m.DownBps, bits, unit);
         _sum.Text = UnitFormat.Speed(m.UpBps + m.DownBps, bits, unit);
 
-        if (_ticks % 5 == 0)
+        long tick = Environment.TickCount64;
+        if (tick - _heavyAt >= 5000)
         {
+            _heavyAt = tick;
             var d = SystemDetail.Read();
             _today = _totals.Query(TrafficFile.RangeStart("Today"));
             _today.TryGetValue(TrafficFile.TotalKey, out var t);
@@ -172,7 +197,6 @@ public sealed class BandDetailWindow : Window
         _cpuBar.Set(m.Cpu / 100.0);
         _mem.Text = m.MemTotal > 0 ? $"{Gb(m.MemUsed)} / {Gb(m.MemTotal)} · {m.Mem:0}%" : $"{m.Mem:0}%";
         _memBar.Set(m.Mem / 100.0);
-        _ticks++;
     }
 
     private void RebuildApps()

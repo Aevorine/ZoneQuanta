@@ -58,6 +58,12 @@ public partial class TrafficPage : UserControl
             Refresh(animate: true);
         };
 
+        s.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(Core.Settings.AppSettings.TrackApps)) return;
+            TrackToggle.IsChecked = s.TrackApps;
+            Refresh(animate: false);
+        };
         host.Tick += _ => OnTick();
         Loaded += (_, _) => Refresh(animate: true);
     }

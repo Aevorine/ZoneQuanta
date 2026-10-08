@@ -88,6 +88,11 @@ public sealed class AppSettings : Observable
     public string BandPosition { get => _bandPosition; set => Set(ref _bandPosition, value); }
     public double BandOffset { get => _bandOffset; set => Set(ref _bandOffset, Math.Clamp(value, -2000, 4000)); }
 
+    private int _sampleIntervalMs = 500;
+
+    // How often the taskbar band re-reads network / CPU / memory (milliseconds).
+    public int SampleIntervalMs { get => _sampleIntervalMs; set => Set(ref _sampleIntervalMs, Math.Clamp(value, 250, 2000)); }
+
     public bool SpeedBits { get => _speedBits; set => Set(ref _speedBits, value); }
     public string SpeedUnit { get => _speedUnit; set => Set(ref _speedUnit, value); }
     public bool TrackApps { get => _trackApps; set => Set(ref _trackApps, value); }

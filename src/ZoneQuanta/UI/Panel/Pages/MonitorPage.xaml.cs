@@ -58,6 +58,20 @@ public partial class MonitorPage : UserControl
             Positions.Children.Add(r);
         }
 
+        foreach (var (ms, text) in new[] { (250, "0.25 秒"), (500, "0.5 秒"), (1000, "1 秒"), (2000, "2 秒") })
+        {
+            var r = new RadioButton
+            {
+                Content = text,
+                Style = (Style)FindResource("Segment"),
+                GroupName = "rate",
+                Margin = new Thickness(2, 0, 2, 0),
+                IsChecked = s.SampleIntervalMs == ms,
+            };
+            r.Checked += (_, _) => s.SampleIntervalMs = ms;
+            Rates.Children.Add(r);
+        }
+
         ByteMode.IsChecked = !s.SpeedBits;
         BitMode.IsChecked = s.SpeedBits;
         ByteMode.Checked += (_, _) => s.SpeedBits = false;

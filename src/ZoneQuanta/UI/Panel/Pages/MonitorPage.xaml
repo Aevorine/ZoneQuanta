@@ -52,6 +52,8 @@
                         <UniformGrid x:Name="Positions" Rows="1" Margin="0,0,0,16"/>
                         <TextBlock Text="位置微调" Style="{StaticResource Heading}" Margin="0,0,0,10"/>
                         <Slider VerticalAlignment="Top" Style="{StaticResource Range}" Minimum="-400" Maximum="800" SmallChange="2" LargeChange="20" Value="{Binding BandOffset, Mode=TwoWay}"/>
+                        <TextBlock Text="刷新频率" Style="{StaticResource Heading}" Margin="0,18,0,10"/>
+                        <UniformGrid x:Name="Rates" Rows="1"/>
                     </StackPanel>
                 </Grid>
             </Border>

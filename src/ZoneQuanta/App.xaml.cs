@@ -59,7 +59,10 @@ public partial class App : Application
             return;
         }
 
-        Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.BelowNormal;
+        // Normal priority and no EcoQoS: a below-normal background process is starved exactly when the
+        // machine is busy, which is when the clock and the CPU / network readout matter most.
+        Native.OptOutOfPowerThrottling();
+        _ = Task.Run(TaskbarLayout.Warmup);
 
         _controller = new AppController();
         _controller.Start(showPanel: !autostart);

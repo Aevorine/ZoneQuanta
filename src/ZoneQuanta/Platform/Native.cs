@@ -137,6 +137,55 @@ internal static class Native
     [DllImport("dwmapi.dll")]
     public static extern int DwmSetWindowAttribute(IntPtr hWnd, int attr, ref int value, int size);
 
+    public const uint CREATE_WAITABLE_TIMER_HIGH_RESOLUTION = 0x2, TIMER_ALL_ACCESS = 0x1F0003, INFINITE = 0xFFFFFFFF;
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern IntPtr CreateWaitableTimerExW(IntPtr attributes, string? name, uint flags, uint access);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool SetWaitableTimer(IntPtr timer, ref long dueTime, int period, IntPtr completion, IntPtr argument, bool resume);
+
+    [DllImport("kernel32.dll")]
+    public static extern uint WaitForSingleObject(IntPtr handle, uint milliseconds);
+
+    [DllImport("kernel32.dll")]
+    public static extern bool CloseHandle(IntPtr handle);
+
+    [DllImport("kernel32.dll")]
+    private static extern void GetSystemTimePreciseAsFileTime(out long fileTime);
+
+    // 100 ns ticks since 0001-01-01 UTC, with sub-millisecond resolution (DateTime.UtcNow may be coarser).
+    public static long PreciseUtcTicks()
+    {
+        GetSystemTimePreciseAsFileTime(out long ft);
+        return ft + 504911232000000000L;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct PROCESS_POWER_THROTTLING_STATE { public uint Version, ControlMask, StateMask; }
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetCurrentProcess();
+
+    [DllImport("kernel32.dll")]
+    private static extern bool SetProcessInformation(IntPtr process, int infoClass, ref PROCESS_POWER_THROTTLING_STATE info, int size);
+
+    // The widget is never the foreground window, so Windows 11 treats the process as background work:
+    // it may run it in EcoQoS and coalesce its timers. Opt out so the clock keeps second-accurate timing.
+    public static void OptOutOfPowerThrottling()
+    {
+        var state = new PROCESS_POWER_THROTTLING_STATE
+        {
+            Version = 1,
+            ControlMask = 0x1 | 0x4, // EXECUTION_SPEED | IGNORE_TIMER_RESOLUTION
+            StateMask = 0,
+        };
+        try { SetProcessInformation(GetCurrentProcess(), 4, ref state, Marshal.SizeOf<PROCESS_POWER_THROTTLING_STATE>()); }
+        catch (EntryPointNotFoundException) { }
+    }
+
+    public const uint EVENT_SYSTEM_FOREGROUND = 0x0003, EVENT_OBJECT_LOCATIONCHANGE = 0x800B, WINEVENT_OUTOFCONTEXT = 0, WINEVENT_SKIPOWNPROCESS = 2;
+
     public static void SetExStyle(IntPtr hwnd, long flag, bool on)
     {
         long style = GetWindowLongPtr(hwnd, GWL_EXSTYLE).ToInt64();

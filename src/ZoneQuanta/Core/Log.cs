@@ -18,7 +18,7 @@ public static class Log
             {
                 Directory.CreateDirectory(System.IO.Path.GetDirectoryName(PathName)!);
                 var info = new FileInfo(PathName);
-                if (info.Exists && info.Length > MaxBytes) File.Delete(PathName);
+                if (info.Exists && info.Length > MaxBytes) File.Move(PathName, PathName + ".1", true);
                 File.AppendAllText(PathName, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}{Environment.NewLine}");
             }
         }

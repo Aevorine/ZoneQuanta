@@ -7,6 +7,8 @@ using ZoneQuanta.Core.Monitor;
 
 namespace ZoneQuanta.Core.Traffic;
 
+public enum HelperState { Started, Missing, Failed }
+
 public static class HelperLauncher
 {
     private const string TaskName = "ZoneQuantaTraffic";
@@ -44,11 +46,13 @@ public static class HelperLauncher
         await RunElevatedAsync("schtasks.exe", $"/Delete /TN {TaskName} /F");
     }
 
-    public static async Task StartIfInstalledAsync()
+    public static async Task<HelperState> StartIfInstalledAsync()
     {
         await Task.Delay(4000);
         ClearStop();
-        await RunHiddenAsync("schtasks.exe", $"/Run /TN {TaskName}");
+        // /Query fails only when the task does not exist, which tells "removed" apart from "could not start".
+        if (!await RunHiddenAsync("schtasks.exe", $"/Query /TN {TaskName}")) return HelperState.Missing;
+        return await RunHiddenAsync("schtasks.exe", $"/Run /TN {TaskName}") ? HelperState.Started : HelperState.Failed;
     }
 
     public static void RequestStop()

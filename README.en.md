@@ -22,15 +22,19 @@
 | Desktop widget | Click-through, always on top, lock position, may extend past screen edges, auto-hide when a full-screen app runs |
 | Start with Windows | Per-user startup entry, no administrator rights needed |
 | Look and feel | Four eye-friendly low-saturation themes; rolling digits, card flip, hover and page transitions (2D animation), all optional |
-| Tray and hotkey | Left-click the tray icon to show / hide the panel; right-click for common switches; global hotkey `Ctrl + Alt + Z` by default; right-click today's data to open Traffic; right-click speed / CPU / RAM to open Monitor settings |
+| Tray and hotkey | Left-click the tray icon to show / hide the panel; right-click for common switches (including the taskbar monitor); global hotkey `Ctrl + Alt + Z` by default; right-click today's data to open Traffic; right-click speed / CPU / RAM to open Monitor settings |
 | Auto-update | Parallel multi-mirror download, ECDSA signature + SHA-256 verification |
-| Low footprint | Second-aligned timer, redraws only what changes; about 0.3% of one CPU core and ~75 MB RAM when idle |
+| Display speed | A dedicated high-resolution timer thread wakes about 12 ms before each second, so the new second is presented in the frame that contains the boundary; sampling runs on a background thread and the taskbar numbers refresh every 0.5 s by default (0.25 / 0.5 / 1 / 2 s selectable); the hover card opens in about 10 ms; the monitor follows an auto-hidden taskbar within a few milliseconds of it appearing |
+| Low footprint | Redraws only what changes; sampling drops to once a second while the band is tucked away and the panel is closed; about 75 MB RAM and normally under 1% of one core when idle |
 
-## v1.2.20
+## v1.3.0
 
-Fixed taskbar content being blank on the actual desktop despite readable automation text and a visible child window. Explorer's composition layer can cover foreign child surfaces. The monitor now uses an independent software-rendered host in a measured safe gap. It hides during auto-hide motion and returns when the taskbar is fully shown. Geometry tracking remains independent of one-second metrics sampling.
+This release is about display speed. The clock now comes from a dedicated high-resolution thread that wakes about 12 ms before each second and is drawn first on the UI thread, instead of queueing behind adapter sampling and taskbar relayout. Measured: the new second's text is ready about 11 ms before the flip (the previous build was 13 ms late on average), and under full CPU load the previous build stalled for up to 10 s while this one does not (the process is no longer demoted to below-normal priority and opts out of Windows 11 efficiency-mode throttling). Network / CPU / memory are sampled on a background thread and refresh every 0.5 s by default (0.25 / 1 / 2 s in the Monitor page); sampling drops to once a second while the band is tucked away and the panel is closed.
 
-Native Start, app-container, search and notification bounds supplement automation; the monitor excludes its own controls from occupied space. Right-click today's data to open Traffic; right-click upload, download, total speed, RAM, CPU or spacing to open Monitor. The actual taskbar capture showed all six items, and real right-click navigation passed on the current machine.
+Taskbar monitor: with an auto-hidden taskbar the layout is read while it is tucked away, so the band appears within a few milliseconds of the taskbar returning (about 0.8 s the first time before). A layout change no longer hides the band and recomputes it; value changes swap text instead of re-running the font search; the hover card is mouse-event driven with its window pre-created, opening in about 10 ms. Fullscreen and "back to desktop" detection now runs the moment the foreground window changes.
+
+Also fixed: refreshing the adapter list every 30 s produced one zero-speed second and dropped that second's traffic from the totals; when the per-app helper's scheduled task disappears the switch no longer stays on silently (it now says so and turns off); the log is rotated instead of wiped at its size limit. The tray menu gains a "Taskbar monitor" switch.
+
 
 ## Install
 
@@ -56,11 +60,11 @@ With a local proxy or TUN adapter, traffic is attributed to the proxy process.
 src/ZoneQuanta
 ├── Core        pure logic, no UI dependency
 │   ├── Settings   settings model and persistence
-│   ├── Time       time zones, DST, sunrise / sunset (astronomical), city catalog, second-aligned ticker
-│   ├── Monitor    network / CPU / memory sampling, unit conversion, traffic store
+│   ├── Time       time zones, DST, sunrise / sunset (astronomical), city catalog, high-resolution pre-boundary ticker
+│   ├── Monitor    background sampler (network / CPU / memory), unit conversion, traffic store
 │   ├── Traffic    elevated statistics helper (ETW) and scheduled-task launcher
 │   └── Update     manifest verification, parallel download, update coordinator
-├── Platform    Win32 wrappers: window styles, full-screen detection, hotkey, autostart
+├── Platform    Win32 wrappers: window styles, full-screen detection, foreground watcher, taskbar tracking and layout, hotkey, autostart
 ├── Shell       tray icon
 ├── UI          Theme, Controls, Widget, Band (taskbar monitor), Setup (installer), Panel
 └── AppController  composition root
