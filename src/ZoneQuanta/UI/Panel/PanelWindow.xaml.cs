@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Shell;
 using ZoneQuanta.Core.Update;
 using ZoneQuanta.Platform;
 using ZoneQuanta.UI.Panel.Pages;
@@ -30,11 +31,15 @@ public partial class PanelWindow : Window
 
     private readonly IPanelHost _host;
     private readonly Dictionary<string, UserControl> _pages = new();
+    private readonly Thickness _resizeBorder;
+    private MaximizeFrame? _maximizeFrame;
+    private bool _maximized; // survives a trip through Minimized, where WindowState no longer says
 
     public PanelWindow(IPanelHost host)
     {
         _host = host;
         InitializeComponent();
+        _resizeBorder = WindowChrome.GetWindowChrome(this).ResizeBorderThickness;
 
         var area = SystemParameters.WorkArea;
         Width = Math.Min(Width, area.Width - 24);
@@ -60,15 +65,57 @@ public partial class PanelWindow : Window
         ((RadioButton)Nav.Children[0]).IsChecked = true;
 
         MinButton.Click += (_, _) => HidePanel();
+        MaxButton.Click += (_, _) => ToggleMaximize();
         CloseButton.Click += (_, _) => HidePanel();
-        StateChanged += (_, _) => Revive();
-        SourceInitialized += (_, _) => Native.RoundCorners(new WindowInteropHelper(this).Handle);
+        StateChanged += (_, _) => OnWindowStateChanged();
+        SourceInitialized += (_, _) => OnSourceInitialized();
         Closing += OnClosing;
+    }
+
+    private WindowState RestoredState => _maximized ? WindowState.Maximized : WindowState.Normal;
+
+    private void OnSourceInitialized()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        Native.RoundCorners(hwnd);
+        _maximizeFrame = new MaximizeFrame(HwndSource.FromHwnd(hwnd), MaxButton);
+        _maximizeFrame.HoverChanged += HighlightMaxButton;
+        _maximizeFrame.Clicked += ToggleMaximize;
+    }
+
+    private void ToggleMaximize() =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    private void OnWindowStateChanged()
+    {
+        if (WindowState != WindowState.Minimized)
+        {
+            _maximized = WindowState == WindowState.Maximized;
+            MaxButton.Tag = FindResource(_maximized ? "Icon.Restore" : "Icon.Max");
+            // A maximized window has no edge to drag: its top pixels must remain caption.
+            WindowChrome.GetWindowChrome(this).ResizeBorderThickness = _maximized ? new Thickness(0) : _resizeBorder;
+        }
+        Revive();
+    }
+
+    // Over this button the mouse is in the non-client area, so WPF never reports IsMouseOver.
+    private void HighlightMaxButton(bool on)
+    {
+        if (on)
+        {
+            MaxButton.SetResourceReference(BackgroundProperty, "RaisedBrush");
+            MaxButton.SetResourceReference(ForegroundProperty, "TextBrush");
+        }
+        else
+        {
+            MaxButton.ClearValue(BackgroundProperty);
+            MaxButton.ClearValue(ForegroundProperty);
+        }
     }
 
     public void ShowPanel()
     {
-        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        if (WindowState == WindowState.Minimized) WindowState = RestoredState;
         ShowInTaskbar = true;
         Show();
         Activate();
@@ -78,13 +125,14 @@ public partial class PanelWindow : Window
     {
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero || !IsVisible || !Native.IsIconic(hwnd)) return;
-        Native.ShowWindow(hwnd, Native.SW_SHOWNOACTIVATE);
+        // SW_SHOWNOACTIVATE always lands on the normal size, so it cannot bring a maximized panel back.
+        Native.ShowWindow(hwnd, _maximized ? Native.SW_SHOWMAXIMIZED : Native.SW_SHOWNOACTIVATE);
     }
 
     public void HidePanel()
     {
         ShowInTaskbar = false;
-        WindowState = WindowState.Normal;
+        if (WindowState == WindowState.Minimized) WindowState = RestoredState;
         Hide();
     }
 

@@ -1,5 +1,10 @@
 # 更新日志 · Changelog
 
+## 1.3.2 — 2026-11-01
+- 中文：面板标题栏新增最大化 / 还原按钮，与「−」「✕」并列。单击按钮、双击标题栏、拖动标题栏还原、Win+↑ / Win+↓ 都可用；「−」「✕」仍隐藏到托盘。最大化时窗口贴合工作区，不再超出屏幕边缘裁掉内容；自动隐藏的任务栏让出 2 像素，系统不再把面板判定为全屏程序，任务栏可正常呼出；隐藏后再打开、显示桌面（Win+D）后保持最大化。按钮按系统标准方式上报为最大化按钮，供 Windows 11 贴靠布局使用。
+- English: the panel caption gains a maximize / restore button next to "−" and "✕". The button, a caption double-click, dragging the caption to restore and Win+Up / Win+Down all work; "−" and "✕" still hide to the tray. A maximized panel fits the work area instead of overhanging the screen and clipping its content; it stays 2 px clear of an auto-hide taskbar, so Windows no longer treats it as a full-screen app and the taskbar can be revealed; the maximized state survives hiding and reopening and show desktop (Win+D). The button is reported to Windows as the standard maximize button for Windows 11 Snap Layouts.
+- Validation (real desktop, auto-hide taskbar, 125% DPI, real mouse and keyboard input): maximized window rect (-9,-9,1929,1089) before vs (0,0,1920,1078) after; `SHQueryUserNotificationState` 2 (busy) before vs 5 after; taskbar top 1078 at rest, 1020 revealed over the maximized panel, 1078 after leaving; restore returns the exact previous rect; minimum width still holds; pressing the button and dragging off does not toggle. Not verified: the Snap Layouts flyout, because synthetic input opened it on a native window only 1 time in 3 and not on the panel; other DPI values and multiple monitors.
+
 ## 1.3.1 — 2026-10-08
 - 中文：修复显示桌面 / 最小化时时钟组件与任务栏监控条消失：Win+D、Win+M 时系统把用户状态报告为「忙」（与全屏程序相同），程序误判为全屏而隐藏。前台为桌面、任务栏或本程序窗口时不再按全屏处理；窗口被系统最小化或隐藏时随前台变化立即恢复。
 - English: fixed the clock and the taskbar monitor disappearing when the desktop is shown or windows are minimized. Win+D / Win+M make Windows report the user state as "busy" like a full-screen app, which the program mistook for one. A foreground desktop, taskbar or own window is no longer treated as full screen, and windows iconified or hidden by the shell are restored on the foreground change.

@@ -27,6 +27,10 @@
 | Display speed | A dedicated high-resolution timer thread wakes about 12 ms before each second, so the new second is presented in the frame that contains the boundary; sampling runs on a background thread and the taskbar numbers refresh every 0.5 s by default (0.25 / 0.5 / 1 / 2 s selectable); the hover card opens in about 10 ms; the monitor follows an auto-hidden taskbar within a few milliseconds of it appearing |
 | Low footprint | Redraws only what changes; sampling drops to once a second while the band is tucked away and the panel is closed; about 75 MB RAM and normally under 1% of one core when idle |
 
+## v1.3.2
+
+The panel caption gains a maximize / restore button next to "−" and "✕". The button, a caption double-click, dragging the caption to restore and Win+Up / Win+Down all work; "−" and "✕" still hide to the tray. A maximized panel fits the work area, so the screen edge no longer clips its content; an auto-hide taskbar can still be revealed over it; the maximized state survives hiding and reopening and show desktop.
+
 ## v1.3.1
 
 Fixed the clock and taskbar monitor disappearing on "minimize". Showing the desktop (Win+D, Win+M, the corner button) makes Windows report the user state as "busy", exactly as it does for a full-screen app, so the program mistook it for one and hid the widget and the band. A foreground desktop, taskbar or one of our own windows is no longer treated as full screen, and a window the shell iconifies or hides is brought back at once. Measured on the real desktop: the widget and band stay visible throughout Win+D and Win+M, and nothing waits for the next second when leaving show-desktop.

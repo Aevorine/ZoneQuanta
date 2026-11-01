@@ -36,7 +36,7 @@ internal static class Native
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
     public static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr value);
 
-    public const int SW_HIDE = 0, SW_SHOWNOACTIVATE = 4;
+    public const int SW_HIDE = 0, SW_SHOWMAXIMIZED = 3, SW_SHOWNOACTIVATE = 4;
     public const uint SWP_SHOWWINDOW = 0x40;
     public delegate void WinEventProc(IntPtr hook, uint evt, IntPtr hwnd, int objectId, int childId, uint thread, uint time);
 
@@ -94,6 +94,45 @@ internal static class Native
 
     [DllImport("shell32.dll")]
     public static extern int SHQueryUserNotificationState(out int state);
+
+    public const int WM_SETCURSOR = 0x20, WM_GETMINMAXINFO = 0x24, WM_NCHITTEST = 0x84, WM_NCMOUSEMOVE = 0xA0,
+        WM_NCLBUTTONDOWN = 0xA1, WM_NCLBUTTONUP = 0xA2, WM_NCLBUTTONDBLCLK = 0xA3, WM_NCMOUSELEAVE = 0x2A2;
+    public const int HTMAXBUTTON = 9, IDC_HAND = 32649;
+    public const uint MONITOR_DEFAULTTONEAREST = 2, ABM_GETAUTOHIDEBAREX = 0xB, TME_LEAVE = 2, TME_NONCLIENT = 0x10;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MINMAXINFO { public POINT Reserved, MaxSize, MaxPosition, MinTrackSize, MaxTrackSize; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct APPBARDATA
+    {
+        public int cbSize;
+        public IntPtr hWnd;
+        public uint uCallbackMessage, uEdge;
+        public RECT rc;
+        public IntPtr lParam;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct TRACKMOUSEEVENT
+    {
+        public int cbSize;
+        public uint dwFlags;
+        public IntPtr hwndTrack;
+        public uint dwHoverTime;
+    }
+
+    [DllImport("shell32.dll")]
+    public static extern IntPtr SHAppBarMessage(uint message, ref APPBARDATA data);
+
+    [DllImport("user32.dll")]
+    public static extern bool TrackMouseEvent(ref TRACKMOUSEEVENT track);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr LoadCursor(IntPtr instance, IntPtr name);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr SetCursor(IntPtr cursor);
 
     [StructLayout(LayoutKind.Sequential)]
     public struct MEMORYSTATUSEX

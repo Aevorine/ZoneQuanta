@@ -45,6 +45,7 @@
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0"
                             WindowChrome.IsHitTestVisibleInChrome="True">
                     <Button x:Name="MinButton" Style="{StaticResource IconButton}" Tag="{StaticResource Icon.Min}"/>
+                    <Button x:Name="MaxButton" Style="{StaticResource IconButton}" Tag="{StaticResource Icon.Max}"/>
                     <Button x:Name="CloseButton" Style="{StaticResource IconButton}" Tag="{StaticResource Icon.Close}"/>
                 </StackPanel>
             </Grid>

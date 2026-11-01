@@ -32,6 +32,8 @@
     <Geometry x:Key="Icon.Pulse">M3,12 L7,12 L9.5,6 L13,18 L15.5,12 L21,12</Geometry>
     <Geometry x:Key="Icon.Chart">M4,20 L4,4 M4,20 L20,20 M8,16 L8,11 M12,16 L12,7 M16,16 L16,13</Geometry>
     <Geometry x:Key="Icon.Min">M5,12 L19,12</Geometry>
+    <Geometry x:Key="Icon.Max">M7,5 L17,5 A2,2 0 0 1 19,7 L19,17 A2,2 0 0 1 17,19 L7,19 A2,2 0 0 1 5,17 L5,7 A2,2 0 0 1 7,5 Z</Geometry>
+    <Geometry x:Key="Icon.Restore">M6,9 L15,9 A2,2 0 0 1 17,11 L17,20 A2,2 0 0 1 15,22 L6,22 A2,2 0 0 1 4,20 L4,11 A2,2 0 0 1 6,9 Z M9,5 A2,2 0 0 1 11,3 L18,3 A3,3 0 0 1 21,6 L21,13 A2,2 0 0 1 19,15</Geometry>
     <Geometry x:Key="Icon.Close">M6,6 L18,18 M18,6 L6,18</Geometry>
     <Geometry x:Key="Icon.Left">M15,5 L8,12 L15,19</Geometry>
     <Geometry x:Key="Icon.Right">M9,5 L16,12 L9,19</Geometry>
@@ -275,12 +277,13 @@
         <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="Focusable" Value="False"/>
         <Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/>
+        <Setter Property="Background" Value="Transparent"/>
         <Setter Property="Width" Value="40"/>
         <Setter Property="Height" Value="36"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bg" Background="Transparent" CornerRadius="8">
+                    <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="8">
                         <Path Style="{StaticResource IconPath}" Data="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}"
                               Stroke="{TemplateBinding Foreground}" Width="14" Height="14"/>
                     </Border>
