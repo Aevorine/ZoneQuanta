@@ -27,6 +27,10 @@
 | Display speed | A dedicated high-resolution timer thread wakes about 12 ms before each second, so the new second is presented in the frame that contains the boundary; sampling runs on a background thread and the taskbar numbers refresh every 0.5 s by default (0.25 / 0.5 / 1 / 2 s selectable); the hover card opens in about 10 ms; the monitor follows an auto-hidden taskbar within a few milliseconds of it appearing |
 | Low footprint | Redraws only what changes; sampling drops to once a second while the band is tucked away and the panel is closed; about 75 MB RAM and normally under 1% of one core when idle |
 
+## v1.3.3
+
+Panel content now fills the window at any size: themes become 2×2 tiles, Window nudges become a direction pad, and the clock preview and traffic chart grow with the height, so a maximized panel no longer shows large empty areas. The previous executable is removed right after an update instead of at the next start.
+
 ## v1.3.2
 
 The panel caption gains a maximize / restore button next to "−" and "✕". The button, a caption double-click, dragging the caption to restore and Win+Up / Win+Down all work; "−" and "✕" still hide to the tray. A maximized panel fits the work area, so the screen edge no longer clips its content; an auto-hide taskbar can still be revealed over it; the maximized state survives hiding and reopening and show desktop.

@@ -125,11 +125,15 @@ public sealed class UpdateService
         catch (UnauthorizedAccessException) { return false; }
     }
 
-    private static void TryDelete(string path)
+    private static bool TryDelete(string path)
     {
-        try { File.Delete(path); }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
+        try
+        {
+            File.Delete(path);
+            return true;
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
     }
 
     private static void Retry(Action action)
@@ -171,17 +175,29 @@ public sealed class UpdateService
     {
         string? exe = Environment.ProcessPath;
         if (exe is null) return;
-        string dir = Path.GetDirectoryName(exe) ?? ".";
-        string name = Path.GetFileName(exe);
-        var leftovers = new List<string> { exe + ".new" };
-        try { leftovers.AddRange(Directory.GetFiles(dir, name + ".old*")); }
-        catch (IOException) { }
-        foreach (string f in leftovers)
+        TryDelete(exe + ".new");
+        if (DeleteOldImages(exe)) return;
+
+        // The previous process is still unloading when this one takes over, and its image stays locked
+        // until it has gone. Only the old images are retried: by now a ".new" may be a download in progress.
+        _ = Task.Run(async () =>
         {
-            try { if (File.Exists(f)) File.Delete(f); }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
-        }
+            for (int ms = 250; ms <= 16000; ms *= 2)
+            {
+                await Task.Delay(ms);
+                if (DeleteOldImages(exe)) return;
+            }
+        });
+    }
+
+    private static bool DeleteOldImages(string exe)
+    {
+        string[] images;
+        try { images = Directory.GetFiles(Path.GetDirectoryName(exe) ?? ".", Path.GetFileName(exe) + ".old*"); }
+        catch (IOException) { return true; }
+        bool clean = true;
+        foreach (string f in images) clean &= TryDelete(f);
+        return clean;
     }
 
     private static IEnumerable<string> Candidates(string origin, bool useMirrors)

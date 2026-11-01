@@ -31,12 +31,12 @@
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="2*"/>
                         <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
                     <TextBlock Text="主题" Style="{StaticResource Heading}" Margin="0,0,0,10"/>
-                    <UniformGrid x:Name="Themes" Grid.Row="1" Rows="1"/>
+                    <UniformGrid x:Name="Themes" Grid.Row="1" Columns="2"/>
                     <TextBlock Grid.Row="2" Text="排列" Style="{StaticResource Heading}" Margin="0,22,0,10"/>
                     <UniformGrid Grid.Row="3" Rows="1">
                         <RadioButton x:Name="Horizontal" Style="{StaticResource Segment}" Content="横向" GroupName="orient" Margin="0,0,4,0"/>

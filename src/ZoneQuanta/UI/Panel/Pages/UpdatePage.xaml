@@ -11,6 +11,7 @@
         <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="14" Padding="18,14">
             <Grid>
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
@@ -18,11 +19,11 @@
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
-                <TextBlock x:Name="VersionText" FontSize="40" FontWeight="Light"/>
-                <TextBlock x:Name="FlavorText" Grid.Row="1" Style="{StaticResource Muted}"/>
-                <TextBlock x:Name="StatusText" Grid.Row="2" Margin="0,18,0,10" TextWrapping="Wrap"/>
-                <ProgressBar x:Name="Bar" Grid.Row="3"/>
-                <UniformGrid Grid.Row="5" Rows="1">
+                <TextBlock x:Name="VersionText" Grid.Row="1" FontSize="40" FontWeight="Light"/>
+                <TextBlock x:Name="FlavorText" Grid.Row="2" Style="{StaticResource Muted}"/>
+                <TextBlock x:Name="StatusText" Grid.Row="3" Margin="0,18,0,10" TextWrapping="Wrap"/>
+                <ProgressBar x:Name="Bar" Grid.Row="4"/>
+                <UniformGrid Grid.Row="6" Rows="1">
                     <Button x:Name="CheckButton" Style="{StaticResource Action}" Content="检查更新" Margin="0,0,4,0"/>
                     <Button x:Name="InstallButton" Style="{StaticResource Primary}" Content="下载并安装" Margin="4,0,0,0"/>
                 </UniformGrid>
@@ -30,7 +31,7 @@
         </Border>
 
         <Border Grid.Column="2" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="14" Padding="8">
-            <UniformGrid Columns="1" VerticalAlignment="Top">
+            <UniformGrid Columns="1">
                 <ToggleButton Style="{StaticResource SwitchRow}" Content="启动时自动检查" IsChecked="{Binding AutoCheckUpdate, Mode=TwoWay}"/>
                 <ToggleButton Style="{StaticResource SwitchRow}" Content="发现更新后自动安装" IsChecked="{Binding AutoInstallUpdate, Mode=TwoWay}"/>
                 <ToggleButton Style="{StaticResource SwitchRow}" Content="加速下载（多线路并发）" IsChecked="{Binding UseMirrors, Mode=TwoWay}"/>

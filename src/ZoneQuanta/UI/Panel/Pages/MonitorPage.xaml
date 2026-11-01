@@ -34,7 +34,11 @@
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
@@ -45,16 +49,14 @@
                         <RadioButton x:Name="ByteMode" Style="{StaticResource Segment}" Content="字节 B" GroupName="base" Margin="0,0,4,0"/>
                         <RadioButton x:Name="BitMode" Style="{StaticResource Segment}" Content="比特 b" GroupName="base" Margin="4,0,0,0"/>
                     </UniformGrid>
-                    <TextBlock Grid.Row="2" Text="单位选择" Style="{StaticResource Heading}" Margin="0,22,0,10"/>
+                    <TextBlock Grid.Row="2" Text="单位选择" Style="{StaticResource Heading}" Margin="0,18,0,10"/>
                     <UniformGrid x:Name="Scales" Grid.Row="3" Rows="1"/>
-                    <TextBlock Grid.Row="4" Text="显示位置" Style="{StaticResource Heading}" Margin="0,22,0,10"/>
-                    <StackPanel Grid.Row="5">
-                        <UniformGrid x:Name="Positions" Rows="1" Margin="0,0,0,16"/>
-                        <TextBlock Text="位置微调" Style="{StaticResource Heading}" Margin="0,0,0,10"/>
-                        <Slider VerticalAlignment="Top" Style="{StaticResource Range}" Minimum="-400" Maximum="800" SmallChange="2" LargeChange="20" Value="{Binding BandOffset, Mode=TwoWay}"/>
-                        <TextBlock Text="刷新频率" Style="{StaticResource Heading}" Margin="0,18,0,10"/>
-                        <UniformGrid x:Name="Rates" Rows="1"/>
-                    </StackPanel>
+                    <TextBlock Grid.Row="4" Text="显示位置" Style="{StaticResource Heading}" Margin="0,18,0,10"/>
+                    <UniformGrid x:Name="Positions" Grid.Row="5" Rows="1"/>
+                    <TextBlock Grid.Row="6" Text="位置微调" Style="{StaticResource Heading}" Margin="0,18,0,10"/>
+                    <Slider Grid.Row="7" VerticalAlignment="Top" Style="{StaticResource Range}" Minimum="-400" Maximum="800" SmallChange="2" LargeChange="20" Value="{Binding BandOffset, Mode=TwoWay}"/>
+                    <TextBlock Grid.Row="8" Text="刷新频率" Style="{StaticResource Heading}" Margin="0,18,0,10"/>
+                    <UniformGrid x:Name="Rates" Grid.Row="9" Rows="1"/>
                 </Grid>
             </Border>
         </Grid>

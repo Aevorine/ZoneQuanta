@@ -1,5 +1,12 @@
 # 更新日志 · Changelog
 
+## 1.3.3 — 2026-11-01
+- 中文：面板内容随窗口大小填满。「显示」页主题改为 2×2 色块，「监控」页各组选项按比例放大，「系统」「更新」页开关铺满，「更新」页版本信息居中，「窗口」页微调改为方向键布局（上下左右与移动方向一致），「时区」页时钟预览与「流量」页图表随高度放大。修复「监控」页「开始按钮左侧」文字被截断。
+- 中文：自动更新后随即删除旧版程序，不再等到下次启动；旧进程退出前文件被占用时会退避重试，重试不碰可能正在下载的新版本文件。
+- English: panel content now fills the window at any size. Display themes become 2×2 tiles, Monitor option groups scale proportionally, System and Update switches spread over the card, the Update version block is centered, Window nudges become a direction pad matching the direction of travel, and the Zones preview and Traffic chart grow with the height. Fixed the "left of Start" label being clipped on the Monitor page.
+- English: the previous executable is removed right after an update instead of at the next start. While the old process still holds the file, deletion retries with backoff, and the retries never touch a new download in progress.
+- Validation (real desktop, 125% DPI): all pages checked at normal, maximized and minimum height with no overlap or clipping; the direction pad moves the clock both ways.
+
 ## 1.3.2 — 2026-11-01
 - 中文：面板标题栏新增最大化 / 还原按钮，与「−」「✕」并列。单击按钮、双击标题栏、拖动标题栏还原、Win+↑ / Win+↓ 都可用；「−」「✕」仍隐藏到托盘。最大化时窗口贴合工作区，不再超出屏幕边缘裁掉内容；自动隐藏的任务栏让出 2 像素，系统不再把面板判定为全屏程序，任务栏可正常呼出；隐藏后再打开、显示桌面（Win+D）后保持最大化。按钮按系统标准方式上报为最大化按钮，供 Windows 11 贴靠布局使用。
 - English: the panel caption gains a maximize / restore button next to "−" and "✕". The button, a caption double-click, dragging the caption to restore and Win+Up / Win+Down all work; "−" and "✕" still hide to the tray. A maximized panel fits the work area instead of overhanging the screen and clipping its content; it stays 2 px clear of an auto-hide taskbar, so Windows no longer treats it as a full-screen app and the taskbar can be revealed; the maximized state survives hiding and reopening and show desktop (Win+D). The button is reported to Windows as the standard maximize button for Windows 11 Snap Layouts.

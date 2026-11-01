@@ -16,10 +16,14 @@
                 </Grid.RowDefinitions>
                 <TextBlock Text="已添加" Style="{StaticResource Heading}" Margin="0,0,0,10"/>
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                    <StackPanel>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
                         <StackPanel x:Name="Rows"/>
-                        <ContentPresenter x:Name="Preview" Margin="0,6,0,0"/>
-                    </StackPanel>
+                        <ContentPresenter x:Name="Preview" Grid.Row="1" Margin="0,6,0,0"/>
+                    </Grid>
                 </ScrollViewer>
             </Grid>
         </Border>

@@ -14,7 +14,6 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
@@ -33,13 +32,18 @@
                     <TextBox x:Name="YBox" Grid.Column="4" Style="{StaticResource Field}"/>
                 </Grid>
                 <TextBlock Grid.Row="2" Text="微调" Style="{StaticResource Heading}" Margin="0,22,0,10"/>
-                <UniformGrid Grid.Row="3" Rows="1">
-                    <Button x:Name="NudgeLeft" Style="{StaticResource Action}" Content="左移" Margin="0,0,4,0"/>
-                    <Button x:Name="NudgeUp" Style="{StaticResource Action}" Content="上移" Margin="4,0"/>
-                    <Button x:Name="NudgeDown" Style="{StaticResource Action}" Content="下移" Margin="4,0"/>
-                    <Button x:Name="NudgeRight" Style="{StaticResource Action}" Content="右移" Margin="4,0,0,0"/>
+                <UniformGrid Grid.Row="3" Rows="3" Columns="3">
+                    <Border/>
+                    <Button x:Name="NudgeUp" Style="{StaticResource Action}" Content="上移" Margin="3"/>
+                    <Border/>
+                    <Button x:Name="NudgeLeft" Style="{StaticResource Action}" Content="左移" Margin="3"/>
+                    <Border/>
+                    <Button x:Name="NudgeRight" Style="{StaticResource Action}" Content="右移" Margin="3"/>
+                    <Border/>
+                    <Button x:Name="NudgeDown" Style="{StaticResource Action}" Content="下移" Margin="3"/>
+                    <Border/>
                 </UniformGrid>
-                <ToggleButton Grid.Row="5" Style="{StaticResource SwitchRow}" Content="允许超出屏幕边界" IsChecked="{Binding AllowOffScreen, Mode=TwoWay}" Margin="-12,0"/>
+                <ToggleButton Grid.Row="4" Style="{StaticResource SwitchRow}" Content="允许超出屏幕边界" IsChecked="{Binding AllowOffScreen, Mode=TwoWay}" Margin="-12,0"/>
             </Grid>
         </Border>
 

@@ -25,7 +25,7 @@ public partial class DisplayPage : UserControl
                 Content = palette.Display,
                 Style = (Style)FindResource("Segment"),
                 GroupName = "theme",
-                Margin = new Thickness(2, 0, 2, 0),
+                Margin = new Thickness(2),
                 IsChecked = settings.Theme == name,
             };
             radio.Checked += (_, _) => settings.Theme = name;

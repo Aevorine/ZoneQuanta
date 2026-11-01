@@ -6,8 +6,8 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
+            <RowDefinition Height="*" MinHeight="120"/>
+            <RowDefinition Height="2*"/>
         </Grid.RowDefinitions>
 
         <UniformGrid x:Name="Ranges" Rows="1" Margin="0,0,0,10"/>
@@ -33,7 +33,7 @@
             </Border>
         </UniformGrid>
 
-        <Border Grid.Row="2" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="12" Margin="0,0,0,10" Height="110" ClipToBounds="True">
+        <Border Grid.Row="2" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="12" Margin="0,0,0,10" ClipToBounds="True">
             <c:SpeedChart x:Name="Chart" Margin="6,4"/>
         </Border>
 

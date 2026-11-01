@@ -9,7 +9,7 @@
         </Grid.ColumnDefinitions>
 
         <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="14" Padding="8">
-            <UniformGrid Columns="1" VerticalAlignment="Top">
+            <UniformGrid Columns="1">
                 <ToggleButton Style="{StaticResource SwitchRow}" Content="开机自启" IsChecked="{Binding AutoStart, Mode=TwoWay}"/>
                 <ToggleButton Style="{StaticResource SwitchRow}" Content="全屏时隐藏" IsChecked="{Binding HideOnFullscreen, Mode=TwoWay}"/>
                 <ToggleButton Style="{StaticResource SwitchRow}" Content="总是置顶" IsChecked="{Binding Topmost, Mode=TwoWay}"/>
@@ -24,14 +24,13 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <TextBlock Text="显示 / 隐藏面板快捷键" Style="{StaticResource Heading}" Margin="0,0,0,10"/>
                 <TextBox x:Name="HotkeyBox" Grid.Row="1" Style="{StaticResource Field}" IsReadOnly="True" Cursor="Hand"/>
-                <ToggleButton Grid.Row="2" Style="{StaticResource SwitchRow}" Content="启用快捷键" IsChecked="{Binding HotkeyEnabled, Mode=TwoWay}" Margin="-12,10,-12,0"/>
-                <UniformGrid Grid.Row="4" Rows="1">
+                <ToggleButton Grid.Row="2" Style="{StaticResource SwitchRow}" Content="启用快捷键" IsChecked="{Binding HotkeyEnabled, Mode=TwoWay}" Margin="-12,10,-12,10"/>
+                <UniformGrid Grid.Row="3" Rows="1">
                     <Button x:Name="FolderButton" Style="{StaticResource Action}" Content="打开配置目录" Margin="0,0,4,0"/>
                     <Button x:Name="ExitButton" Style="{StaticResource Primary}" Content="退出程序" Margin="4,0,0,0"/>
                 </UniformGrid>
