@@ -1,11 +1,15 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
+using ZoneQuanta.Core;
 using ZoneQuanta.Core.Monitor;
+using ZoneQuanta.Core.Quick;
 using ZoneQuanta.Core.Settings;
 using ZoneQuanta.Core.Traffic;
 using ZoneQuanta.Core.Time;
@@ -14,6 +18,7 @@ using ZoneQuanta.Platform;
 using ZoneQuanta.Shell;
 using ZoneQuanta.UI.Band;
 using ZoneQuanta.UI.Panel;
+using ZoneQuanta.UI.Quick;
 using ZoneQuanta.UI.Theme;
 using ZoneQuanta.UI.Widget;
 
@@ -30,6 +35,11 @@ public sealed class AppController : IPanelHost, IDisposable
     private readonly SystemMetrics _metrics = new();
     private readonly MetricsSampler _sampler;
     private readonly TotalsRecorder _totals = new();
+    private readonly QuickStore _quickStore = new();
+    private readonly CommandPipe _pipe = new();
+    private QuickActions _quick = null!;
+    private QuickWindow? _quickWindow;
+    private PathBarWindow? _pathBar;
     private readonly object _gate = new();
     private Dispatcher _dispatcher = null!;
     private Metrics _pending;
@@ -56,6 +66,7 @@ public sealed class AppController : IPanelHost, IDisposable
     public UpdateCoordinator Updates => _updates;
     public Metrics Latest { get; private set; }
     public TrafficFile Totals => _totals.File;
+    public QuickActions Quick => _quick;
     public event Action<DateTimeOffset>? Tick;
 
     public (double X, double Y) WidgetPosition => (
@@ -82,15 +93,22 @@ public sealed class AppController : IPanelHost, IDisposable
             _panel.SelectPage(page);
             _panel.ShowPanel();
         };
-        _tray = new TrayService(s, TogglePanel, ResetWidget, () => _ = _updates.CheckAsync(), ExitApp);
+        _quick = new QuickActions(_quickStore, s);
+        _tray = new TrayService(s, TogglePanel, ResetWidget, () => _ = _updates.CheckAsync(), ExitApp, ToggleQuick, ShowPathBar,
+            () => _quickStore.Items.Take(30).Select(i => (i.DisplayName, (Action)(() => _quick.Open(i)))));
 
         ShowPendingUpdateFailure();
         _widget.ApplyInitial(CurrentSecond());
         _band.Sync();
         if (s.TrackApps) _ = StartTrackingHelperAsync();
         s.PropertyChanged += OnSettingChanged;
-        _hotkey.Pressed += TogglePanel;
-        RegisterHotkey();
+        _hotkey.Pressed += OnHotkey;
+        RegisterHotkey(HotkeyService.PanelId);
+        RegisterHotkey(HotkeyService.QuickId);
+        RegisterHotkey(HotkeyService.PathId);
+        ApplyExplorerMenu();
+        _pipe.Received += args => _dispatcher.BeginInvoke(new Action(() => Execute(args)));
+        _pipe.Start();
 
         _updates.UpdateFound += info => _tray.Notify("发现新版本", $"ZoneQuanta v{info.Version} 可用，在面板「更新」页安装");
         _updates.PreparingToApply += () => ((App)Application.Current).PrepareExit();
@@ -127,6 +145,111 @@ public sealed class AppController : IPanelHost, IDisposable
             _panel = new PanelWindow(this);
             _trimIn = 6;
         }
+        QuickWindow().Prewarm();
+        PathBar().Prewarm();
+        int px = (int)Math.Round(40 * Math.Max(1, System.Windows.Media.VisualTreeHelper.GetDpi(_widget).DpiScaleX));
+        foreach (var item in _quickStore.Items) ShellIcons.Request(item.Path, px, _ => { });
+    }
+
+    private QuickWindow QuickWindow() => _quickWindow ??= new QuickWindow(_quick, () =>
+    {
+        ShowPanel();
+        _panel!.SelectPage("快捷");
+    });
+
+    private PathBarWindow PathBar() => _pathBar ??= new PathBarWindow(_quick);
+
+    public void ToggleQuick() => QuickWindow().Toggle();
+
+    public void ShowPathBar() => PathBar().Toggle();
+
+    // Commands from a second launch: Explorer verb, a script or Claude Code.
+    public void Execute(string[] args)
+    {
+        for (int i = 0; i < args.Length; i++)
+        {
+            switch (args[i].ToLowerInvariant())
+            {
+                case "--quick-add":
+                    var paths = new List<string>();
+                    while (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal)) paths.Add(FixQuotedRoot(args[++i]));
+                    _quick.Add(paths);
+                    QuickWindow().Present();
+                    break;
+                case "--quick":
+                    QuickWindow().Present();
+                    break;
+                case "--path-bar":
+                    PathBar().Present();
+                    break;
+                case "--open":
+                    if (i + 1 < args.Length) _quick.OpenText(args[++i]);
+                    break;
+                case "--panel":
+                    ShowPanel();
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal)) _panel!.SelectPage(args[++i]);
+                    break;
+            }
+        }
+    }
+
+    // "%1" of a drive root arrives as C:\" and argv parsing turns that into C:" .
+    private static string FixQuotedRoot(string arg) => arg.EndsWith('"') ? arg[..^1] + "\\" : arg;
+
+    private void OnHotkey(int id)
+    {
+        switch (id)
+        {
+            case HotkeyService.PanelId: TogglePanel(); break;
+            case HotkeyService.QuickId: ToggleQuick(); break;
+            case HotkeyService.PathId: ShowPathBar(); break;
+        }
+    }
+
+    private void ApplyExplorerMenu()
+    {
+        string? exe = Environment.ProcessPath;
+        if (exe is null) return;
+        if (!Settings.QuickContextMenu) ExplorerMenu.Set(false, exe);
+        else if (!ExplorerMenu.IsRegistered(exe)) ExplorerMenu.Set(true, exe);
+    }
+
+    // A default combination already owned by another program is replaced by the first free one.
+    private static readonly uint[] FallbackKeys = { 0x20, 0x47, 0x4B, 0x4A, 0x45, 0x4F, 0x4C, 0x56 };
+
+    private bool TryFallbackHotkey(int id, uint mods, uint key)
+    {
+        var s = Settings;
+        bool isDefault = mods == 3 && (id == HotkeyService.QuickId ? key == 0x20 : id == HotkeyService.PathId && key == 0x47);
+        if (!isDefault) return false;
+        uint other = id == HotkeyService.QuickId ? s.PathHotkeyKey : s.QuickHotkeyKey;
+        foreach (uint vk in FallbackKeys)
+        {
+            if (vk == key || vk == other || (s.HotkeyModifiers == 3 && vk == s.HotkeyKey)) continue;
+            if (!_hotkey.Register(id, 3, vk)) continue;
+            if (id == HotkeyService.QuickId) s.QuickHotkeyKey = vk;
+            else s.PathHotkeyKey = vk;
+            Log.Write($"hotkey fallback {id:X} -> {vk:X}");
+            return true;
+        }
+        return false;
+    }
+
+    private void CheckQuota()
+    {
+        var s = Settings;
+        if (!s.QuotaEnabled || !s.QuotaAlert) return;
+        long cap = (long)(s.QuotaGB * 1024 * 1024 * 1024);
+        var r = Quota.Compute(_totals.File, cap, s.QuotaResetDay, DateTime.Now);
+        int level = r.Fraction >= 1 ? 100 : r.Fraction * 100 >= s.QuotaAlertPercent ? s.QuotaAlertPercent : 0;
+        if (level == 0) return;
+        string cycle = r.Start.ToString("yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture);
+        string key = $"{cycle}-{level}";
+        if (s.QuotaAlerted == key || (level < 100 && s.QuotaAlerted == $"{cycle}-100")) return;
+        s.QuotaAlerted = key;
+        string used = UnitFormat.Size(r.Used, false, "Auto"), all = UnitFormat.Size(r.Cap, false, "Auto");
+        _tray.Notify(level >= 100 ? "流量额度已用完" : $"流量已用 {r.Fraction:P0}", $"已用 {used} / {all}，账期还剩 {r.DaysLeft:0.#} 天");
+        Log.Write($"quota alert {level}");
     }
 
     private async Task StartTrackingHelperAsync()
@@ -204,7 +327,10 @@ public sealed class AppController : IPanelHost, IDisposable
         _store.Flush();
         _totals.Flush();
         _hotkey.Dispose();
+        _pipe.Dispose();
         _tray.Dispose();
+        _quickWindow?.Close();
+        _pathBar?.Close();
         _detail.Close();
         _band.Close();
         _widget.Close();
@@ -255,6 +381,7 @@ public sealed class AppController : IPanelHost, IDisposable
         {
             _lastMinute = minute;
             _tray.SetTooltip(BuildTooltip(now));
+            CheckQuota();
         }
     }
 
@@ -343,20 +470,48 @@ public sealed class AppController : IPanelHost, IDisposable
             case nameof(AppSettings.HotkeyEnabled):
             case nameof(AppSettings.HotkeyModifiers):
             case nameof(AppSettings.HotkeyKey):
-                RegisterHotkey();
+                RegisterHotkey(HotkeyService.PanelId);
+                break;
+            case nameof(AppSettings.QuickHotkeyEnabled):
+            case nameof(AppSettings.QuickHotkeyModifiers):
+            case nameof(AppSettings.QuickHotkeyKey):
+                RegisterHotkey(HotkeyService.QuickId);
+                break;
+            case nameof(AppSettings.PathHotkeyEnabled):
+            case nameof(AppSettings.PathHotkeyModifiers):
+            case nameof(AppSettings.PathHotkeyKey):
+                RegisterHotkey(HotkeyService.PathId);
+                break;
+            case nameof(AppSettings.QuickContextMenu):
+                ApplyExplorerMenu();
+                break;
+            case nameof(AppSettings.QuotaEnabled):
+            case nameof(AppSettings.QuotaGB):
+            case nameof(AppSettings.QuotaResetDay):
+            case nameof(AppSettings.QuotaAlertPercent):
+                CheckQuota();
                 break;
         }
     }
 
-    private void RegisterHotkey()
+    private void RegisterHotkey(int id)
     {
         var s = Settings;
-        if (!s.HotkeyEnabled)
+        var (on, mods, key, page) = id switch
         {
-            _hotkey.Unregister();
+            HotkeyService.QuickId => (s.QuickHotkeyEnabled, s.QuickHotkeyModifiers, s.QuickHotkeyKey, "快捷"),
+            HotkeyService.PathId => (s.PathHotkeyEnabled, s.PathHotkeyModifiers, s.PathHotkeyKey, "快捷"),
+            _ => (s.HotkeyEnabled, s.HotkeyModifiers, s.HotkeyKey, "系统"),
+        };
+        if (!on)
+        {
+            _hotkey.Unregister(id);
             return;
         }
-        if (!_hotkey.Register(s.HotkeyModifiers, s.HotkeyKey))
-            _tray.Notify("快捷键不可用", "该组合已被其他程序占用，请在「系统」页更换");
+        if (!_hotkey.Register(id, mods, key) && !TryFallbackHotkey(id, mods, key))
+        {
+            _tray.Notify("快捷键不可用", $"{UI.Panel.Pages.SystemPage.Format(mods, key)} 已被其他程序占用，请在「{page}」页更换");
+            Log.Write($"hotkey busy {id:X}");
+        }
     }
 }

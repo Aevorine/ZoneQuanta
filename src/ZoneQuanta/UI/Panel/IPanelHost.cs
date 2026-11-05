@@ -4,6 +4,7 @@ using ZoneQuanta.Core.Monitor;
 using ZoneQuanta.Core.Settings;
 using ZoneQuanta.Core.Time;
 using ZoneQuanta.Core.Update;
+using ZoneQuanta.UI.Quick;
 
 namespace ZoneQuanta.UI.Panel;
 
@@ -14,6 +15,7 @@ public interface IPanelHost
     UpdateCoordinator Updates { get; }
     Metrics Latest { get; }
     TrafficFile Totals { get; }
+    QuickActions Quick { get; }
     (double X, double Y) WidgetPosition { get; }
     void MoveWidget(double x, double y);
     void AnchorWidget(string where);
@@ -21,5 +23,7 @@ public interface IPanelHost
     void OpenSettingsFolder();
     void ExitApp();
     Task<bool> SetTrackingAsync(bool on);
+    void ToggleQuick();
+    void ShowPathBar();
     event Action<DateTimeOffset> Tick;
 }

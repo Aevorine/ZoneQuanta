@@ -77,6 +77,14 @@ internal static class Native
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
 
+    public const int ASFW_ANY = -1;
+
+    [DllImport("user32.dll")]
+    public static extern bool AllowSetForegroundWindow(int pid);
+
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+
     [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
 

@@ -41,12 +41,11 @@
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
             <Grid>
-                <TextBlock x:Name="PageTitle" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" Margin="20,0,0,0"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0"
                             WindowChrome.IsHitTestVisibleInChrome="True">
-                    <Button x:Name="MinButton" Style="{StaticResource IconButton}" Tag="{StaticResource Icon.Min}"/>
-                    <Button x:Name="MaxButton" Style="{StaticResource IconButton}" Tag="{StaticResource Icon.Max}"/>
-                    <Button x:Name="CloseButton" Style="{StaticResource IconButton}" Tag="{StaticResource Icon.Close}"/>
+                    <Button x:Name="MinButton" Style="{StaticResource IconButton}" Tag="{StaticResource Icon.Min}" ToolTip="最小化"/>
+                    <Button x:Name="MaxButton" Style="{StaticResource IconButton}" Tag="{StaticResource Icon.Max}" ToolTip="最大化"/>
+                    <Button x:Name="CloseButton" Style="{StaticResource IconButton}" Tag="{StaticResource Icon.Close}" ToolTip="关闭"/>
                 </StackPanel>
             </Grid>
             <ContentPresenter x:Name="PageHost" Grid.Row="1" Margin="16,0,16,16"/>

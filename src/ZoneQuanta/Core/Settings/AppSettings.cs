@@ -99,4 +99,42 @@ public sealed class AppSettings : Observable
     public string TrafficRange { get => _trafficRange; set => Set(ref _trafficRange, value); }
 
     public List<ZoneConfig> Zones { get => _zones; set => Set(ref _zones, value); }
+
+    private bool _quotaEnabled, _quotaAlert = true;
+    private double _quotaGB = 100;
+    private int _quotaResetDay = 1, _quotaAlertPercent = 80;
+    private string _quotaAlerted = "", _trafficChart = "Live", _appSort = "Total";
+
+    public bool QuotaEnabled { get => _quotaEnabled; set => Set(ref _quotaEnabled, value); }
+    public double QuotaGB { get => _quotaGB; set => Set(ref _quotaGB, Math.Clamp(value, 0.1, 1_000_000)); }
+    public int QuotaResetDay { get => _quotaResetDay; set => Set(ref _quotaResetDay, Math.Clamp(value, 1, 31)); }
+    public bool QuotaAlert { get => _quotaAlert; set => Set(ref _quotaAlert, value); }
+    public int QuotaAlertPercent { get => _quotaAlertPercent; set => Set(ref _quotaAlertPercent, Math.Clamp(value, 50, 99)); }
+    public string QuotaAlerted { get => _quotaAlerted; set => Set(ref _quotaAlerted, value ?? ""); }
+    public string TrafficChart { get => _trafficChart; set => Set(ref _trafficChart, value); }
+    public string AppSort { get => _appSort; set => Set(ref _appSort, value); }
+
+    private bool _quickHotkeyEnabled = true, _pathHotkeyEnabled = true, _quickContextMenu = true, _quickCloseAfterOpen = true, _quickInTray = true;
+    private bool _quickShowIcon = true, _quickShowName = true, _quickShowPath, _quickShowType, _quickShowSize, _quickShowModified, _quickShowCount;
+    private uint _quickHotkeyModifiers = 3, _quickHotkeyKey = 0x20, _pathHotkeyModifiers = 3, _pathHotkeyKey = 0x47;
+    private string _quickView = "Grid", _quickSort = "Custom";
+
+    public bool QuickHotkeyEnabled { get => _quickHotkeyEnabled; set => Set(ref _quickHotkeyEnabled, value); }
+    public uint QuickHotkeyModifiers { get => _quickHotkeyModifiers; set => Set(ref _quickHotkeyModifiers, value); }
+    public uint QuickHotkeyKey { get => _quickHotkeyKey; set => Set(ref _quickHotkeyKey, value); }
+    public bool PathHotkeyEnabled { get => _pathHotkeyEnabled; set => Set(ref _pathHotkeyEnabled, value); }
+    public uint PathHotkeyModifiers { get => _pathHotkeyModifiers; set => Set(ref _pathHotkeyModifiers, value); }
+    public uint PathHotkeyKey { get => _pathHotkeyKey; set => Set(ref _pathHotkeyKey, value); }
+    public bool QuickContextMenu { get => _quickContextMenu; set => Set(ref _quickContextMenu, value); }
+    public bool QuickCloseAfterOpen { get => _quickCloseAfterOpen; set => Set(ref _quickCloseAfterOpen, value); }
+    public bool QuickInTray { get => _quickInTray; set => Set(ref _quickInTray, value); }
+    public bool QuickShowIcon { get => _quickShowIcon; set => Set(ref _quickShowIcon, value); }
+    public bool QuickShowName { get => _quickShowName; set => Set(ref _quickShowName, value); }
+    public bool QuickShowPath { get => _quickShowPath; set => Set(ref _quickShowPath, value); }
+    public bool QuickShowType { get => _quickShowType; set => Set(ref _quickShowType, value); }
+    public bool QuickShowSize { get => _quickShowSize; set => Set(ref _quickShowSize, value); }
+    public bool QuickShowModified { get => _quickShowModified; set => Set(ref _quickShowModified, value); }
+    public bool QuickShowCount { get => _quickShowCount; set => Set(ref _quickShowCount, value); }
+    public string QuickView { get => _quickView; set => Set(ref _quickView, value); }
+    public string QuickSort { get => _quickSort; set => Set(ref _quickSort, value); }
 }

@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
 using ZoneQuanta.Core.Settings;
+using ZoneQuanta.UI.Panel.Pages;
 using ZoneQuanta.UI.Theme;
 
 namespace ZoneQuanta.Shell;
@@ -13,12 +15,19 @@ internal sealed class TrayService : IDisposable
     private readonly AppSettings _settings;
     private readonly ContextMenuStrip _menu = new();
     private readonly ToolStripMenuItem _panel, _show, _band, _through, _lock, _top, _fullscreen, _autostart;
+    private readonly ToolStripMenuItem _quick, _path, _quickList;
+    private readonly Func<IEnumerable<(string Name, Action Open)>> _quickItems;
 
-    public TrayService(AppSettings settings, Action togglePanel, Action resetPosition, Action checkUpdate, Action exit)
+    public TrayService(AppSettings settings, Action togglePanel, Action resetPosition, Action checkUpdate, Action exit,
+        Action toggleQuick, Action showPathBar, Func<IEnumerable<(string Name, Action Open)>> quickItems)
     {
         _settings = settings;
+        _quickItems = quickItems;
 
         _panel = Item("显示 / 隐藏面板", togglePanel);
+        _quick = Item("快捷面板", toggleQuick);
+        _path = Item("打开路径…", showPathBar);
+        _quickList = new ToolStripMenuItem("快捷项");
         _show = Check("显示时钟", nameof(AppSettings.WidgetVisible), () => settings.WidgetVisible = !settings.WidgetVisible);
         _band = Check("任务栏监控条", nameof(AppSettings.BandVisible), () => settings.BandVisible = !settings.BandVisible);
         _through = Check("鼠标穿透", nameof(AppSettings.ClickThrough), () => settings.ClickThrough = !settings.ClickThrough);
@@ -29,7 +38,7 @@ internal sealed class TrayService : IDisposable
 
         _menu.Items.AddRange(new ToolStripItem[]
         {
-            _panel, new ToolStripSeparator(),
+            _panel, _quick, _path, _quickList, new ToolStripSeparator(),
             _show, _band, _through, _lock, _top, _fullscreen, _autostart, new ToolStripSeparator(),
             Item("重置位置", resetPosition), Item("检查更新", checkUpdate), new ToolStripSeparator(),
             Item("退出", exit),
@@ -61,13 +70,35 @@ internal sealed class TrayService : IDisposable
         var p = ThemeManager.Find(_settings.Theme);
         var back = ColorTranslator.FromHtml(p.Card);
         var fore = ColorTranslator.FromHtml(p.Text);
-        _menu.Renderer = new ThemedRenderer(new ThemedColors(p));
+        var renderer = new ThemedRenderer(new ThemedColors(p));
+        _menu.Renderer = renderer;
         _menu.BackColor = back;
         _menu.ForeColor = fore;
         foreach (ToolStripItem i in _menu.Items)
         {
             i.BackColor = back;
             i.ForeColor = fore;
+        }
+
+        _panel.ShortcutKeyDisplayString = _settings.HotkeyEnabled ? SystemPage.Format(_settings.HotkeyModifiers, _settings.HotkeyKey) : null;
+        _quick.ShortcutKeyDisplayString = _settings.QuickHotkeyEnabled ? SystemPage.Format(_settings.QuickHotkeyModifiers, _settings.QuickHotkeyKey) : null;
+        _path.ShortcutKeyDisplayString = _settings.PathHotkeyEnabled ? SystemPage.Format(_settings.PathHotkeyModifiers, _settings.PathHotkeyKey) : null;
+        _quickList.DropDownItems.Clear();
+        if (_settings.QuickInTray)
+            foreach (var (name, open) in _quickItems())
+            {
+                var item = Item(name, open);
+                item.BackColor = back;
+                item.ForeColor = fore;
+                _quickList.DropDownItems.Add(item);
+            }
+        _quickList.Visible = _quickList.DropDownItems.Count > 0;
+        if (_quickList.DropDown is ToolStripDropDownMenu dd)
+        {
+            dd.Renderer = renderer;
+            dd.BackColor = back;
+            dd.ShowImageMargin = false;
+            dd.Font = _menu.Font;
         }
 
         _show.Checked = _settings.WidgetVisible;

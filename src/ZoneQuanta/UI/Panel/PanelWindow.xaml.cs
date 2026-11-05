@@ -24,6 +24,7 @@ public partial class PanelWindow : Window
         new("时区", "Icon.Globe", h => new ZonesPage(h)),
         new("监控", "Icon.Pulse", h => new MonitorPage(h)),
         new("流量", "Icon.Chart", h => new TrafficPage(h)),
+        new("快捷", "Icon.Bolt", h => new QuickPage(h)),
         new("窗口", "Icon.Move", h => new WindowPage(h)),
         new("系统", "Icon.Sliders", h => new SystemPage(h)),
         new("更新", "Icon.Download", h => new UpdatePage(h)),
@@ -92,6 +93,7 @@ public partial class PanelWindow : Window
         {
             _maximized = WindowState == WindowState.Maximized;
             MaxButton.Tag = FindResource(_maximized ? "Icon.Restore" : "Icon.Max");
+            MaxButton.ToolTip = _maximized ? "还原" : "最大化";
             // A maximized window has no edge to drag: its top pixels must remain caption.
             WindowChrome.GetWindowChrome(this).ResizeBorderThickness = _maximized ? new Thickness(0) : _resizeBorder;
         }
@@ -152,7 +154,6 @@ public partial class PanelWindow : Window
     {
         if (!_pages.TryGetValue(def.Title, out var page))
             _pages[def.Title] = page = def.Create(_host);
-        PageTitle.Text = def.Title;
         PageHost.Content = page;
 
         var slide = new TranslateTransform(0, 14);

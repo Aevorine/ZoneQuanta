@@ -1,5 +1,16 @@
 # 更新日志 · Changelog
 
+## 1.4.0 — 2026-11-05
+- 中文：新增快捷面板与「快捷」页。资源管理器右键「添加到快捷面板」（文件、文件夹、磁盘、文件夹空白处；Windows 11 在「显示更多选项」里），拖入文件或「添加」按钮也可；显示系统图标、图片缩略图与名称，网格 / 列表视图；单击打开，右键打开、以管理员身份运行、打开方式、打开所在位置、复制路径、重命名、属性、移除；拖动排序，多种排序（含 7 天半衰期使用热度），模糊搜索；路径、类型、大小、修改时间、打开次数分别开关显示；右键菜单、打开后收起、托盘列表、两个快捷键各自开关。
+- 中文：新增「打开路径」输入框（`Ctrl + Alt + G`）：引号路径、环境变量、`~`、`shell:`、网址、常用位置名称，边输边补全，最近打开记录；快捷面板默认 `Ctrl + Alt + Space`，默认组合被占用时自动换成空闲组合。
+- 中文：「流量」页新增额度：每月额度、重置日、额度环、剩余、每日可用、日均（14 天、3 天半衰期加权）、预计账期用量与用完时刻、逐日柱状图、阈值与用完提醒；新增「账期」范围；应用流量可搜索、按合计 / 上传 / 下载排序，最多显示 60 项。
+- 中文：命令行 `--quick-add`、`--quick`、`--path-bar`、`--open`、`--panel`，第二次启动经当前用户专用命名管道交给运行中的实例；日志精确到毫秒。面板左上角不再显示页面名称；图标按钮悬停显示名称；右键菜单与悬停提示统一使用主题样式。
+- English: new quick panel and Quick page. Add items from Explorer's right-click menu (files, folders, drives, folder background; on Windows 11 under "Show more options"), by dropping files or with Add. System icons, image thumbnails and names in grid or list view; click to open; right-click for open, run as administrator, open with, open file location, copy path, rename, properties, remove; drag to reorder, several sort orders (including a 7-day half-life usage score), fuzzy search; path, type, size, modified time and open count shown individually; Explorer menu, hide after opening, tray list and both hotkeys each switchable.
+- English: new open-a-path input (`Ctrl + Alt + G`) handling quoted paths, environment variables, `~`, `shell:`, URLs and common folder names, with completion and recent history; the quick panel defaults to `Ctrl + Alt + Space`, and a default combination taken by another program is replaced by a free one.
+- English: the Traffic page gains a data cap with reset day, ring gauge, remaining, daily allowance, weighted daily average (14 days, 3-day half-life), projected cycle total and run-out time, per-day bars and threshold / exhausted alerts, plus a billing-cycle range; per-app traffic can be searched and sorted by total / upload / download, up to 60 rows.
+- English: command line `--quick-add`, `--quick`, `--path-bar`, `--open`, `--panel`; a second launch forwards to the running instance over a current-user-only named pipe; millisecond log timestamps. The panel no longer shows the page name top-left; icon buttons show their name on hover; context menus and tooltips use the theme.
+- Validation (real desktop, 125% DPI): Explorer Shift + right-click → "添加到快捷面板" added the file in 460 ms and brought up the panel; Explorer-style launches with a file, a folder with spaces, `C:\` and an image took about 230 ms each; `Ctrl + Alt + Space` toggled the panel; pasting `"%TEMP%\…\pathbar-test"` and Enter opened the folder; context-menu copy path, drag reorder and click-to-open with auto-hide worked; switches removed and restored the registry entry and the display chips changed the list at once; cap usage 36.6 GB / 100 GB matched a hand sum of `totals.tsv` (36.587 GB), daily allowance 2.51 GB = 63.4 GB / 25.2 days. Not verified: other DPI values and multiple monitors, the open-a-path input under every IME mode.
+
 ## 1.3.3 — 2026-11-01
 - 中文：面板内容随窗口大小填满。「显示」页主题改为 2×2 色块，「监控」页各组选项按比例放大，「系统」「更新」页开关铺满，「更新」页版本信息居中，「窗口」页微调改为方向键布局（上下左右与移动方向一致），「时区」页时钟预览与「流量」页图表随高度放大。修复「监控」页「开始按钮左侧」文字被截断。
 - 中文：自动更新后随即删除旧版程序，不再等到下次启动；旧进程退出前文件被占用时会退避重试，重试不碰可能正在下载的新版本文件。

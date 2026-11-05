@@ -118,11 +118,34 @@ public sealed class TrafficFile
         return _todayTotal;
     }
 
-    public static long RangeStart(string range)
+    // Per local day totals for one key, oldest first; an hourly bucket counts on the day it starts.
+    public long[] Daily(string app, DateTime firstDay, int days)
+    {
+        var result = new long[Math.Max(0, days)];
+        foreach (var kv in _data)
+        {
+            if (kv.Key.App != app) continue;
+            var local = DateTimeOffset.FromUnixTimeSeconds(kv.Key.Bucket).LocalDateTime;
+            int index = (int)(local.Date - firstDay.Date).TotalDays;
+            if (index >= 0 && index < result.Length) result[index] += kv.Value.Up + kv.Value.Down;
+        }
+        return result;
+    }
+
+    public DateTime? FirstDay(string app)
+    {
+        long min = long.MaxValue;
+        foreach (var kv in _data)
+            if (kv.Key.App == app && kv.Key.Bucket < min) min = kv.Key.Bucket;
+        return min == long.MaxValue ? null : DateTimeOffset.FromUnixTimeSeconds(min).LocalDateTime.Date;
+    }
+
+    public static long RangeStart(string range, int resetDay = 1)
     {
         var now = DateTime.Now;
         DateTime from = range switch
         {
+            "Cycle" => Quota.Cycle(now, resetDay).Start,
             "Today" => now.Date,
             "Day" => now.AddHours(-24),
             "Week" => now.Date.AddDays(-(((int)now.DayOfWeek + 6) % 7)),

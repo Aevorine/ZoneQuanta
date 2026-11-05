@@ -22,6 +22,8 @@ public partial class App : Application
     private RegisteredWaitHandle? _wait;
     private AppController? _controller;
 
+    private static readonly string[] Commands = { "--quick-add", "--quick", "--path-bar", "--open", "--panel" };
+
     public static bool Exiting { get; private set; }
 
     protected override void OnStartup(StartupEventArgs e)
@@ -40,7 +42,8 @@ public partial class App : Application
         }
 
         bool autostart = Array.IndexOf(e.Args, "--autostart") >= 0;
-        bool skipInstall = autostart || Array.IndexOf(e.Args, "--updated") >= 0
+        bool command = Array.Exists(e.Args, a => Array.IndexOf(Commands, a.ToLowerInvariant()) >= 0);
+        bool skipInstall = autostart || command || Array.IndexOf(e.Args, "--updated") >= 0
                            || Array.IndexOf(e.Args, "--installed") >= 0 || Array.IndexOf(e.Args, "--portable") >= 0;
         if (!skipInstall && !InInstallFolder())
         {
@@ -54,6 +57,11 @@ public partial class App : Application
         _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
         if (!first)
         {
+            if (command && CommandPipe.Send(Absolutize(e.Args)))
+            {
+                Shutdown();
+                return;
+            }
             _showEvent.Set();
             Shutdown();
             return;
@@ -65,7 +73,8 @@ public partial class App : Application
         _ = Task.Run(TaskbarLayout.Warmup);
 
         _controller = new AppController();
-        _controller.Start(showPanel: !autostart);
+        _controller.Start(showPanel: !autostart && !command);
+        if (command) _controller.Execute(e.Args);
 
         _wait = ThreadPool.RegisterWaitForSingleObject(_showEvent,
             (_, _) => Dispatcher.BeginInvoke(() => _controller?.ShowPanel()), null, Timeout.Infinite, false);
@@ -129,6 +138,20 @@ public partial class App : Application
             _mutex.Dispose();
         }
         base.OnExit(e);
+    }
+
+    private static string[] Absolutize(string[] args)
+    {
+        var result = (string[])args.Clone();
+        for (int i = 0; i < result.Length; i++)
+        {
+            string a = result[i].Trim('"');
+            if (a.StartsWith("--", StringComparison.Ordinal) || a.Length == 0 || Path.IsPathFullyQualified(a)
+                || Core.Quick.PathEngine.IsShell(a) || Core.Quick.PathEngine.IsUrl(a)) continue;
+            string full = Path.GetFullPath(a);
+            if (File.Exists(full) || Directory.Exists(full)) result[i] = full;
+        }
+        return result;
     }
 
     private static bool InInstallFolder()

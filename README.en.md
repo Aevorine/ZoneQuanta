@@ -18,16 +18,22 @@
 | Popular countries and cities | 36 built-in cities (USA, Canada, China, Japan, Europe, Australia, ...), plus search over every system time zone. Up to 4 zones, renamable and reorderable |
 | Taskbar monitor | Placed at the far left of the taskbar by default; choose "left of Start" or "left of the notification area" and fine-tune the offset. Height adapts to the taskbar with no padding. Upload speed, download speed, today’s data usage, total speed, memory % and CPU % can each be switched on or off |
 | Speed units | Bytes `B` or bits `b`; unit auto (B → KB → MB → GB) or fixed K / M / G |
-| Per-app traffic | Upload / download per application over: today, 24 hours, this week, this month, this year, all time. Live speed chart and animated bars |
+| Per-app traffic | Upload / download per application over: today, 24 hours, this week, this month, billing cycle, this year, all time. Sort by total / upload / download, search apps. Live speed chart and animated bars |
+| Data cap | Monthly cap and reset day (1–31, clamped to the month's last day): a ring shows the share used and what is left; the Daily chart shows per-day bars with a daily-allowance line; used, daily average, daily allowance, projected cycle total, projected run-out time and days left. The daily average weights the last 14 days with a 3-day half-life so the forecast follows changes in habit. One tray alert at the chosen threshold (50–99%) and one at 100% per cycle |
+| Quick panel | Like the pinned area of the Start menu: right-click a file, folder, drive or folder background in Explorer and choose "添加到快捷面板" (add to quick panel), drop files in, or use Add. System icons and names (thumbnails for images), grid or list view; click to open; right-click for open, run as administrator, open with, open file location, copy path, rename, properties, remove; drag to reorder; sort by custom, name, recent, most used (7-day half-life usage score) or type; fuzzy search; path, type, size, modified time and open count can each be shown or hidden |
+| Open a path | A hotkey pops up an input: type or paste a location and press Enter. Handles quoted paths, `%VARIABLES%`, `~`, `shell:` locations, URLs and names such as Desktop / Downloads / Documents; completes as you type (Tab to complete, ↑↓ to choose); Ctrl+Enter opens the containing folder, Shift+Enter adds to the quick panel; recently opened locations are listed |
 | Desktop widget | Click-through, always on top, lock position, may extend past screen edges, auto-hide when a full-screen app runs; stays on screen when the desktop is shown (Win+D), everything is minimized (Win+M) or any window is minimized |
 | Start with Windows | Per-user startup entry, no administrator rights needed |
 | Look and feel | Four eye-friendly low-saturation themes; rolling digits, card flip, hover and page transitions (2D animation), all optional |
-| Tray and hotkey | Left-click the tray icon to show / hide the panel; right-click for common switches (including the taskbar monitor); global hotkey `Ctrl + Alt + Z` by default; right-click today's data to open Traffic; right-click speed / CPU / RAM to open Monitor settings |
+| Tray and hotkeys | Left-click the tray icon to show / hide the panel; right-click for the quick panel, open-a-path, the list of quick items and common switches (including the taskbar monitor); global hotkeys: panel `Ctrl + Alt + Z`, quick panel `Ctrl + Alt + Space`, open a path `Ctrl + Alt + G`, each changeable or switchable off, and a default already taken by another program is replaced by a free combination; right-click today's data to open Traffic; right-click speed / CPU / RAM to open Monitor settings |
 | Auto-update | Parallel multi-mirror download, ECDSA signature + SHA-256 verification |
 | Display speed | A dedicated high-resolution timer thread wakes about 12 ms before each second, so the new second is presented in the frame that contains the boundary; sampling runs on a background thread and the taskbar numbers refresh every 0.5 s by default (0.25 / 0.5 / 1 / 2 s selectable); the hover card opens in about 10 ms; the monitor follows an auto-hidden taskbar within a few milliseconds of it appearing |
 | Low footprint | Redraws only what changes; sampling drops to once a second while the band is tucked away and the panel is closed; about 75 MB RAM and normally under 1% of one core when idle |
 
-## v1.3.3
+## v1.4.0
+
+New Quick page and quick panel: add items from Explorer's right-click menu (on Windows 11 under "Show more options", or Shift + right-click) or by dropping files; the panel shows system icons and names, opens on click and offers run as administrator, open file location, copy path, rename, properties and more on right-click, with drag-to-reorder and per-field display switches. New open-a-path hotkey with completion. The Traffic page gains a data cap: monthly cap, reset day, remaining, daily allowance, projected usage and run-out time, per-day bars and alerts; per-app traffic can be searched and sorted by upload / download. The panel no longer repeats the page name in its top-left corner, and icon buttons show their name on hover.
+
 
 Panel content now fills the window at any size: themes become 2×2 tiles, Window nudges become a direction pad, and the clock preview and traffic chart grow with the height, so a maximized panel no longer shows large empty areas. The previous executable is removed right after an update instead of at the next start.
 
@@ -62,9 +68,29 @@ With a local proxy or TUN adapter, traffic is attributed to the proxy process.
 
 ## Usage
 
-- Left-click the tray icon to open / close the panel; the taskbar entry disappears when it is closed
-- Eight pages: Console, Display, Time zones, Monitor, Traffic, Window, System, Update
-- Settings, logs and statistics live in `%APPDATA%\ZoneQuanta`
+- Left-click the tray icon to open / close the panel; the taskbar entry disappears when it is closed. Right-click for switches, the quick panel, open-a-path and the quick item list
+- Nine pages: Console, Display, Time zones, Monitor, Traffic, Quick, Window, System, Update
+- Settings, logs and statistics live in `%APPDATA%\ZoneQuanta` (quick items in `quick.json`)
+
+| Hotkey | Action |
+|---|---|
+| `Ctrl + Alt + Z` | Show / hide the panel |
+| `Ctrl + Alt + Space` | Show / hide the quick panel |
+| `Ctrl + Alt + G` | Open-a-path input |
+| In the quick panel: `Enter` / `Ctrl + Enter` / `F2` / `Del` / `Ctrl + C` | Open / open location / rename / remove / copy path |
+| In the path input: `Tab` / `↑↓` / `Enter` / `Ctrl + Enter` / `Shift + Enter` / `Esc` | Complete / choose / open / open location / add to quick panel / clear or close |
+
+Command line (usable from scripts and Claude Code; a second launch hands the command to the running instance and exits):
+
+| Command | Action |
+|---|---|
+| `ZoneQuanta.exe --quick-add <path> [<path> …]` | Add files / folders to the quick panel (relative paths use the current directory) |
+| `ZoneQuanta.exe --quick` | Show the quick panel |
+| `ZoneQuanta.exe --path-bar` | Show the open-a-path input |
+| `ZoneQuanta.exe --open <path or URL>` | Open a location with the same rules as the input |
+| `ZoneQuanta.exe --panel [page]` | Open the panel, optionally on a page, e.g. `--panel 流量` |
+
+`%APPDATA%\ZoneQuanta\app.log` has millisecond timestamps and records quick-panel add / open timings, hotkey conflicts and fallbacks, data-cap alerts and Explorer menu registration.
 
 ## Architecture
 
