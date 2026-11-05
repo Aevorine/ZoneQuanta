@@ -107,33 +107,43 @@ internal sealed class ParallelDownloader
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException) { return null; }
     }
 
+    // HttpClient.Timeout stops at the response headers, so a connection that goes silent mid-body would
+    // block forever. An idle watchdog, reset after every read, abandons it and resumes at the same offset
+    // on the next line.
+    private static readonly TimeSpan Idle = TimeSpan.FromSeconds(15);
+
     private async Task DownloadSegmentAsync(IReadOnlyList<string> urls, SafeFileHandle handle, long from, long to, Action<int> onBytes, CancellationToken ct)
     {
         long position = from;
         Exception? last = null;
-        for (int attempt = 0; attempt < urls.Count * 2 && position <= to; attempt++)
+        for (int attempt = 0; attempt < urls.Count * 3 && position <= to; attempt++)
         {
             string url = urls[attempt % urls.Count];
+            using var idle = CancellationTokenSource.CreateLinkedTokenSource(ct);
             try
             {
+                idle.CancelAfter(Idle);
                 using var req = new HttpRequestMessage(HttpMethod.Get, url);
                 req.Headers.Range = new RangeHeaderValue(position, to);
-                using var res = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+                using var res = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, idle.Token);
                 if (res.StatusCode != HttpStatusCode.PartialContent) throw new HttpRequestException("不支持分段下载");
 
-                await using var stream = await res.Content.ReadAsStreamAsync(ct);
+                await using var stream = await res.Content.ReadAsStreamAsync(idle.Token);
                 byte[] buffer = new byte[1 << 16];
                 int read;
-                while ((read = await stream.ReadAsync(buffer, ct)) > 0)
+                idle.CancelAfter(Idle);
+                while ((read = await stream.ReadAsync(buffer, idle.Token)) > 0)
                 {
                     await RandomAccess.WriteAsync(handle, buffer.AsMemory(0, read), position, ct);
                     position += read;
                     onBytes(read);
+                    idle.CancelAfter(Idle);
                 }
             }
-            catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException && !ct.IsCancellationRequested)
+            catch (Exception ex) when (ex is HttpRequestException or IOException or OperationCanceledException && !ct.IsCancellationRequested)
             {
                 last = ex;
+                if (ex is OperationCanceledException) Log.Write($"download stalled at {position}, switching line");
             }
         }
         if (position <= to) throw new HttpRequestException("下载中断", last);

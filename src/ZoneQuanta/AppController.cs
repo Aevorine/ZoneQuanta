@@ -40,6 +40,8 @@ public sealed class AppController : IPanelHost, IDisposable
     private QuickActions _quick = null!;
     private QuickWindow? _quickWindow;
     private PathBarWindow? _pathBar;
+    private StartPinSync? _startSync;
+    private bool _recordingKeys;
     private readonly object _gate = new();
     private Dispatcher _dispatcher = null!;
     private Metrics _pending;
@@ -96,7 +98,8 @@ public sealed class AppController : IPanelHost, IDisposable
         };
         _quick = new QuickActions(_quickStore, s);
         _tray = new TrayService(s, TogglePanel, ResetWidget, () => _ = _updates.CheckAsync(), ExitApp, ToggleQuick, ShowPathBar,
-            () => _quickStore.Items.Take(30).Select(i => (i.DisplayName, (Action)(() => _quick.Open(i)))));
+            () => _quick.Sections().SelectMany(sec => sec.Items.Take(sec.Group is null ? 30 : int.MaxValue)
+                .Select(i => (sec.Group?.Name ?? "", i.DisplayName, (Action)(() => _quick.Open(i))))));
 
         ShowPendingUpdateFailure();
         _widget.ApplyInitial(CurrentSecond());
@@ -104,10 +107,30 @@ public sealed class AppController : IPanelHost, IDisposable
         if (s.TrackApps) _ = StartTrackingHelperAsync(helperFirst);
         s.PropertyChanged += OnSettingChanged;
         _hotkey.Pressed += OnHotkey;
+        UI.Controls.HotkeyBox.Recording += on =>
+        {
+            _recordingKeys = on;
+            foreach (int id in new[] { HotkeyService.PanelId, HotkeyService.QuickId, HotkeyService.PathId })
+                if (on) _hotkey.Unregister(id);
+                else RegisterHotkey(id);
+        };
         RegisterHotkey(HotkeyService.PanelId);
         RegisterHotkey(HotkeyService.QuickId);
         RegisterHotkey(HotkeyService.PathId);
         ApplyExplorerMenu();
+        _startSync = new StartPinSync(_quick, _dispatcher);
+        _startSync.Imported += (names, bulk) => PrewarmIcons(names.Count);
+        // A successful import is announced by Imported; the explicit command also answers when nothing came.
+        _startSync.ImportDone += n =>
+        {
+            if (n < 0) _tray.Notify("无法读取「开始」布局", "详情见 app.log");
+            else if (n == 0) _tray.Notify("没有可导入的应用", "「开始」固定的应用都已在快捷面板中");
+        };
+        _startSync.Imported += (names, bulk) => _tray.Notify(
+            bulk ? $"已从「开始」导入 {names.Count} 个应用" : "已加入快捷面板",
+            bulk ? $"按 {UI.Panel.Pages.SystemPage.Format(s.QuickHotkeyModifiers, s.QuickHotkeyKey)} 打开快捷面板" : string.Join("、", names.Take(6)));
+        _startSync.Apply(s.QuickStartSync);
+        _quick.ScheduleAutoGroup();
         _pipe.Received += args => _dispatcher.BeginInvoke(new Action(() => Execute(args)));
         _pipe.Start();
 
@@ -148,15 +171,23 @@ public sealed class AppController : IPanelHost, IDisposable
         }
         QuickWindow().Prewarm();
         PathBar().Prewarm();
-        int px = (int)Math.Round(40 * Math.Max(1, System.Windows.Media.VisualTreeHelper.GetDpi(_widget).DpiScaleX));
+        int px = (int)Math.Round(44 * Math.Max(1, System.Windows.Media.VisualTreeHelper.GetDpi(_widget).DpiScaleX));
         foreach (var item in _quickStore.Items) ShellIcons.Request(item.Path, px, _ => { });
+    }
+
+    // Icons of freshly imported items are extracted in the background so the first open is instant.
+    private void PrewarmIcons(int newest)
+    {
+        int px = (int)Math.Round(44 * Math.Max(1, System.Windows.Media.VisualTreeHelper.GetDpi(_widget).DpiScaleX));
+        foreach (var item in _quickStore.Items.Skip(Math.Max(0, _quickStore.Items.Count - newest))) ShellIcons.Request(item.Path, px, _ => { });
     }
 
     private QuickWindow QuickWindow() => _quickWindow ??= new QuickWindow(_quick, () =>
     {
         ShowPanel();
         _panel!.SelectPage("快捷");
-    });
+    })
+    { ImportStart = () => _ = _startSync?.RunAsync(all: true) };
 
     private PathBarWindow PathBar() => _pathBar ??= new PathBarWindow(_quick);
 
@@ -334,6 +365,7 @@ public sealed class AppController : IPanelHost, IDisposable
         _totals.Flush();
         _hotkey.Dispose();
         _pipe.Dispose();
+        _startSync?.Dispose();
         _tray.Dispose();
         _quickWindow?.Close();
         _pathBar?.Close();
@@ -491,6 +523,9 @@ public sealed class AppController : IPanelHost, IDisposable
             case nameof(AppSettings.QuickContextMenu):
                 ApplyExplorerMenu();
                 break;
+            case nameof(AppSettings.QuickStartSync):
+                _startSync?.Apply(Settings.QuickStartSync);
+                break;
             case nameof(AppSettings.QuotaEnabled):
             case nameof(AppSettings.QuotaGB):
             case nameof(AppSettings.QuotaResetDay):
@@ -503,11 +538,12 @@ public sealed class AppController : IPanelHost, IDisposable
     private void RegisterHotkey(int id)
     {
         var s = Settings;
+        if (_recordingKeys) return;
         var (on, mods, key, page) = id switch
         {
-            HotkeyService.QuickId => (s.QuickHotkeyEnabled, s.QuickHotkeyModifiers, s.QuickHotkeyKey, "快捷"),
-            HotkeyService.PathId => (s.PathHotkeyEnabled, s.PathHotkeyModifiers, s.PathHotkeyKey, "快捷"),
-            _ => (s.HotkeyEnabled, s.HotkeyModifiers, s.HotkeyKey, "系统"),
+            HotkeyService.QuickId => (s.QuickHotkeyEnabled, s.QuickHotkeyModifiers, s.QuickHotkeyKey, "快捷键"),
+            HotkeyService.PathId => (s.PathHotkeyEnabled, s.PathHotkeyModifiers, s.PathHotkeyKey, "快捷键"),
+            _ => (s.HotkeyEnabled, s.HotkeyModifiers, s.HotkeyKey, "快捷键"),
         };
         if (!on)
         {

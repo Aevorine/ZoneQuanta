@@ -19,6 +19,8 @@
                     <ToggleButton Style="{StaticResource SwitchRow}" Content="资源管理器右键添加" IsChecked="{Binding QuickContextMenu, Mode=TwoWay}"/>
                     <ToggleButton Style="{StaticResource SwitchRow}" Content="打开后自动收起" IsChecked="{Binding QuickCloseAfterOpen, Mode=TwoWay}"/>
                     <ToggleButton Style="{StaticResource SwitchRow}" Content="托盘菜单显示" IsChecked="{Binding QuickInTray, Mode=TwoWay}"/>
+                    <ToggleButton Style="{StaticResource SwitchRow}" Content="同步「开始」固定的应用" IsChecked="{Binding QuickStartSync, Mode=TwoWay}"/>
+                    <ToggleButton Style="{StaticResource SwitchRow}" Content="自动分类" IsChecked="{Binding QuickAutoGroup, Mode=TwoWay}"/>
                 </StackPanel>
             </Border>
 
@@ -44,6 +46,7 @@
                 </Grid.ColumnDefinitions>
                 <TextBox x:Name="Search" Style="{StaticResource IconField}" Tag="{StaticResource Icon.Search}"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0" VerticalAlignment="Center">
+                    <ToggleButton x:Name="GroupMode" Style="{StaticResource IconToggle}" Tag="{StaticResource Icon.Groups}" ToolTip="分组"/>
                     <ToggleButton x:Name="TileMode" Style="{StaticResource IconToggle}" Tag="{StaticResource Icon.Grid}" ToolTip="网格"/>
                     <ToggleButton x:Name="ListMode" Style="{StaticResource IconToggle}" Tag="{StaticResource Icon.List}" ToolTip="列表" Margin="0,0,10,0"/>
                     <Button x:Name="AddFiles" Style="{StaticResource Action}" Content="添加文件" Margin="0,0,6,0"/>

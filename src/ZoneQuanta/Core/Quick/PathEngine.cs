@@ -61,6 +61,18 @@ public static class PathEngine
     {
         foreach (var (names, t) in Known)
             if (t.Equals(target, StringComparison.OrdinalIgnoreCase)) return names[0];
+        if (target.StartsWith(@"shell:AppsFolder\", StringComparison.OrdinalIgnoreCase))
+        {
+            string id = target[17..];
+            int bang = id.LastIndexOf('!');
+            if (bang < 0) return System.IO.Path.GetFileNameWithoutExtension(id.TrimEnd('\\')) is { Length: > 0 } f ? f : id;
+            string app = id[(bang + 1)..];
+            string family = id[..bang];
+            int us = family.IndexOf('_');
+            if (us > 0) family = family[..us];
+            string last = family[(family.LastIndexOf('.') + 1)..];
+            return app.Length == 0 || app.Equals("App", StringComparison.OrdinalIgnoreCase) ? last : app;
+        }
         return target.StartsWith("shell:", StringComparison.OrdinalIgnoreCase) ? target[6..] : target;
     }
 

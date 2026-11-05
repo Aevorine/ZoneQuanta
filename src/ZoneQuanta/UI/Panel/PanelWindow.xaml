@@ -15,7 +15,7 @@
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
-        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,1,0">
+        <Border x:Name="Sidebar" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,1,0">
             <DockPanel Margin="12,0,12,12">
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Height="52" VerticalAlignment="Center" Margin="6,0,0,6">
                     <Border Width="26" Height="26" CornerRadius="8" VerticalAlignment="Center">

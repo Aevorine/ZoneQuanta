@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using ZoneQuanta.Core.Quick;
 using Win32 = Microsoft.Win32;
@@ -21,7 +22,7 @@ public sealed class QuickWindow : LauncherWindow
     private readonly Action _openSettings;
     private readonly TextBox _search = new() { FontSize = 15 };
     private readonly QuickGrid _grid;
-    private readonly ToggleButton _tiles, _list;
+    private readonly ToggleButton _groups, _tiles, _list;
     private readonly FrameworkElement _empty;
 
     public QuickWindow(QuickActions actions, Action openSettings) : base("ZoneQuanta Quick")
@@ -33,10 +34,12 @@ public sealed class QuickWindow : LauncherWindow
         _search.Tag = FindResource("Icon.Search");
         MainInput = _search;
 
+        _groups = Toggle("Icon.Groups", "分组");
         _tiles = Toggle("Icon.Grid", "网格");
         _list = Toggle("Icon.List", "列表");
-        _tiles.Click += (_, _) => actions.Settings.QuickView = "Grid";
-        _list.Click += (_, _) => actions.Settings.QuickView = "List";
+        _groups.Click += (_, _) => actions.Settings.QuickLayout = "Groups";
+        _tiles.Click += (_, _) => actions.Settings.QuickLayout = "Grid";
+        _list.Click += (_, _) => actions.Settings.QuickLayout = "List";
         var sort = IconButton("Icon.Sort", "排序");
         sort.Click += (_, _) => OpenSortMenu(sort);
         var add = IconButton("Icon.Plus", "添加");
@@ -45,7 +48,7 @@ public sealed class QuickWindow : LauncherWindow
         settings.Click += (_, _) => { Hide(); _openSettings(); };
 
         var tools = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        foreach (var b in new UIElement[] { _tiles, _list, sort, add, settings }) tools.Children.Add(b);
+        foreach (var b in new UIElement[] { _groups, _tiles, _list, sort, add, settings }) tools.Children.Add(b);
 
         var bar = new Grid { Background = Brushes.Transparent };
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -53,7 +56,8 @@ public sealed class QuickWindow : LauncherWindow
         bar.Children.Add(_search);
         Grid.SetColumn(tools, 1);
         bar.Children.Add(tools);
-        bar.MouseLeftButtonDown += (_, e) => { if (e.OriginalSource == bar || e.OriginalSource == tools) DragMove(); };
+        // Gaps move the window at once; the search field and buttons after a short hold.
+        Controls.WindowDrag.Attach(bar, this, source => source == bar || source == tools);
 
         _empty = BuildEmpty();
         var body = new Grid();
@@ -75,16 +79,39 @@ public sealed class QuickWindow : LauncherWindow
         actions.Opened += () => { if (IsVisible && actions.Settings.QuickCloseAfterOpen) Hide(); };
         actions.Failed += _ => { if (IsActive) Shake(); };
         actions.Store.Changed += _ => SyncEmpty();
-        actions.Settings.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(Core.Settings.AppSettings.QuickView)) SyncView(); };
+        actions.Settings.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(Core.Settings.AppSettings.QuickLayout)) SyncView(); };
+        _grid.LeftTop += () => _search.Focus();
         SyncView();
         SyncEmpty();
+        SourceInitialized += (_, _) => HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(SizeMoveHook);
     }
 
+    public Action? ImportStart { get; set; }
+
+    // Large by default; a size the user drags to is remembered across restarts.
     protected override Rect Place(Rect work, bool firstTime)
     {
-        double w = IsLoaded && !firstTime ? ActualWidth : Math.Clamp(work.Width * 0.46, 560, 900);
-        double h = IsLoaded && !firstTime ? ActualHeight : Math.Clamp(work.Height * 0.58, 420, 680);
+        var s = _actions.Settings;
+        double w = s.QuickWidth > 0 ? s.QuickWidth : Math.Clamp(work.Width * 0.64, 640, 1320);
+        double h = s.QuickHeight > 0 ? s.QuickHeight : Math.Clamp(work.Height * 0.78, 460, 980);
+        w = Math.Min(w, work.Width - 16);
+        h = Math.Min(h, work.Height - 16);
         return new Rect(work.Left + (work.Width - w) / 2, work.Top + (work.Height - h) * 0.4, w, h);
+    }
+
+    // Only a size the user drags to is remembered; the computed default keeps following the monitor.
+    private Size _sizeAtGrab;
+
+    private IntPtr SizeMoveHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        const int EnterSizeMove = 0x0231, ExitSizeMove = 0x0232;
+        if (msg == EnterSizeMove) _sizeAtGrab = new Size(ActualWidth, ActualHeight);
+        else if (msg == ExitSizeMove && (Math.Abs(ActualWidth - _sizeAtGrab.Width) > 1 || Math.Abs(ActualHeight - _sizeAtGrab.Height) > 1))
+        {
+            _actions.Settings.QuickWidth = Math.Round(ActualWidth);
+            _actions.Settings.QuickHeight = Math.Round(ActualHeight);
+        }
+        return IntPtr.Zero;
     }
 
     protected override void OnPresented()
@@ -92,6 +119,7 @@ public sealed class QuickWindow : LauncherWindow
         _search.Focus();
         _search.SelectAll();
         SyncEmpty();
+        _grid.ScrollHome();
     }
 
     protected override bool OnEscape()
@@ -120,9 +148,10 @@ public sealed class QuickWindow : LauncherWindow
 
     private void SyncView()
     {
-        bool list = _actions.Settings.QuickView == "List";
-        _tiles.IsChecked = !list;
-        _list.IsChecked = list;
+        string layout = _actions.Settings.QuickLayout;
+        _groups.IsChecked = layout == "Groups";
+        _tiles.IsChecked = layout == "Grid";
+        _list.IsChecked = layout == "List";
     }
 
     private void SyncEmpty()
@@ -166,6 +195,12 @@ public sealed class QuickWindow : LauncherWindow
             mi.Click += (_, _) => _actions.Settings.QuickSort = key;
             menu.Items.Add(mi);
         }
+        menu.Items.Add(new Separator());
+        var s = _actions.Settings;
+        menu.Items.Add(QuickGrid.CardSizeMenu(menu, s.QuickCardCols, s.QuickCardRows, "自动", _actions.SetDefaultSize));
+        var auto = new MenuItem { Header = "自动分类", IsCheckable = true, IsChecked = _actions.Settings.QuickAutoGroup };
+        auto.Click += (_, _) => _actions.Settings.QuickAutoGroup = auto.IsChecked;
+        menu.Items.Add(auto);
         menu.IsOpen = true;
     }
 
@@ -176,8 +211,11 @@ public sealed class QuickWindow : LauncherWindow
         f.Click += (_, _) => AddFiles();
         var d = new MenuItem { Header = "添加文件夹", Tag = FindResource("Icon.Folder") };
         d.Click += (_, _) => AddFolder();
+        var st = new MenuItem { Header = "从「开始」导入", Tag = FindResource("Icon.Start") };
+        st.Click += (_, _) => ImportStart?.Invoke();
         menu.Items.Add(f);
         menu.Items.Add(d);
+        menu.Items.Add(st);
         menu.IsOpen = true;
     }
 

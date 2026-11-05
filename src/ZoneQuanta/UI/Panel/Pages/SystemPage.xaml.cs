@@ -17,8 +17,7 @@ public partial class SystemPage : UserControl
 
         ShowHotkey();
         HotkeyBox.PreviewKeyDown += OnKey;
-        HotkeyBox.GotKeyboardFocus += (_, _) => HotkeyBox.Text = "按下新的快捷键…";
-        HotkeyBox.LostKeyboardFocus += (_, _) => ShowHotkey();
+        Controls.HotkeyBox.Guard(HotkeyBox, () => HotkeyBox.Text = "按下新的快捷键…", ShowHotkey);
         FolderButton.Click += (_, _) => host.OpenSettingsFolder();
         ExitButton.Click += (_, _) => host.ExitApp();
     }
@@ -44,7 +43,7 @@ public partial class SystemPage : UserControl
             return;
         if (key == Key.Escape)
         {
-            Keyboard.ClearFocus();
+            Controls.HotkeyBox.Release(HotkeyBox);
             return;
         }
 
@@ -58,7 +57,7 @@ public partial class SystemPage : UserControl
 
         _host.Settings.HotkeyModifiers = mods;
         _host.Settings.HotkeyKey = (uint)KeyInterop.VirtualKeyFromKey(key);
-        Keyboard.ClearFocus();
+        Controls.HotkeyBox.Release(HotkeyBox);
         ShowHotkey();
     }
 }

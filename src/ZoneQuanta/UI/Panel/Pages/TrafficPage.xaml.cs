@@ -11,6 +11,7 @@ using ZoneQuanta.Core.Monitor;
 using ZoneQuanta.Core.Quick;
 using ZoneQuanta.Core.Settings;
 using ZoneQuanta.Core.Traffic;
+using ZoneQuanta.Platform;
 
 namespace ZoneQuanta.UI.Panel.Pages;
 
@@ -173,12 +174,14 @@ public partial class TrafficPage : UserControl
             "Down" => v => v.Down,
             _ => v => v.Up + v.Down,
         };
-        var rows = _apps.Query(from)
-            .Where(kv => kv.Key != TrafficFile.TotalKey && kv.Value.Up + kv.Value.Down > 0)
-            .Where(kv => q.Length == 0 || Fuzzy.Score(q, kv.Key) >= 0)
+        var all = _apps.Query(from).Where(kv => kv.Key != TrafficFile.TotalKey && kv.Value.Up + kv.Value.Down > 0).ToList();
+        double sum = Math.Max(1, all.Sum(kv => (double)kv.Value.Up + kv.Value.Down));
+        var rows = all
+            .Where(kv => q.Length == 0 || Fuzzy.Score(q, kv.Key) >= 0 || (AppDirectory.Get(kv.Key)?.Description is { Length: > 0 } d && Fuzzy.Score(q, d) >= 0))
             .OrderByDescending(kv => key(kv.Value))
             .Take(AppRows)
             .ToList();
+        AppHeader.Content = rows.Count > 0 ? HeaderRow() : null;
         if (rows.Count == 0)
         {
             Apps.Children.Add(Placeholder("暂无数据"));
@@ -188,7 +191,47 @@ public partial class TrafficPage : UserControl
         double max = Math.Max(1, key(rows[0].Value));
         int index = 0;
         foreach (var kv in rows)
-            Apps.Children.Add(BuildRow(kv.Key, kv.Value.Up, kv.Value.Down, key(kv.Value), max, animate, index++));
+            Apps.Children.Add(BuildRow(kv.Key, kv.Value.Up, kv.Value.Down, key(kv.Value), max, (kv.Value.Up + kv.Value.Down) / sum, animate, index++));
+
+        // Exe path and description are looked up off the UI thread; rows refresh once something new is known.
+        var names = rows.Select(r => r.Key).ToList();
+        System.Threading.Tasks.Task.Run(() => AppDirectory.Resolve(names)).ContinueWith(t =>
+        {
+            if (t.IsCompletedSuccessfully && t.Result) Dispatcher.BeginInvoke(new Action(() => Refresh(animate: false)));
+        }, System.Threading.Tasks.TaskScheduler.Default);
+    }
+
+    private const double ColValue = 86, ColShare = 54, ColIcon = 34;
+
+    private static Grid Columns()
+    {
+        var g = new Grid();
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(ColIcon) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.3, GridUnitType.Star), MinWidth = 110 });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(ColValue) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(ColValue) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(ColValue) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(ColShare) });
+        return g;
+    }
+
+    private static UIElement HeaderRow()
+    {
+        var g = Columns();
+        void Cell(string text, int col, HorizontalAlignment align)
+        {
+            var t = new TextBlock { Text = text, FontSize = 11.5, HorizontalAlignment = align };
+            t.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+            Grid.SetColumn(t, col);
+            g.Children.Add(t);
+        }
+        Cell("应用", 1, HorizontalAlignment.Left);
+        Cell("上传", 3, HorizontalAlignment.Right);
+        Cell("下载", 4, HorizontalAlignment.Right);
+        Cell("合计", 5, HorizontalAlignment.Right);
+        Cell("占比", 6, HorizontalAlignment.Right);
+        return g;
     }
 
     private void RefreshQuota(bool animate)
@@ -253,22 +296,32 @@ public partial class TrafficPage : UserControl
         Stats.Children.Add(p);
     }
 
-    private UIElement BuildRow(string name, long up, long down, double value, double max, bool animate, int index)
+    private UIElement BuildRow(string name, long up, long down, double value, double max, double share, bool animate, int index)
     {
         double ratio = Math.Clamp(value / max, 0.02, 1);
+        var meta = AppDirectory.Get(name);
+        var grid = Columns();
+        grid.Margin = new Thickness(0, 0, 0, 6);
+        grid.MinHeight = 34;
+        grid.Background = Brushes.Transparent;
 
-        var grid = new Grid { Margin = new Thickness(0, 0, 0, 7), Background = Brushes.Transparent };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(150) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(96) });
+        grid.Children.Add(AppIcon(name, meta?.Path));
 
-        grid.Children.Add(new TextBlock { Text = name, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, FontSize = 13 });
+        var title = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+        title.Children.Add(new TextBlock { Text = name, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis });
+        if (meta is { Description.Length: > 0 } && !meta.Description.Equals(name, StringComparison.OrdinalIgnoreCase))
+        {
+            var d = new TextBlock { Text = meta.Description, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
+            d.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+            title.Children.Add(d);
+        }
+        Grid.SetColumn(title, 1);
+        grid.Children.Add(title);
 
-        var track = new Grid { Height = 8, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 8, 0) };
+        var track = new Grid { Height = 8, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
         var back = new Border { CornerRadius = new CornerRadius(4) };
         back.SetResourceReference(Border.BackgroundProperty, "LineBrush");
         track.Children.Add(back);
-
         var fill = new Grid { RenderTransformOrigin = new Point(0, 0.5) };
         fill.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(ratio, GridUnitType.Star) });
         fill.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1 - ratio + 0.0001, GridUnitType.Star) });
@@ -285,20 +338,15 @@ public partial class TrafficPage : UserControl
         parts.Children.Add(downBar);
         fill.Children.Add(parts);
         track.Children.Add(fill);
-        Grid.SetColumn(track, 1);
+        Grid.SetColumn(track, 2);
         grid.Children.Add(track);
 
-        var text = new TextBlock
-        {
-            Text = Size(value),
-            HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Center,
-            FontSize = 13,
-        };
-        Grid.SetColumn(text, 2);
-        grid.Children.Add(text);
+        Value(grid, 3, Size(up), "Accent2Brush", false);
+        Value(grid, 4, Size(down), "Accent1Brush", false);
+        Value(grid, 5, Size(up + down), "TextBrush", true);
+        Value(grid, 6, share >= 0.001 ? share.ToString("P1", System.Globalization.CultureInfo.InvariantCulture) : "<0.1%", "MutedBrush", false);
 
-        grid.ToolTip = $"{name}\n上传 {Size(up)}\n下载 {Size(down)}\n合计 {Size(up + down)}";
+        grid.ToolTip = $"{name}{(meta is null ? "" : "\n" + meta.Path)}\n上传 {Size(up)} · 下载 {Size(down)} · 合计 {Size(up + down)} · 占比 {share:P1}";
 
         if (animate)
         {
@@ -311,6 +359,42 @@ public partial class TrafficPage : UserControl
             });
         }
         return grid;
+    }
+
+    private static void Value(Grid grid, int col, string text, string brush, bool strong)
+    {
+        var t = new TextBlock
+        {
+            Text = text, FontSize = 13, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+            FontWeight = strong ? FontWeights.SemiBold : FontWeights.Normal,
+        };
+        t.SetResourceReference(TextBlock.ForegroundProperty, brush);
+        Grid.SetColumn(t, col);
+        grid.Children.Add(t);
+    }
+
+    // Program icon when the executable is known, otherwise the first letter on a tinted tile.
+    private UIElement AppIcon(string name, string? path)
+    {
+        int px = (int)Math.Round(22 * Math.Max(1, VisualTreeHelper.GetDpi(this).DpiScaleX));
+        var host = new Grid { Width = 22, Height = 22, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
+        if (path is not null && ShellIcons.Cached(path, px) is { } cached)
+        {
+            host.Children.Add(new Image { Source = cached });
+            return host;
+        }
+        var tile = new Border { CornerRadius = new CornerRadius(6) };
+        tile.SetResourceReference(Border.BackgroundProperty, "RaisedBrush");
+        var letter = new TextBlock { Text = name.Length > 0 ? name[..1].ToUpperInvariant() : "?", FontSize = 12, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        letter.SetResourceReference(TextBlock.ForegroundProperty, "Accent1Brush");
+        tile.Child = letter;
+        host.Children.Add(tile);
+        if (path is not null)
+            ShellIcons.Request(path, px, bmp =>
+            {
+                if (bmp is not null) Dispatcher.BeginInvoke(new Action(() => { host.Children.Clear(); host.Children.Add(new Image { Source = bmp }); }));
+            });
+        return host;
     }
 
     private static TextBlock Placeholder(string text)

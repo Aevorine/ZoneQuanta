@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -25,6 +26,7 @@ public partial class PanelWindow : Window
         new("监控", "Icon.Pulse", h => new MonitorPage(h)),
         new("流量", "Icon.Chart", h => new TrafficPage(h)),
         new("快捷", "Icon.Bolt", h => new QuickPage(h)),
+        new("快捷键", "Icon.Keyboard", h => new KeysPage(h)),
         new("窗口", "Icon.Move", h => new WindowPage(h)),
         new("系统", "Icon.Sliders", h => new SystemPage(h)),
         new("更新", "Icon.Download", h => new UpdatePage(h)),
@@ -51,19 +53,16 @@ public partial class PanelWindow : Window
         Top = area.Top + (area.Height - Height) / 2;
         VersionText.Text = $"v{UpdateService.CurrentVersion}";
 
-        foreach (var def in Defs)
-        {
-            var item = new RadioButton
-            {
-                Content = def.Title,
-                Style = (Style)FindResource("NavItem"),
-                Tag = FindResource(def.Icon),
-                GroupName = "nav",
-            };
-            item.Checked += (_, _) => Navigate(def);
-            Nav.Children.Add(item);
-        }
+        BuildNav();
         ((RadioButton)Nav.Children[0]).IsChecked = true;
+        _ = new NavReorder(Nav, order => _host.Settings.NavOrder = order.ToList());
+        // The sidebar's blank space moves the window like the caption does.
+        Controls.WindowDrag.Attach(Sidebar, this, source => source == Sidebar || source is TextBlock { Name: "VersionText" }, holdOnContent: false);
+        var reset = new MenuItem { Header = "恢复默认顺序", Tag = TryFindResource("Icon.Reset") };
+        reset.Click += (_, _) => { _host.Settings.NavOrder = new(); BuildNav(); };
+        Nav.ContextMenu = new ContextMenu();
+        Nav.ContextMenu.Items.Add(reset);
+        Nav.ContextMenuOpening += (_, _) => reset.IsEnabled = _host.Settings.NavOrder.Count > 0;
 
         MinButton.Click += (_, _) => HidePanel();
         MaxButton.Click += (_, _) => ToggleMaximize();
@@ -74,6 +73,29 @@ public partial class PanelWindow : Window
     }
 
     private WindowState RestoredState => _maximized ? WindowState.Maximized : WindowState.Normal;
+
+    // Saved order first (unknown titles skipped), then any page it does not mention, in built-in order.
+    private void BuildNav()
+    {
+        string? current = (Nav.Children.OfType<RadioButton>().FirstOrDefault(r => r.IsChecked == true))?.Content as string;
+        var order = _host.Settings.NavOrder;
+        var defs = order.Select(t => Array.Find(Defs, d => d.Title == t)).OfType<PageDef>().Distinct()
+            .Concat(Defs.Where(d => !order.Contains(d.Title))).ToList();
+        Nav.Children.Clear();
+        foreach (var def in defs)
+        {
+            var item = new RadioButton
+            {
+                Content = def.Title,
+                Style = (Style)FindResource("NavItem"),
+                Tag = FindResource(def.Icon),
+                GroupName = "nav",
+            };
+            item.Checked += (_, _) => Navigate(def);
+            Nav.Children.Add(item);
+            if (def.Title == current) item.IsChecked = true;
+        }
+    }
 
     private void OnSourceInitialized()
     {

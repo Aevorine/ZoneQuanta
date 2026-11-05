@@ -4,7 +4,9 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Threading;
 using ZoneQuanta.Core;
 using ZoneQuanta.Core.Quick;
 using ZoneQuanta.Core.Settings;
@@ -15,15 +17,28 @@ namespace ZoneQuanta.UI.Quick;
 // Operations on quick items shared by the launcher window, the path bar, the panel page and the tray.
 public sealed class QuickActions
 {
+    private readonly DispatcherTimer _autoTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
+    private bool _autoRunning, _autoAgain;
+
     public QuickActions(QuickStore store, AppSettings settings)
     {
         Store = store;
         Settings = settings;
+        _autoTimer.Tick += (_, _) =>
+        {
+            _autoTimer.Stop();
+            _ = AutoGroupAsync();
+        };
+        store.Changed += _ => ScheduleAutoGroup();
+        settings.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(AppSettings.QuickAutoGroup)) ScheduleAutoGroup(); };
     }
 
     public QuickStore Store { get; }
     public AppSettings Settings { get; }
     public QuickItem? Highlight { get; private set; }
+
+    // A group just made from two items; the view starts renaming it once it is on screen.
+    public QuickGroup? PendingRename { get; private set; }
     public event Action? Opened;
     public event Action<string>? Failed;
 
@@ -97,9 +112,11 @@ public sealed class QuickActions
         }
     }
 
-    public List<QuickItem> Add(IEnumerable<string> paths, int index = -1)
+    // group: the group the files were dropped on; null leaves them to automatic grouping.
+    public List<QuickItem> Add(IEnumerable<string> paths, int index = -1, string? group = null)
     {
         var added = new List<QuickItem>();
+        var all = new List<QuickItem>();
         foreach (string raw in paths)
         {
             string p = PathEngine.Clean(raw);
@@ -107,13 +124,98 @@ public sealed class QuickActions
             if (!PathEngine.IsShell(p) && !Path.IsPathFullyQualified(p)) p = Path.GetFullPath(p);
             var (item, isNew) = Store.Add(p, index < 0 ? -1 : index + added.Count);
             if (isNew) added.Add(item);
+            all.Add(item);
             Highlight = item;
         }
+        if (group is not null && all.Count > 0) Store.SetGroup(all, group);
         if (added.Count > 0) Log.Write($"quick add {added.Count}");
         return added;
     }
 
     public void ClearHighlight() => Highlight = null;
+    public void ClearPendingRename() => PendingRename = null;
+
+    public void MoveToGroup(QuickItem item, string group) => Store.SetGroup(new[] { item }, group);
+    public void Ungroup(QuickItem item) => Store.SetGroup(new[] { item }, "");
+    public void RenameGroup(QuickGroup group, string name) => Store.RenameGroup(group, name);
+    public void Dissolve(QuickGroup group) => Store.Dissolve(group);
+    public void MoveGroup(QuickGroup group, int index) => Store.MoveGroup(group, index);
+    public void SetExpanded(QuickGroup group, bool expanded) => Store.SetExpanded(group, expanded);
+    public void SetSize(QuickGroup group, int cols, int rows) => Store.SetSize(group, cols, rows);
+
+    public void SetDefaultSize(int cols, int rows)
+    {
+        bool auto = cols <= 0 || rows <= 0;
+        Settings.QuickCardCols = auto ? 0 : cols;
+        Settings.QuickCardRows = auto ? 0 : rows;
+    }
+
+    public QuickGroup? NewGroup(IReadOnlyCollection<QuickItem> items)
+    {
+        var g = Store.SetGroup(items, Store.UniqueGroupName("新建分组"));
+        PendingRename = g;
+        return g;
+    }
+
+    // Debounced so a batch of additions is grouped in one pass.
+    public void ScheduleAutoGroup()
+    {
+        if (!Settings.QuickAutoGroup || !Store.Items.Any(QuickStore.NeedsGroup)) return;
+        _autoTimer.Stop();
+        _autoTimer.Start();
+    }
+
+    // Only items that are ungrouped and were never placed by hand are touched; names, shortcut targets
+    // and program descriptions are read off the UI thread.
+    public async Task<int> AutoGroupAsync()
+    {
+        if (_autoRunning)
+        {
+            _autoAgain = true;
+            return 0;
+        }
+        _autoRunning = true;
+        try
+        {
+            var todo = Store.Items.Where(QuickStore.NeedsGroup).Select(i => (Item: i, i.Path, Name: i.DisplayName)).ToList();
+            if (todo.Count == 0) return 0;
+            var sw = Stopwatch.StartNew();
+            var picks = await Task.Run(() => todo.Select(t => (t.Item, QuickCategories.Classify(t.Path, t.Name, ShellLinks.Describe(t.Path)))).ToList());
+            if (!Settings.QuickAutoGroup) return 0;
+            int n = Store.AutoAssign(picks, QuickCategories.Order);
+            Log.Write($"auto-group {n}/{todo.Count} {sw.ElapsedMilliseconds}ms");
+            return n;
+        }
+        catch (Exception ex)
+        {
+            Log.Error("auto-group", ex);
+            return 0;
+        }
+        finally
+        {
+            _autoRunning = false;
+            if (_autoAgain)
+            {
+                _autoAgain = false;
+                ScheduleAutoGroup();
+            }
+        }
+    }
+
+    // Groups in their order with their items, then the ungrouped items, each in the current sort.
+    public List<(QuickGroup? Group, List<QuickItem> Items)> Sections()
+    {
+        var sorted = View("").ToList();
+        var result = new List<(QuickGroup?, List<QuickItem>)>();
+        foreach (var g in Store.Groups)
+        {
+            var list = sorted.Where(i => string.Equals(i.Group, g.Name, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (list.Count > 0) result.Add((g, list));
+        }
+        var loose = sorted.Where(i => i.Group.Length == 0).ToList();
+        if (loose.Count > 0) result.Add((null, loose));
+        return result;
+    }
 
     public IEnumerable<QuickItem> View(string filter)
     {
@@ -135,6 +237,7 @@ public sealed class QuickActions
 
     public static string TypeName(string path)
     {
+        if (path.StartsWith(@"shell:AppsFolder\", StringComparison.OrdinalIgnoreCase)) return "应用";
         if (PathEngine.IsShell(path)) return "系统位置";
         string t = path.TrimEnd('\\');
         if (t.Length == 2 && t[1] == ':') return "磁盘";

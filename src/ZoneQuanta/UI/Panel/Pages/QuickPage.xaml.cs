@@ -3,7 +3,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using ZoneQuanta.Core.Settings;
-using ZoneQuanta.UI.Controls;
 using ZoneQuanta.UI.Quick;
 using Win32 = Microsoft.Win32;
 
@@ -33,11 +32,6 @@ public partial class QuickPage : UserControl
         var actions = host.Quick;
         DataContext = s;
 
-        Features.Children.Add(HotkeyRow("快捷面板", () => (s.QuickHotkeyModifiers, s.QuickHotkeyKey),
-            (m, k) => { s.QuickHotkeyModifiers = m; s.QuickHotkeyKey = k; }, nameof(AppSettings.QuickHotkeyEnabled)));
-        Features.Children.Add(HotkeyRow("打开路径", () => (s.PathHotkeyModifiers, s.PathHotkeyKey),
-            (m, k) => { s.PathHotkeyModifiers = m; s.PathHotkeyKey = k; }, nameof(AppSettings.PathHotkeyEnabled)));
-
         foreach (var (prop, text) in FieldDefs)
         {
             var chip = new System.Windows.Controls.Primitives.ToggleButton { Content = text };
@@ -54,16 +48,17 @@ public partial class QuickPage : UserControl
             Sorts.Children.Add(r);
         }
 
-        _grid = new QuickGrid(actions, singleClickOpen: false);
+        _grid = new QuickGrid(actions, singleClickOpen: false) { GroupBackground = "SurfaceBrush" };
         GridHost.Content = _grid;
         Search.TextChanged += (_, _) => _grid.Filter = Search.Text;
 
-        TileMode.Click += (_, _) => s.QuickView = "Grid";
-        ListMode.Click += (_, _) => s.QuickView = "List";
+        GroupMode.Click += (_, _) => s.QuickLayout = "Groups";
+        TileMode.Click += (_, _) => s.QuickLayout = "Grid";
+        ListMode.Click += (_, _) => s.QuickLayout = "List";
         SyncView(s);
         s.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(AppSettings.QuickView)) SyncView(s);
+            if (e.PropertyName == nameof(AppSettings.QuickLayout)) SyncView(s);
             if (e.PropertyName == nameof(AppSettings.QuickSort))
                 foreach (RadioButton r in Sorts.Children) r.IsChecked = SortDefs[Sorts.Children.IndexOf(r)].Key == s.QuickSort;
         };
@@ -83,25 +78,8 @@ public partial class QuickPage : UserControl
 
     private void SyncView(AppSettings s)
     {
-        TileMode.IsChecked = s.QuickView != "List";
-        ListMode.IsChecked = s.QuickView == "List";
-    }
-
-    private static FrameworkElement HotkeyRow(string label, Func<(uint, uint)> get, Action<uint, uint> set, string enabledProp)
-    {
-        var g = new Grid { MinHeight = 44, Margin = new Thickness(12, 0, 12, 0) };
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        g.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
-        var box = new HotkeyBox(get, set) { Margin = new Thickness(12, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center, MinWidth = 90 };
-        Grid.SetColumn(box, 1);
-        g.Children.Add(box);
-        var sw = new CheckBox();
-        sw.SetResourceReference(StyleProperty, "Switch");
-        sw.SetBinding(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty, new Binding(enabledProp) { Mode = BindingMode.TwoWay });
-        Grid.SetColumn(sw, 2);
-        g.Children.Add(sw);
-        return g;
+        GroupMode.IsChecked = s.QuickLayout == "Groups";
+        TileMode.IsChecked = s.QuickLayout == "Grid";
+        ListMode.IsChecked = s.QuickLayout == "List";
     }
 }

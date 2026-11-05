@@ -16,6 +16,8 @@ public abstract class Observable : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
         return true;
     }
+
+    protected void Raise(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }
 
 public sealed class ZoneConfig
@@ -117,7 +119,7 @@ public sealed class AppSettings : Observable
     private bool _quickHotkeyEnabled = true, _pathHotkeyEnabled = true, _quickContextMenu = true, _quickCloseAfterOpen = true, _quickInTray = true;
     private bool _quickShowIcon = true, _quickShowName = true, _quickShowPath, _quickShowType, _quickShowSize, _quickShowModified, _quickShowCount;
     private uint _quickHotkeyModifiers = 3, _quickHotkeyKey = 0x20, _pathHotkeyModifiers = 3, _pathHotkeyKey = 0x47;
-    private string _quickView = "Grid", _quickSort = "Custom";
+    private string _quickLayout = "Groups", _quickSort = "Custom";
 
     public bool QuickHotkeyEnabled { get => _quickHotkeyEnabled; set => Set(ref _quickHotkeyEnabled, value); }
     public uint QuickHotkeyModifiers { get => _quickHotkeyModifiers; set => Set(ref _quickHotkeyModifiers, value); }
@@ -135,6 +137,51 @@ public sealed class AppSettings : Observable
     public bool QuickShowSize { get => _quickShowSize; set => Set(ref _quickShowSize, value); }
     public bool QuickShowModified { get => _quickShowModified; set => Set(ref _quickShowModified, value); }
     public bool QuickShowCount { get => _quickShowCount; set => Set(ref _quickShowCount, value); }
-    public string QuickView { get => _quickView; set => Set(ref _quickView, value); }
+    // Groups (cards like a launcher home screen), Grid or List. A new key, so existing users start on Groups.
+    public string QuickLayout { get => _quickLayout; set => Set(ref _quickLayout, value is "Grid" or "List" ? value : "Groups"); }
     public string QuickSort { get => _quickSort; set => Set(ref _quickSort, value); }
+
+    private bool _quickStartSync = true, _quickAutoGroup = true;
+    private double _quickWidth, _quickHeight;
+    private int _quickCardCols, _quickCardRows;
+
+    // Default group card size in icon cells (columns × rows); 0 sizes each card by its item count.
+    public int QuickCardCols { get => _quickCardCols; set => Set(ref _quickCardCols, Math.Clamp(value, 0, 8)); }
+    public int QuickCardRows { get => _quickCardRows; set => Set(ref _quickCardRows, Math.Clamp(value, 0, 6)); }
+    private Dictionary<string, string> _localKeys = new();
+
+    public bool QuickStartSync { get => _quickStartSync; set => Set(ref _quickStartSync, value); }
+    public bool QuickAutoGroup { get => _quickAutoGroup; set => Set(ref _quickAutoGroup, value); }
+    public double QuickWidth { get => _quickWidth; set => Set(ref _quickWidth, Math.Max(0, value)); }
+    public double QuickHeight { get => _quickHeight; set => Set(ref _quickHeight, Math.Max(0, value)); }
+
+    // In-launcher shortcuts, stored as "Ctrl+Return" style chords; missing entries fall back to defaults.
+    public static readonly IReadOnlyDictionary<string, string> DefaultLocalKeys = new Dictionary<string, string>
+    {
+        ["Reveal"] = "Ctrl+Return", ["Rename"] = "F2", ["Remove"] = "Delete",
+        ["CopyPath"] = "Ctrl+C", ["AddQuick"] = "Shift+Return", ["Complete"] = "Tab",
+    };
+
+    public Dictionary<string, string> LocalKeys { get => _localKeys; set => Set(ref _localKeys, value ?? new()); }
+
+    // Panel navigation order by page title; empty keeps the built-in order, unknown titles are ignored.
+    private List<string> _navOrder = new();
+    public List<string> NavOrder { get => _navOrder; set => Set(ref _navOrder, value ?? new()); }
+
+    public string LocalKey(string name) =>
+        _localKeys.TryGetValue(name, out var v) && v.Length > 0 ? v : DefaultLocalKeys[name];
+
+    // Both halves change together, so the hotkey is re-registered once with the final combination.
+    public void SetGlobalHotkey(string which, uint mods, uint key)
+    {
+        switch (which)
+        {
+            case "Quick": _quickHotkeyModifiers = mods; _quickHotkeyKey = key; Raise(nameof(QuickHotkeyKey)); break;
+            case "Path": _pathHotkeyModifiers = mods; _pathHotkeyKey = key; Raise(nameof(PathHotkeyKey)); break;
+            default: _hotkeyModifiers = mods; _hotkeyKey = key; Raise(nameof(HotkeyKey)); break;
+        }
+    }
+
+    public void SetLocalKey(string name, string chord) =>
+        LocalKeys = new Dictionary<string, string>(_localKeys) { [name] = chord };
 }

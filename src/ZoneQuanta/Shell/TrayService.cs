@@ -16,10 +16,10 @@ internal sealed class TrayService : IDisposable
     private readonly ContextMenuStrip _menu = new();
     private readonly ToolStripMenuItem _panel, _show, _band, _through, _lock, _top, _fullscreen, _autostart;
     private readonly ToolStripMenuItem _quick, _path, _quickList;
-    private readonly Func<IEnumerable<(string Name, Action Open)>> _quickItems;
+    private readonly Func<IEnumerable<(string Group, string Name, Action Open)>> _quickItems;
 
     public TrayService(AppSettings settings, Action togglePanel, Action resetPosition, Action checkUpdate, Action exit,
-        Action toggleQuick, Action showPathBar, Func<IEnumerable<(string Name, Action Open)>> quickItems)
+        Action toggleQuick, Action showPathBar, Func<IEnumerable<(string Group, string Name, Action Open)>> quickItems)
     {
         _settings = settings;
         _quickItems = quickItems;
@@ -84,22 +84,40 @@ internal sealed class TrayService : IDisposable
         _quick.ShortcutKeyDisplayString = _settings.QuickHotkeyEnabled ? SystemPage.Format(_settings.QuickHotkeyModifiers, _settings.QuickHotkeyKey) : null;
         _path.ShortcutKeyDisplayString = _settings.PathHotkeyEnabled ? SystemPage.Format(_settings.PathHotkeyModifiers, _settings.PathHotkeyKey) : null;
         _quickList.DropDownItems.Clear();
-        if (_settings.QuickInTray)
-            foreach (var (name, open) in _quickItems())
-            {
-                var item = Item(name, open);
-                item.BackColor = back;
-                item.ForeColor = fore;
-                _quickList.DropDownItems.Add(item);
-            }
-        _quickList.Visible = _quickList.DropDownItems.Count > 0;
-        if (_quickList.DropDown is ToolStripDropDownMenu dd)
+        // Grouped items get one submenu per group, in the panel's group order; ungrouped ones follow.
+        void Style(ToolStripMenuItem parent)
         {
+            if (parent.DropDown is not ToolStripDropDownMenu dd) return;
             dd.Renderer = renderer;
             dd.BackColor = back;
             dd.ShowImageMargin = false;
             dd.Font = _menu.Font;
         }
+        if (_settings.QuickInTray)
+        {
+            var groups = new Dictionary<string, ToolStripMenuItem>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (group, name, open) in _quickItems())
+            {
+                var item = Item(name, open);
+                item.BackColor = back;
+                item.ForeColor = fore;
+                if (group.Length == 0)
+                {
+                    _quickList.DropDownItems.Add(item);
+                    continue;
+                }
+                if (!groups.TryGetValue(group, out var sub))
+                {
+                    sub = new ToolStripMenuItem(group) { BackColor = back, ForeColor = fore };
+                    groups[group] = sub;
+                    _quickList.DropDownItems.Add(sub);
+                    Style(sub);
+                }
+                sub.DropDownItems.Add(item);
+            }
+        }
+        _quickList.Visible = _quickList.DropDownItems.Count > 0;
+        Style(_quickList);
 
         _show.Checked = _settings.WidgetVisible;
         _band.Checked = _settings.BandVisible;

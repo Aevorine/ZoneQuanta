@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 
 namespace ZoneQuanta.Core.Quick;
@@ -14,6 +15,11 @@ public sealed class QuickItem
     public int OpenCount { get; set; }
     public double Frecency { get; set; }
 
+    // Group name, "" when ungrouped. GroupManual marks a placement the user made (including taking an
+    // item out of its group): automatic grouping only ever fills items that have neither.
+    public string Group { get; set; } = "";
+    public bool GroupManual { get; set; }
+
     public string DisplayName => Name.Length > 0 ? Name : QuickStore.DefaultName(Path);
 
     // Open score that halves every week: frequent and recent beats frequent long ago.
@@ -21,10 +27,25 @@ public sealed class QuickItem
         Frecency * Math.Pow(2, -Math.Max(0, nowUtc - LastOpenedUtc) / QuickStore.HalfLifeSeconds);
 }
 
+public sealed class QuickGroup
+{
+    public const int MaxCols = 8, MaxRows = 6;
+
+    public string Name { get; set; } = "";
+    public bool Expanded { get; set; }
+
+    // Card size in icon cells, columns × rows, chosen by the user; 0 follows the default size.
+    // Automatic grouping never sets or changes it.
+    public int Cols { get; set; }
+    public int Rows { get; set; }
+}
+
 public sealed class QuickData
 {
     public List<QuickItem> Items { get; set; } = new();
+    public List<QuickGroup> Groups { get; set; } = new();
     public List<string> History { get; set; } = new();
+    public List<string> StartSeen { get; set; } = new();
 }
 
 public sealed class QuickStore
@@ -36,6 +57,7 @@ public sealed class QuickStore
 
     public QuickData Data { get; }
     public IReadOnlyList<QuickItem> Items => Data.Items;
+    public IReadOnlyList<QuickGroup> Groups => Data.Groups;
     public event Action<QuickItem?>? Changed;
 
     public QuickStore(string? path = null)
@@ -86,9 +108,166 @@ public sealed class QuickStore
         return (item, true);
     }
 
+    // Batch add with one save and one change notification.
+    public List<QuickItem> AddRange(IEnumerable<(string Path, string? Name)> entries)
+    {
+        var added = new List<QuickItem>();
+        foreach (var (path, name) in entries)
+        {
+            if (Find(path) is not null) continue;
+            var item = new QuickItem { Path = Normalize(path), Name = name ?? "", AddedUtc = Now };
+            Data.Items.Add(item);
+            added.Add(item);
+        }
+        Save(added.Count > 0 ? added[0] : null, notify: added.Count > 0);
+        return added;
+    }
+
     public void Remove(QuickItem item)
     {
-        if (Data.Items.Remove(item)) Save(null);
+        if (!Data.Items.Remove(item)) return;
+        Prune(Data);
+        Save(null);
+    }
+
+    public static bool NeedsGroup(QuickItem item) => item.Group.Length == 0 && !item.GroupManual;
+
+    public QuickGroup? FindGroup(string name)
+    {
+        foreach (var g in Data.Groups)
+            if (string.Equals(g.Name, name, StringComparison.OrdinalIgnoreCase)) return g;
+        return null;
+    }
+
+    public IEnumerable<QuickItem> ItemsOf(QuickGroup group)
+    {
+        foreach (var i in Data.Items)
+            if (string.Equals(i.Group, group.Name, StringComparison.OrdinalIgnoreCase)) yield return i;
+    }
+
+    public string UniqueGroupName(string wanted)
+    {
+        string name = wanted.Trim().Length > 0 ? wanted.Trim() : "新建分组";
+        if (FindGroup(name) is null) return name;
+        for (int n = 2; ; n++)
+            if (FindGroup($"{name} {n}") is null) return $"{name} {n}";
+    }
+
+    // The user's placement: into a group (created when missing), or out of any group with "".
+    public QuickGroup? SetGroup(IReadOnlyCollection<QuickItem> items, string group)
+    {
+        QuickGroup? target = null;
+        string name = group.Trim();
+        if (name.Length > 0)
+        {
+            target = FindGroup(name);
+            if (target is null) Data.Groups.Add(target = new QuickGroup { Name = name });
+        }
+        foreach (var i in items)
+        {
+            i.Group = target?.Name ?? "";
+            i.GroupManual = true;
+        }
+        Prune(Data);
+        Save(items.Count > 0 ? items.First() : null);
+        return target;
+    }
+
+    // Automatic grouping: applied only to items that are still ungrouped and were never placed by hand,
+    // so a group the user or an earlier pass chose is never changed. New groups follow the given order.
+    public int AutoAssign(IEnumerable<(QuickItem Item, string Group)> picks, IReadOnlyList<string> order)
+    {
+        int count = 0;
+        var created = new List<QuickGroup>();
+        foreach (var (item, group) in picks)
+        {
+            if (group.Length == 0 || !NeedsGroup(item) || !Data.Items.Contains(item)) continue;
+            var g = FindGroup(group);
+            if (g is null)
+            {
+                g = new QuickGroup { Name = group };
+                created.Add(g);
+                Data.Groups.Add(g);
+            }
+            item.Group = g.Name;
+            count++;
+        }
+        if (created.Count > 1)
+        {
+            int Rank(QuickGroup g) { int r = -1; for (int i = 0; i < order.Count; i++) if (order[i] == g.Name) r = i; return r < 0 ? int.MaxValue : r; }
+            Data.Groups.RemoveAll(created.Contains);
+            Data.Groups.AddRange(created.OrderBy(Rank));
+        }
+        if (count > 0) Save(null);
+        return count;
+    }
+
+    // Renaming onto an existing name merges the two groups.
+    public void RenameGroup(QuickGroup group, string name)
+    {
+        string n = name.Trim();
+        if (n.Length == 0 || n == group.Name || !Data.Groups.Contains(group)) return;
+        var other = FindGroup(n);
+        string old = group.Name;
+        if (other is not null && other != group) Data.Groups.Remove(group);
+        else group.Name = n;
+        string final = other is not null && other != group ? other.Name : n;
+        foreach (var i in Data.Items)
+            if (string.Equals(i.Group, old, StringComparison.OrdinalIgnoreCase)) i.Group = final;
+        Save(null);
+    }
+
+    // Items stay in the panel, ungrouped, and are not picked up again by automatic grouping.
+    public void Dissolve(QuickGroup group)
+    {
+        foreach (var i in ItemsOf(group).ToList())
+        {
+            i.Group = "";
+            i.GroupManual = true;
+        }
+        Data.Groups.Remove(group);
+        Save(null);
+    }
+
+    public void MoveGroup(QuickGroup group, int index)
+    {
+        int from = Data.Groups.IndexOf(group);
+        if (from < 0) return;
+        index = Math.Clamp(index, 0, Data.Groups.Count - 1);
+        if (from == index) return;
+        Data.Groups.RemoveAt(from);
+        Data.Groups.Insert(index, group);
+        Save(null);
+    }
+
+    public void SetExpanded(QuickGroup group, bool expanded)
+    {
+        if (group.Expanded == expanded) return;
+        group.Expanded = expanded;
+        Save(null, notify: false);
+    }
+
+    // 0 × 0 returns the card to the default size. Picking a size also folds the card back to it.
+    public void SetSize(QuickGroup group, int cols, int rows)
+    {
+        cols = cols <= 0 || rows <= 0 ? 0 : Math.Min(cols, QuickGroup.MaxCols);
+        rows = cols == 0 ? 0 : Math.Min(rows, QuickGroup.MaxRows);
+        if (!Data.Groups.Contains(group) || (group.Cols == cols && group.Rows == rows && !group.Expanded)) return;
+        group.Cols = cols;
+        group.Rows = rows;
+        group.Expanded = false;
+        Save(null);
+    }
+
+    // Every referenced group exists, and a group that lost its last item goes away.
+    private static void Prune(QuickData d)
+    {
+        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var i in d.Items) if (i.Group.Length > 0) used.Add(i.Group);
+        d.Groups.RemoveAll(g => string.IsNullOrWhiteSpace(g.Name) || !used.Contains(g.Name));
+        var known = new HashSet<string>(d.Groups.Select(g => g.Name), StringComparer.OrdinalIgnoreCase);
+        foreach (var name in used)
+            if (known.Add(name)) d.Groups.Add(new QuickGroup { Name = name });
     }
 
     public void Move(QuickItem item, int index)
@@ -148,6 +327,9 @@ public sealed class QuickStore
             if (File.Exists(path) && JsonSerializer.Deserialize<QuickData>(File.ReadAllText(path)) is { } d)
             {
                 d.Items.RemoveAll(i => string.IsNullOrWhiteSpace(i.Path));
+                foreach (var i in d.Items) i.Group = i.Group?.Trim() ?? "";
+                d.Groups ??= new();
+                Prune(d);
                 return d;
             }
         }

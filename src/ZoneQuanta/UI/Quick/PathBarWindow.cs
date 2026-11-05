@@ -10,6 +10,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using ZoneQuanta.Core.Quick;
 using ZoneQuanta.Platform;
+using ZoneQuanta.UI.Controls;
 using Shapes = System.Windows.Shapes;
 
 namespace ZoneQuanta.UI.Quick;
@@ -75,9 +76,30 @@ public sealed class PathBarWindow : LauncherWindow
         return true;
     }
 
+    private KeyChord Chord(string name) => KeyChord.Parse(_actions.Settings.LocalKey(name));
+
     private void OnKey(object sender, KeyEventArgs e)
     {
-        var mods = Keyboard.Modifiers;
+        if (Chord("Complete").Matches(e))
+        {
+            if (Selected() is { } s) Complete(s);
+            e.Handled = true;
+            return;
+        }
+        if (Chord("Reveal").Matches(e))
+        {
+            if (Target() is { } reveal && QuickActions.Exists(reveal)) { ShellLauncher.Reveal(reveal); Hide(); }
+            else Fail();
+            e.Handled = true;
+            return;
+        }
+        if (Chord("AddQuick").Matches(e))
+        {
+            if (Target() is { } add && _actions.Add(new[] { add }) is { } added && (added.Count > 0 || _actions.Store.Find(add) is not null)) Hide();
+            else Fail();
+            e.Handled = true;
+            return;
+        }
         switch (e.Key)
         {
             case Key.Down:
@@ -88,18 +110,7 @@ public sealed class PathBarWindow : LauncherWindow
                 _list.ScrollIntoView(_list.SelectedItem);
                 _navigated = true;
                 break;
-            case Key.Tab:
-                if (Selected() is { } s) Complete(s);
-                break;
-            case Key.Enter when mods.HasFlag(ModifierKeys.Control):
-                if (Target() is { } reveal && QuickActions.Exists(reveal)) { ShellLauncher.Reveal(reveal); Hide(); }
-                else Fail();
-                break;
-            case Key.Enter when mods.HasFlag(ModifierKeys.Shift):
-                if (Target() is { } add && _actions.Add(new[] { add }) is { } added && (added.Count > 0 || _actions.Store.Find(add) is not null)) Hide();
-                else Fail();
-                break;
-            case Key.Enter:
+            case Key.Enter when Keyboard.Modifiers == ModifierKeys.None:
                 if (PreferSuggestion && Selected() is { } pick) OpenSuggestion(pick);
                 else _actions.OpenText(_box.Text);
                 break;

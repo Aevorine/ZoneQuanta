@@ -6,8 +6,8 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*" MinHeight="130"/>
-            <RowDefinition Height="2*"/>
+            <RowDefinition Height="*" MinHeight="120"/>
+            <RowDefinition Height="2.4*"/>
         </Grid.RowDefinitions>
 
         <UniformGrid x:Name="Ranges" Rows="1" Margin="0,0,0,10"/>
@@ -72,6 +72,7 @@
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
@@ -85,10 +86,11 @@
                     <TextBox x:Name="AppSearch" Grid.Column="1" Style="{StaticResource IconField}" Tag="{StaticResource Icon.Search}" MaxWidth="260" HorizontalAlignment="Right" Width="220" Margin="12,0,10,0"/>
                     <UniformGrid x:Name="Sorts" Grid.Column="2" Rows="1"/>
                 </Grid>
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <ContentPresenter x:Name="AppHeader" Grid.Row="1" Margin="0,0,10,4"/>
+                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Focusable="False">
                     <StackPanel x:Name="Apps"/>
                 </ScrollViewer>
-                <ToggleButton x:Name="TrackToggle" Grid.Row="2" Style="{StaticResource SwitchRow}" Content="统计每个应用的流量（需管理员授权）" Margin="-12,6,-12,-6"/>
+                <ToggleButton x:Name="TrackToggle" Grid.Row="3" Style="{StaticResource SwitchRow}" Content="统计每个应用的流量（需管理员授权）" Margin="-12,6,-12,-6"/>
             </Grid>
         </Border>
 

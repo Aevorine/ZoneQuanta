@@ -12,39 +12,64 @@ Windows 桌面时钟组件（本地 + 洛杉矶），WPF / .NET 8 单文件 exe�
 ## 计划与进度
 | ID | 事项 | 泳道 / 负责 | 状态（未开始 / 进行中 / 待验收 / 完成 / 阻塞） | 证据（命令输出 / 文件 / 提交；日期写绝对日期） |
 |---|---|---|---|---|
-| T-20261002-1 | 配置 Matt Pocock 技能；建公开仓库 Aevorine/ZoneQuanta | 主线 | 完成 | `gh repo view` → PUBLIC（2026-10-02） |
-| T-20261002-2 | 桌面时钟组件全功能实现、打包、发布 | 主线 | 待验收 | 提交 ee62b1c 起；Release v1.0.1 / v1.0.2（v1.0.0 已按「只留两版」删除）；实测：热键开关面板、全屏隐藏（可见 1→0→1）、穿透样式位、自更新 1.0.0→1.0.1 并清理 .old、预热后空闲 CPU≈0.25% 单核、私有内存≈63 MB（2026-10-02） |
-| T-20261002-3 | 时区编辑（面板「时区」页，最多 4 个）+ 靠右/靠下向内生长 | 主线 | 待验收 | 实测：添加东京后 `settings.json` 含 3 项，小组件右边缘保持 1895px（2026-10-02） |
-| T-20261002-4 | v1.1.0：夏令时详情翻转卡片、热门城市、任务栏监控条（网速/CPU/内存、单位可选）、应用流量统计（ETW 管理员助手 + 计划任务）、安装位置选择（强制 ZoneQuanta 子文件夹）、页面动画 | 主线 | 待验收 | 实测：ETW 助手写出 apps.tsv（sing-box 等）；安装器装入所选目录\ZoneQuanta；DST 2026：3/8–11/1；稳态 CPU≈0.26% 单核（2026-10-02） |
+| T-20261002-2 | 桌面时钟组件全功能实现、打包、发布 | 主线 | 待验收 | 提交 ee62b1c；证据见 `history/2026-11_v1.0-1.4.1.md`（2026-10-02） |
+| T-20261002-3 | 时区编辑 | 主线 | 待验收 | 证据见 `history/2026-11_v1.0-1.4.1.md`（2026-10-02） |
+| T-20261002-4 | v1.1.0 | 主线 | 待验收 | 证据见 `history/2026-11_v1.0-1.4.1.md`（2026-10-02） |
+| T-20261008-1 | v1.3.0 显示速度 | 主线 | 待验收 | 证据见 `history/2026-11_v1.0-1.4.1.md`（2026-10-08） |
+| T-20261101-1 | v1.3.2 面板最大化 / 还原按钮 | 主线 | 待验收 | 提交 eb8642d；证据见 `history/2026-11_v1.0-1.4.1.md`（2026-11-01） |
+| T-20261105-1 | v1.4.0 流量额度查询 + 快捷面板 | 主线 | 待验收 | 提交 43305aa / 9f886db / 6d2b054；证据见 `history/2026-11_v1.0-1.4.1.md`（2026-11-05） |
+| T-20261101-2 | v1.3.3 页面随窗口填满 | 主线 | 待验收 | 提交 82bd00e；证据见 `history/2026-11_v1.0-1.4.1.md`（2026-11-01） |
 
-| T-20261008-1 | v1.3.0 显示速度（含 v1.3.1「显示桌面 / 最小化时保持显示」：Win+D 时系统报告「忙」被误判为全屏，已修，实测 Win+D / Win+M 期间组件与监控条持续可见）：整秒前触发的高精度时钟线程、后台采样（默认 0.5 秒，可选）、监控条自动隐藏感知与事件驱动悬停；修复网卡刷新丢流量、统计助手静默丢失、进程低优先级饥饿 | 主线 | 待验收 | 真机对比（自动隐藏任务栏，HEAD v1.2.20 vs 新版）：时钟文字就绪 +13 ms → −11 ms；CPU 满载 +53 ms 均值且停顿 10.1 s → −11 ms 无停顿；监控条首次出现 803 ms → 13 ms，之后 10–16 ms → 3–4 ms；悬停详情 7–17 ms；右键直达「监控」通过（2026-10-08） |
-| T-20261101-1 | v1.3.2 面板最大化 / 还原按钮：贴合工作区、自动隐藏任务栏可呼出、隐藏与显示桌面后保持最大化；上传 GitHub、发布 Release、只留两版、清理本地旧版 | 主线 | 待验收 | 真机实测（125% DPI、自动隐藏任务栏、真实鼠标键盘）：最大化矩形 (-9,-9,1929,1089) → (0,0,1920,1078)；QUNS 2 → 5；任务栏 1078 → 1020 → 1078；还原回原矩形；「−」「✕」仍隐藏到托盘；按下拖出不触发。贴靠布局弹窗 NOT TESTED。提交 eb8642d；Release v1.3.2 / v1.3.1（v1.3.0 及标签已删）；已安装版自更新 1.3.1→1.3.2 用时约 25 秒，SHA-256 与 Release 一致（2026-11-01） |
-| T-20261105-1 | v1.4.0 流量额度查询 + 快捷面板（资源管理器右键添加、图标与名称、多种操作、显示项开关）+ 打开路径快捷键；去掉页面左上角标题、图标按钮悬停显示名称；上传、发布、只留两版、清理本地旧版 | 主线 | 进行中 | 验收条见下方「T-20261105-1 验收」 |
-| T-20261101-2 | v1.3.3 页面随窗口填满（主题 2×2、监控分组按比例、窗口页方向键、时区预览与流量图表随高度放大）；修复「开始按钮左侧」截断；更新后随即清理旧版 | 主线 | 待验收 | 8 页在普通、最大化、最小高度下实测无重叠或裁切；方向键左右均生效；提交 82bd00e；Release v1.3.3 / v1.3.2；已安装版自更新 1.3.2→1.3.3 用时约 24 秒，SHA-256 与 Release 一致，`.old` 在替换后约 10 秒自动删除（2026-11-01） |
+### T-20261105-1 第一轮验收（v1.4.0 / v1.4.1，1–6）见 `history/2026-11_v1.0-1.4.1.md`
 
-### T-20261105-1 验收
-1. 额度：流量页设每月额度与重置日后，额度卡显示已用 / 剩余 / 百分比，每日图表显示本账期逐日用量与每日可用线；已用 = totals.tsv 中本账期逐小时合计（手算核对）；达到提醒阈值与 100% 各托盘提醒一次
-2. 右键：注册表 `HKCU\Software\Classes\*\shell\ZoneQuanta.Quick` 等存在；执行其命令（`ZoneQuanta.exe --quick-add "<路径>"`）后条目写入 `quick.json`，快捷面板弹出并显示该项的系统图标与名称；关闭开关后注册表项删除
-3. 快捷面板：快捷键（默认 Ctrl+Alt+Q）开 / 关；单击打开；右键菜单含打开、管理员运行、打开方式、打开所在位置、复制路径、重命名、属性、移除；可拖动排序、拖入文件添加、搜索过滤
-4. 打开路径：快捷键（默认 Ctrl+Alt+G）弹出输入框，输入带引号或环境变量的路径并有补全，回车打开
-5. 「快捷」页：每个功能与每个显示项单独开关，切换立即生效
-6. 发布 v1.4.0；GitHub Releases 只剩 v1.4.0 / v1.3.3；本地 dist 只有 v1.4.0；已安装版自更新到 1.4.0
+### T-20261105-1 第二轮验收（v1.4.2）
+7. 「快捷键」页列出全部快捷键（3 个全局 + 打开所在位置 / 重命名 / 移除 / 复制路径 / 加入快捷面板 / 补全）；任一项可录入新组合、恢复默认，重复组合被拒绝；改后写入 settings.json，重启后保持，并立即生效
+8. 流量页每个应用一行：图标、名称与程序说明、上传、下载、合计、占比；列表区域加大
+9. 快捷面板默认更大，拖动调整的尺寸重启后保持；「开始」固定的应用全部导入（数量 = Export-StartLayout 的 pinnedList 中存在的项）；之后新固定的应用自动导入，已从面板移除的不再回来
+10. 下载线路中途停滞时 15 秒内换线路续传，不再无限等待；已安装版能自更新到 v1.4.2
+
+### T-20261105-1 第三轮验收（v1.4.2，分组）
+11. 快捷面板默认分组视图：每组圆角卡片 + 组名在下，两行外「+N」展开且记住；未分组项单独排在卡片后
+12. 自动分类：新加入且未分组、非手动的项自动归组；已有分组（自动或手动）与手动移出分组的项，自动分类永不改动（对比 quick.json 前后 changed=0）
+13. 手动分类：右键「移到分组 / 新建分组 / 移出分组」、拖到卡片、拖到未分组图标上新建组并命名、拖到空白移出、拖卡片排序、组名右键重命名 / 解散；重启后保持
+
+### T-20261105-1 第四轮验收（v1.4.2，去空白）
+（14 已被第五轮 17–20 取代，原文见 history）
+15. 网格视图均匀铺满宽度；列表视图在宽窗口自动分多栏；每次打开快捷面板从顶部开始
+16. 「开始」同步不再空转：启动后只读取一次，读取引起的 start2.bin 回声写入不再触发下一次读取
+
+### T-20261105-1 第五轮验收（v1.4.2，卡片大小可选，参照用户给的起始页截图）
+17. 分组视图是图标格子网格：每组卡片占 列 × 行 个格子，组名在卡片下；未分组图标各占 1 格；按顺序放进从上往下第一个能放下的位置（小卡片 / 图标填进空位）；格子数随窗口宽度变化、余宽平分
+18. 右键组名「卡片大小」：格子选择器任选 1–8 列 × 1–6 行（悬停显示「c 列 × r 行」，单击生效）与「跟随默认」；卡片显示 列 × 行 个图标，超出「+N」展开；1 列卡片显示一列小图标；写入 quick.json，重启保持
+19. 排序菜单「卡片大小」设默认大小（写入 settings.json），未单独设置的组跟随；「自动」= 按项数（1–2 项 2 × 1、3–4 项一行、更多 4 × 2）
+20. 自动分类与手动分类照旧；已分组的项、已设的卡片大小不被自动分类改动
+
+### T-20261105-1 第六轮验收（v1.4.2，拖动）
+21. 长按面板导航项约 0.3 秒后上下拖动调整顺序，写入 settings.json `NavOrder`，重启保持；右键导航「恢复默认顺序」清空
+22. 按住导航栏空白处拖动移动面板；快捷面板顶栏空隙直接拖动、搜索框与按钮按住 0.3 秒后拖动移动窗口
+23. 分组卡片右下角手柄拖动按整格改 列 × 行，实时显示「c 列 × r 行」，松开写入 quick.json
+
+## 明确不做
+- [2026-11-05] 安卓手机 / 平板版、网页版（React、shadcn/ui、Motion、dnd-kit、Zustand 等前端栈）｜安卓、平板、React、shadcn、Web — 本项目是 WPF 桌面组件（ADR 0001），通用需求模板里的这些条目不适用；对应诉求用 WPF 自带控件实现（Thumb、拖放、动画）
 
 ## 问题与待决
 - 程序未做 Authenticode 代码签名，SmartScreen 会提示未知发布者（需购买证书，暂不做）
 - 镜像线路（ghfast.top、gh-proxy.com）为第三方，可用性随时变化；已有签名校验，失效时自动回退直连
 
 ## 恢复点
-2026-11-01：v1.3.3 页面改用星号行 / 列填满；`UpdateService.CleanupLeftovers` 对 `.old` 退避重试（约 32 秒内），`.new` 只清一次，避免删掉下载中的文件。发布保留 v1.3.3 / v1.3.2。
+> 更早的恢复点、已完成任务与学习候选见 `.claude/history/2026-10_11.md`；v1.4.0 / v1.4.1 与第四轮（瀑布流，已被第五轮取代）见 `history/2026-11_v1.0-1.4.1.md`。
+2026-11-05 第二 / 三轮（未提交，目标 v1.4.2）：快捷键全可改（`KeyChord` + `LocalKeys`、`HotkeyBox.Guard` 点击才录入、录入时暂停全局快捷键）；流量按应用行（`Platform/AppDirectory` 进程名→exe 路径+说明，缓存 `apps-meta.json`）；「开始」固定应用导入（`Platform/StartLayout` + `UI/Quick/StartPinSync`，`StartSeen` 防止已移除的回来）；下载 15 s 无数据换线续传。第三轮加分组：自动分类只填「未分组且非手动」的项，已分类的永不改动。测试时 settings.json 的 Rename 被改成 F3，发布前从 `scratchpad\backup2\settings.json` 还原。
+2026-11-05 第五轮（未提交，仍属 v1.4.2）：用户不要「三列等宽」，要起始页式可选卡片大小：`CellGridPanel` 格子网格 + `SizePicker`，大小存 `QuickGroup.Cols / Rows` 与 `AppSettings.QuickCardCols / Rows`。网格行高 = 一行图标高，n 行卡片占 n + 1 行（多出那行放边框与组名），避免多行卡片内部被拉松。验证见 CHANGELOG 1.4.2 Validation。用户期间自己改了分组顺序与面板大小（1538 × 864），测试只还原了自己改的部分，备份在 `scratchpad\backup5`。
+2026-11-05 第六轮：`UI/Controls/WindowDrag`（空白处直接拖窗口、内容上按住 0.3 秒再拖）、`UI/Panel/NavReorder`（长按导航排序，`AppSettings.NavOrder`）、卡片右下角 `Thumb`（主题 `CornerGrip`）。Rename 测试遗留 F3 已清除；用户自己把快捷面板热键改成了 Alt + Space（未动）。发布 v1.4.2 前派了独立审查。
 
-2026-11-01：v1.3.2 给面板加最大化 / 还原按钮。`Platform/MaximizeFrame.cs` 接管 `WM_GETMINMAXINFO`（贴合工作区，自动隐藏任务栏那条边让出 2 像素）和 `HTMAXBUTTON` 命中测试；`PanelWindow` 用 `_maximized` 记住最大化状态，隐藏与 `Revive` 都据此恢复（`SW_SHOWNOACTIVATE` 回不到最大化）。发布保留 v1.3.2 / v1.3.1。
-
-2026-10-08：v1.3.0 专攻显示速度。`ClockTicker` 改为专用高精度线程（可等待定时器，整秒前 12 ms 触发，Send 优先级投递）；`MetricsSampler` 后台采样（`SampleIntervalMs`，监控条收起且面板关闭时降为 1 秒）；`BandWindow` 重写为「保留字宽、只换文字」，布局预读、事件合并、悬停事件驱动；进程恢复正常优先级并关闭电源节流。本机任务栏为自动隐藏，测试必须覆盖「隐藏→显示」。发布保留 v1.3.1 / v1.3.0；签名密钥（仓库外，目录由 `ZONEQUANTA_SECRET_DIR` 或 `-SecretDir` 指定）和个人配置均不入库。
+<!-- wf:resume:start -->
+（机器快照，PreCompact 钩子写，勿手改；恢复时以真实 Git 与代码为准）
+- 快照时间：2026-11-05T11:37:50.051Z（PreCompact/auto，会话 f19c7341）
+- Git：main → origin/main @ 6d2b054（+0 -0）；未提交 27 个：.claude/SPEC.md，CHANGELOG.md，README.en.md，README.md，src/ZoneQuanta/AppController.cs，src/ZoneQuanta/Core/Quick/PathEngine.cs，src/ZoneQuanta/Core/Quick/QuickStore.cs，src/ZoneQuanta/Core/Settings/AppSettings.cs，src/ZoneQuanta/Core/Update/ParallelDownloader.cs，src/ZoneQuanta/UI/Controls/HotkeyBox.cs，src/ZoneQuanta/UI/Panel/Pages/QuickPage.xaml，src/ZoneQuanta/UI/Panel/Pages/QuickPage.xaml.cs，src/ZoneQuanta/UI/Panel/Pages/SystemPage.xaml.cs，src/ZoneQuanta/UI/Panel/Pages/TrafficPage.xaml，src/ZoneQuanta/UI/Panel/Pages/TrafficPage.xaml.cs…
+- 最近 3 小时改过的文件（项目根，前 15）：README.en.md，README.md，CHANGELOG.md，src\ZoneQuanta\UI\Controls\HotkeyBox.cs，src\ZoneQuanta\AppController.cs，src\ZoneQuanta\obj\ZoneQuanta.csproj.nuget.dgspec.json，src\ZoneQuanta\obj\project.nuget.cache，src\ZoneQuanta\obj\project.assets.json，src\ZoneQuanta\obj\ZoneQuanta.csproj.nuget.g.targets，src\ZoneQuanta\obj\ZoneQuanta.csproj.nuget.g.props，src\ZoneQuanta\UI\Quick\QuickGrid.cs，src\ZoneQuanta\UI\Quick\QuickWindow.cs，src\ZoneQuanta\Platform\AppDirectory.cs，src\ZoneQuanta\UI\Quick\StartPinSync.cs，src\ZoneQuanta\UI\Quick\QuickActions.cs
+<!-- wf:resume:end -->
 
 ## 学习候选
-- [2026-11-01] 真机自动化必须先验证落点：点击前用 WindowFromPoint 确认，窗口按样式而非标题识别，不发多余按键｜复现 2 次｜测试误改了终端和时钟组件的窗口状态｜范围：全局
-- [2026-11-01] 判断「功能没触发」前先用原生窗口做对照并重复几次｜复现 1 次｜合成鼠标在原生窗口上触发贴靠布局也只有 1/3，否则会误判为代码缺陷｜范围：全局
-- [2026-10-08] 全屏检测不能只信 SHQueryUserNotificationState：显示桌面（Win+D / Win+M）也返回「忙」，必须排除桌面、任务栏、本程序窗口和空前台｜复现 1 次｜用户反馈最小化时组件消失，真机复现后定位｜范围：项目
-- [2026-10-08] 改 UI Automation 缓存模式后必须在真实任务栏跑一遍；宽泛 catch 会让功能静默失效｜复现 1 次｜`AutomationElementMode.None` 使监控条根本不创建，靠新旧对比才发现｜范围：项目
-- [2026-10-08] 性能类需求先量化：旧 / 新各加临时追踪，同机同场景对比后再宣称改善｜复现 1 次｜时钟 +13 ms → −11 ms、满载停顿 10 s 都是实测才暴露｜范围：全局
-- [2026-10-08] 用户的任务栏是自动隐藏形态，验收要覆盖「隐藏→显示」而不是只看常驻状态｜复现 1 次｜首次测量因任务栏隐藏而误判监控条不可见｜范围：项目
+- [2026-11-05] WPF 把鼠标捕获从子元素转给父元素时，子元素的 LostMouseCapture 会冒泡到父元素，父元素处理器要判 e.OriginalSource == 自己｜复现 1 次｜长按导航排序第一次实测时刚浮起就被自己取消｜范围：全局
+- [2026-11-05] 代码里引用主题资源先 grep 确认键存在，或用 TryFindResource；FindResource 缺键会在窗口构造时让整个程序崩溃｜复现 1 次｜Icon.Refresh 不存在导致 --panel 启动即崩｜范围：项目
+- [2026-11-05] 真实输入测试的指针检查要核对目标顶层窗口句柄，不能只核对进程：同进程的置顶窗口会盖住目标｜复现 1 次｜右键落在快捷面板而不是主面板上｜范围：全局
