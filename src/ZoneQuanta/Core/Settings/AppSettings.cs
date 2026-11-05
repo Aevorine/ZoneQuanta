@@ -167,10 +167,13 @@ public sealed class AppSettings : Observable
     // Where the quick panel opens: Last (where it was left), Center (screen centre) or Cursor (around the pointer).
     public string QuickPlacement { get => _quickPlacement; set => Set(ref _quickPlacement, value is "Center" or "Cursor" ? value : "Last"); }
 
-    public void MigrateLegacy()
+    // True when an old size was carried over, so the caller writes the new form at once.
+    public bool MigrateLegacy()
     {
+        bool had = _quickWidth > 0 || _quickHeight > 0;
         if (_quickBounds is null && _quickWidth > 0 && _quickHeight > 0) _quickBounds = new WindowBounds(_quickWidth, _quickHeight);
         _quickWidth = _quickHeight = 0;
+        return had;
     }
 
     // In-launcher shortcuts, stored as "Ctrl+Return" style chords; missing entries fall back to defaults.
@@ -184,6 +187,10 @@ public sealed class AppSettings : Observable
 
     // Panel navigation order by page title; empty keeps the built-in order, unknown titles are ignored.
     private List<string> _navOrder = new();
+    private string _panelPage = "";
+
+    // Page the panel was last on, reopened after a restart or an update.
+    public string PanelPage { get => _panelPage; set => Set(ref _panelPage, value ?? ""); }
     public List<string> NavOrder { get => _navOrder; set => Set(ref _navOrder, value ?? new()); }
 
     public string LocalKey(string name) =>

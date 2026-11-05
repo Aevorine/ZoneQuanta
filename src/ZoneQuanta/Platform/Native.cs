@@ -254,6 +254,15 @@ internal static class Native
 
     private const int HTCAPTION = 2;
 
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int key);
+
+    // The physical left button right now, not the state of the input messages processed so far.
+    public static bool LeftButtonDown() => (GetAsyncKeyState(GetSystemMetrics(23) != 0 ? 0x02 : 0x01) & 0x8000) != 0;
+
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int index);
+
     // Hands the current press to the system caption drag: Snap, Shake and dragging a maximized window out.
     public static void BeginCaptionDrag(IntPtr hwnd)
     {

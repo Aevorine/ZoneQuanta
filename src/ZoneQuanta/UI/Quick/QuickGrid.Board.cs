@@ -17,7 +17,8 @@ namespace ZoneQuanta.UI.Quick;
 // and each ungrouped item one cell. Everything is placed in order at the first free spot from the top,
 // so loose icons and small cards fill gaps that larger cards leave.
 // Drag an item onto a card to move it there, onto an ungrouped item to make a new group of the
-// two, or onto empty space to take it out of its group; drag a card onto another to reorder groups.
+// two, or onto empty space to take it out of its group. Drag a card anywhere: it follows the pointer
+// cell by cell while the others make room, and stays pinned where it is dropped.
 public sealed partial class QuickGrid
 {
     // Card chrome around the icon grid: padding 8 + border 1 on each side.
@@ -38,7 +39,10 @@ public sealed partial class QuickGrid
     private readonly CellGridPanel _board = new() { Background = Brushes.Transparent, Margin = new Thickness(2, 2, 2, 4), Gap = ColumnGap };
     private readonly Dictionary<QuickItem, Tile> _boardTiles = new();
     private readonly List<GroupCard> _cards = new();
-    private GroupCard? _downCard, _dropCard;
+    private GroupCard? _downCard, _dropCard, _lifted;
+    private Point _grab;
+    private (int Col, int Row)? _liftTarget;
+    private int _liftRows;
     private Tile? _focused;
 
     // Card fill: the launcher window sits on SurfaceBrush, the panel page on CardBrush.
@@ -88,6 +92,7 @@ public sealed partial class QuickGrid
                 continue;
             }
             var card = new GroupCard(this, group, items, peek: h is not null && items.Contains(h));
+            if (group.Col is int col && group.Row is int row) CellGridPanel.SetPin(card, col, row, group.PinnedAt);
             _cards.Add(card);
             _board.Children.Add(card);
         }
@@ -168,6 +173,7 @@ public sealed partial class QuickGrid
         }
         _downTile = tile;
         _downCard = tile is null && card is not null && !card.Renaming && !card.IsGrip(e.OriginalSource) ? card : null;
+        if (_downCard is not null) _grab = e.GetPosition(_downCard);
         _downAt = e.GetPosition(_boardScroll);
         _dragging = false;
     }
@@ -190,13 +196,13 @@ public sealed partial class QuickGrid
             }
             else if (_downCard is { } card)
             {
-                card.Opacity = 0.5;
+                Lift(card);
                 DragDrop.DoDragDrop(card, new DataObject(GroupDragFormat, card.Group.Name), DragDropEffects.Move);
             }
         }
         finally
         {
-            if (_downCard is not null) _downCard.Opacity = 1;
+            Settle();
             MarkBoardDrop(null, null);
             _downTile = null;
             _downCard = null;
@@ -260,13 +266,14 @@ public sealed partial class QuickGrid
 
     private void OnBoardDragOver(object sender, DragEventArgs e)
     {
+        EdgeScroll(e);
         var tile = TileAt(e.OriginalSource);
         var card = CardAt(e.OriginalSource);
         if (e.Data.GetDataPresent(GroupDragFormat))
         {
-            bool other = card is not null && card.Group.Name != e.Data.GetData(GroupDragFormat) as string;
-            e.Effects = other ? DragDropEffects.Move : DragDropEffects.None;
-            MarkBoardDrop(other ? card : null, null);
+            e.Effects = _lifted is not null ? DragDropEffects.Move : DragDropEffects.None;
+            if (_lifted is not null) Follow(e);
+            MarkBoardDrop(null, null);
         }
         else if (e.Data.GetDataPresent(DragFormat) || e.Data.GetDataPresent(DataFormats.FileDrop))
         {
@@ -288,10 +295,13 @@ public sealed partial class QuickGrid
         MarkBoardDrop(null, null);
         e.Handled = true;
 
-        if (e.Data.GetData(GroupDragFormat) is string groupName)
+        if (e.Data.GetData(GroupDragFormat) is string)
         {
-            if (card is not null && _actions.Store.FindGroup(groupName) is { } moving && moving != card.Group)
-                _actions.MoveGroup(moving, IndexOfGroup(card.Group));
+            if (_lifted is { } lifted && _liftTarget is { } at)
+            {
+                _liftTarget = null;
+                _actions.PlaceGroup(lifted.Group, at.Col, at.Row);
+            }
             return;
         }
         if (e.Data.GetData(DragFormat) is string path)
@@ -316,11 +326,50 @@ public sealed partial class QuickGrid
             _actions.Add(files, -1, card?.Group.Name);
     }
 
-    private int IndexOfGroup(QuickGroup group)
+    // The card being dragged is laid out first, at the cell under the pointer; the column count holds still.
+    private void Lift(GroupCard card)
     {
-        var all = _actions.Store.Groups;
-        for (int i = 0; i < all.Count; i++) if (all[i] == group) return i;
-        return -1;
+        _lifted = card;
+        _liftTarget = null;
+        _liftRows = _board.RowsWithout(card); // lowest drop: just under all the other cards
+        _board.Frozen = true;
+        card.Opacity = 0.8;
+        System.Windows.Controls.Panel.SetZIndex(card, 1);
+    }
+
+    private void Follow(DragEventArgs e)
+    {
+        var card = _lifted!;
+        var p = e.GetPosition(_board);
+        var at = _board.CellAt(new Point(p.X - _grab.X, p.Y - _grab.Y), CellGridPanel.GetColSpan(card), _liftRows);
+        if (_liftTarget != at)
+        {
+            _liftTarget = at;
+            CellGridPanel.SetPin(card, at.Col, at.Row, long.MaxValue);
+        }
+    }
+
+    // Any drag near the top or bottom edge scrolls the board, faster the closer it gets; DragOver keeps
+    // coming while the pointer rests, so holding there keeps scrolling.
+    private void EdgeScroll(DragEventArgs e)
+    {
+        double y = e.GetPosition(_boardScroll).Y, edge = 48;
+        if (y < edge) _boardScroll.ScrollToVerticalOffset(_boardScroll.VerticalOffset - (edge - y) / 2);
+        else if (y > _boardScroll.ActualHeight - edge) _boardScroll.ScrollToVerticalOffset(_boardScroll.VerticalOffset + (y - _boardScroll.ActualHeight + edge) / 2);
+    }
+
+    // Back to where the store says the card belongs: its new cell after a drop, the old one after Esc
+    // or a release outside the board.
+    private void Settle()
+    {
+        _board.Frozen = false;
+        if (_lifted is not { } card) return;
+        _lifted = null;
+        _liftTarget = null;
+        card.Opacity = 1;
+        System.Windows.Controls.Panel.SetZIndex(card, 0);
+        var g = card.Group;
+        CellGridPanel.SetPin(card, g.Col ?? -1, g.Row ?? -1, g.PinnedAt);
     }
 
     private void MarkBoardDrop(GroupCard? card, Tile? tile)
@@ -347,6 +396,9 @@ public sealed partial class QuickGrid
         menu.Items.Add(CardSizeMenu(menu, group.Cols, group.Rows, "跟随默认", (c, r) => _actions.SetSize(group, c, r)));
         if (card.CanExpand)
             Add(menu, group.Expanded ? "收起" : "展开全部", group.Expanded ? "Icon.Up" : "Icon.Down", "", card.Toggle, true);
+        Add(menu, "按内容命名", "Icon.Bolt", "", () => _actions.NameByContent(group), true);
+        if (group.Col is not null) Add(menu, "取消固定位置", "Icon.Pin", "", () => _actions.Unpin(group), true);
+        if (_actions.Store.Groups.Any(g => g.Col is not null)) Add(menu, "全部自动排列", "Icon.Groups", "", () => _actions.Unpin(null), true);
         Add(menu, "解散分组", "Icon.Close", "", () => _actions.Dissolve(group), true);
         menu.Items.Add(new Separator());
         var auto = Add(menu.Items, "自动分类", "Icon.Groups", "", () => _actions.Settings.QuickAutoGroup = !_actions.Settings.QuickAutoGroup, true);

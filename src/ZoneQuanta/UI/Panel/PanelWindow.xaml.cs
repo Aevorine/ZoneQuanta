@@ -48,10 +48,19 @@ public partial class PanelWindow : Window
         // Opens where it was left: size, spot and maximized state survive restarts and updates.
         _memory = new Controls.WindowMemory(this, () => _host.Settings.PanelBounds, b => _host.Settings.PanelBounds = b);
         _memory.Place(Controls.WindowMemory.Spot.Last, new Size(Width, Height), onCursorScreen: false);
+        if (Content is Grid root)
+        {
+            var badge = new Controls.SizeBadge();
+            Grid.SetColumnSpan(badge, 2);
+            root.Children.Add(badge);
+            badge.Attach(_memory);
+        }
         VersionText.Text = $"v{UpdateService.CurrentVersion}";
 
         BuildNav();
-        ((RadioButton)Nav.Children[0]).IsChecked = true;
+        // Reopens on the page it was left on (settings.json PanelPage), else the first.
+        (Nav.Children.OfType<RadioButton>().FirstOrDefault(r => (string)r.Content == _host.Settings.PanelPage)
+            ?? (RadioButton)Nav.Children[0]).IsChecked = true;
         _ = new NavReorder(Nav, order => _host.Settings.NavOrder = order.ToList(), () => Controls.WindowDrag.Begin(this));
         // The rest of the sidebar is title bar too: drag to move, double-click to maximize.
         Controls.WindowDrag.Attach(Sidebar, this, e => e.OriginalSource == Sidebar || e.OriginalSource is TextBlock { Name: "VersionText" }
@@ -173,6 +182,7 @@ public partial class PanelWindow : Window
 
     private void Navigate(PageDef def)
     {
+        _host.Settings.PanelPage = def.Title;
         if (!_pages.TryGetValue(def.Title, out var page))
             _pages[def.Title] = page = def.Create(_host);
         PageHost.Content = page;

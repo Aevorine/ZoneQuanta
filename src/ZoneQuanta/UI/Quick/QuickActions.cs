@@ -30,6 +30,7 @@ public sealed class QuickActions
             _ = AutoGroupAsync();
         };
         store.Changed += _ => ScheduleAutoGroup();
+        WarmFacts();
         settings.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(AppSettings.QuickAutoGroup)) ScheduleAutoGroup(); };
     }
 
@@ -38,6 +39,7 @@ public sealed class QuickActions
     public QuickItem? Highlight { get; private set; }
 
     // A group just made from two items; the view starts renaming it once it is on screen.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Kind, string Maker)> _facts = new(StringComparer.OrdinalIgnoreCase);
     public QuickGroup? PendingRename { get; private set; }
     public event Action? Opened;
     public event Action<string>? Failed;
@@ -95,8 +97,16 @@ public sealed class QuickActions
     public void OpenWith(QuickItem item) => ShellLauncher.OpenWith(item.Path);
     public void Reveal(QuickItem item) => ShellLauncher.Reveal(item.Path);
     public void Properties(QuickItem item) => ShellLauncher.Properties(item.Path);
-    public void Remove(QuickItem item) => Store.Remove(item);
-    public void Rename(QuickItem item, string name) => Store.Rename(item, name);
+    public void Remove(QuickItem item)
+    {
+        Store.Remove(item);
+        RefreshAutoNames();
+    }
+    public void Rename(QuickItem item, string name)
+    {
+        Store.Rename(item, name);
+        _facts.TryRemove(item.Path, out _); // the kind is read from the name too
+    }
     public void Move(QuickItem item, int index) => Store.Move(item, index);
 
     public void CopyPath(QuickItem item)
@@ -127,7 +137,11 @@ public sealed class QuickActions
             all.Add(item);
             Highlight = item;
         }
-        if (group is not null && all.Count > 0) Store.SetGroup(all, group);
+        if (group is not null && all.Count > 0)
+        {
+            Store.SetGroup(all, group);
+            RefreshAutoNames();
+        }
         if (added.Count > 0) Log.Write($"quick add {added.Count}");
         return added;
     }
@@ -135,11 +149,32 @@ public sealed class QuickActions
     public void ClearHighlight() => Highlight = null;
     public void ClearPendingRename() => PendingRename = null;
 
-    public void MoveToGroup(QuickItem item, string group) => Store.SetGroup(new[] { item }, group);
-    public void Ungroup(QuickItem item) => Store.SetGroup(new[] { item }, "");
+    public void MoveToGroup(QuickItem item, string group)
+    {
+        Store.SetGroup(new[] { item }, group);
+        RefreshAutoNames();
+    }
+
+    public void Ungroup(QuickItem item)
+    {
+        Store.SetGroup(new[] { item }, "");
+        RefreshAutoNames();
+    }
+
+    public void PlaceGroup(QuickGroup group, int col, int row) => Store.PlaceGroup(group, col, row);
+    public void Unpin(QuickGroup? group) => Store.Unpin(group);
+
+    // Right-click "按内容命名": named from the members again, and follows them from now on.
+    public void NameByContent(QuickGroup group)
+    {
+        var members = Store.ItemsOf(group).ToList();
+        if (members.Count == 0) return;
+        string want = SuggestName(members);
+        if (!GroupNamer.IsNameFor(group.Name, want)) Store.RenameGroup(group, Store.UniqueGroupName(want), auto: true);
+        else Store.MarkAutoNamed(group);
+    }
     public void RenameGroup(QuickGroup group, string name) => Store.RenameGroup(group, name);
     public void Dissolve(QuickGroup group) => Store.Dissolve(group);
-    public void MoveGroup(QuickGroup group, int index) => Store.MoveGroup(group, index);
     public void SetExpanded(QuickGroup group, bool expanded) => Store.SetExpanded(group, expanded);
     public void SetSize(QuickGroup group, int cols, int rows) => Store.SetSize(group, cols, rows);
 
@@ -150,11 +185,61 @@ public sealed class QuickActions
         Settings.QuickCardRows = auto ? 0 : rows;
     }
 
+    // A hand-made group is named from what its members are for; the name opens selected for editing.
     public QuickGroup? NewGroup(IReadOnlyCollection<QuickItem> items)
     {
-        var g = Store.SetGroup(items, Store.UniqueGroupName("新建分组"));
+        var sw = Stopwatch.StartNew();
+        string name = SuggestName(items);
+        var g = Store.SetGroup(items, Store.UniqueGroupName(name));
+        if (g is not null) Store.MarkAutoNamed(g);
         PendingRename = g;
+        RefreshAutoNames(); // the group the items came from may be named after them
+        Log.Write($"group-name \"{name}\" for {items.Count} items {sw.ElapsedMilliseconds}ms");
         return g;
+    }
+
+    public string SuggestName(IReadOnlyCollection<QuickItem> items)
+    {
+        var facts = items.Select(Facts).ToList();
+        return GroupNamer.Suggest(facts.Select(f => f.Kind).ToList(), items.Select(i => i.DisplayName).ToList(), facts.Select(f => f.Maker).ToList());
+    }
+
+    // What an item is for and who makes it, cached per path. Read off the UI thread: a shortcut on an
+    // offline network drive gets 200 ms, then counts as unknown while the read finishes in the background.
+    private (string Kind, string Maker) Facts(QuickItem item)
+    {
+        if (_facts.TryGetValue(item.Path, out var f)) return f;
+        string path = item.Path, name = item.DisplayName;
+        var read = Task.Run(() => _facts[path] = ReadFacts(path, name));
+        return read.Wait(200) ? read.Result : ("", "");
+    }
+
+    private static (string Kind, string Maker) ReadFacts(string path, string name)
+    {
+        var hint = ShellLinks.Describe(path);
+        return (QuickCategories.Classify(path, name, hint), hint?.Company ?? "");
+    }
+
+    // Filled once in the background at start, so naming a new group normally never touches the disk.
+    private void WarmFacts()
+    {
+        var todo = Store.Items.Where(i => !_facts.ContainsKey(i.Path)).Select(i => (i.Path, i.DisplayName)).ToList();
+        if (todo.Count > 0) _ = Task.Run(() => { foreach (var (p, n) in todo) _facts.TryAdd(p, ReadFacts(p, n)); });
+    }
+
+    // Groups named from their members follow them after a hand move; a name the user typed stays.
+    private void RefreshAutoNames()
+    {
+        foreach (var g in Store.Groups.Where(g => g.AutoNamed).ToList())
+        {
+            var members = Store.ItemsOf(g).ToList();
+            if (members.Count == 0) continue;
+            string want = SuggestName(members);
+            if (GroupNamer.IsNameFor(g.Name, want)) continue;
+            string to = Store.UniqueGroupName(want);
+            Log.Write($"group-rename \"{g.Name}\" -> \"{to}\"");
+            Store.RenameGroup(g, to, auto: true);
+        }
     }
 
     // Debounced so a batch of additions is grouped in one pass.

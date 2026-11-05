@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Windows.Threading;
@@ -8,6 +9,8 @@ namespace ZoneQuanta.Core.Settings;
 public sealed class SettingsStore
 {
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
+    // Window placements are written at once: a restart right after moving a window must not lose it.
+    private static readonly HashSet<string> Immediate = new() { nameof(AppSettings.QuickBounds), nameof(AppSettings.PanelBounds) };
     private readonly string _path;
     private readonly DispatcherTimer _debounce;
 
@@ -18,41 +21,30 @@ public sealed class SettingsStore
         string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ZoneQuanta");
         Directory.CreateDirectory(dir);
         _path = Path.Combine(dir, "settings.json");
-        Current = Load(_path);
+        Current = Load(_path, out bool migrated);
         _debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
-        _debounce.Tick += (_, _) => { _debounce.Stop(); Flush(); };
-        Current.PropertyChanged += (_, _) => { _debounce.Stop(); _debounce.Start(); };
+        _debounce.Tick += (_, _) => Flush();
+        Current.PropertyChanged += (_, e) =>
+        {
+            _debounce.Stop();
+            if (e.PropertyName is { } name && Immediate.Contains(name)) Flush();
+            else _debounce.Start();
+        };
+        if (migrated) Flush();
     }
 
     public void Flush()
     {
-        try
-        {
-            string tmp = _path + ".tmp";
-            File.WriteAllText(tmp, JsonSerializer.Serialize(Current, Json));
-            File.Move(tmp, _path, true);
-        }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
+        _debounce.Stop();
+        try { DurableFile.Write(_path, JsonSerializer.Serialize(Current, Json)); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Error("settings-save", ex); }
     }
 
-    private static AppSettings Load(string path)
+    private static AppSettings Load(string path, out bool migrated)
     {
-        try
-        {
-            if (File.Exists(path))
-            {
-                var s = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path));
-                if (s is not null)
-                {
-                    if (s.Zones.Count == 0) s.Zones = new AppSettings().Zones;
-                    s.MigrateLegacy();
-                    return s;
-                }
-            }
-        }
-        catch (JsonException) { }
-        catch (IOException) { }
-        return new AppSettings();
+        var s = DurableFile.Read(path, t => JsonSerializer.Deserialize<AppSettings>(t), "settings") ?? new AppSettings();
+        if (s.Zones.Count == 0) s.Zones = new AppSettings().Zones;
+        migrated = s.MigrateLegacy();
+        return s;
     }
 }

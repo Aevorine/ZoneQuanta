@@ -78,6 +78,12 @@ public partial class App : Application
         Native.OptOutOfPowerThrottling();
         _ = Task.Run(TaskbarLayout.Warmup);
 
+        // Sign-out, restart or shut-down: save settings, window places and traffic totals before Windows ends the process.
+        SessionEnding += (_, e) =>
+        {
+            Log.Write($"session ending ({e.ReasonSessionEnding}): saving");
+            PrepareExit();
+        };
         _controller = new AppController();
         _controller.Start(showPanel: !autostart && !command, updated);
         if (command) _controller.Execute(e.Args);

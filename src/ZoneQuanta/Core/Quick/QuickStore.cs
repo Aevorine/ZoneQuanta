@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ZoneQuanta.Core.Quick;
 
@@ -38,6 +39,18 @@ public sealed class QuickGroup
     // Automatic grouping never sets or changes it.
     public int Cols { get; set; }
     public int Rows { get; set; }
+
+    // Grid cell the user dropped the card on (null: flows in order); the latest drop wins an overlap.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? Col { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? Row { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public long PinnedAt { get; set; }
+
+    // Named from what its members are for; renamed with them until the user types a name.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool AutoNamed { get; set; }
 }
 
 public sealed class QuickData
@@ -202,11 +215,12 @@ public sealed class QuickStore
         return count;
     }
 
-    // Renaming onto an existing name merges the two groups.
-    public void RenameGroup(QuickGroup group, string name)
+    // Renaming onto an existing name merges the two groups. auto: a name derived from the members.
+    public void RenameGroup(QuickGroup group, string name, bool auto = false)
     {
         string n = name.Trim();
         if (n.Length == 0 || n == group.Name || !Data.Groups.Contains(group)) return;
+        group.AutoNamed = auto;
         var other = FindGroup(n);
         string old = group.Name;
         if (other is not null && other != group) Data.Groups.Remove(group);
@@ -229,15 +243,35 @@ public sealed class QuickStore
         Save(null);
     }
 
-    public void MoveGroup(QuickGroup group, int index)
+    // Pins a card at a grid cell; the newest pin wins where pinned cards overlap.
+    public void PlaceGroup(QuickGroup group, int col, int row)
     {
-        int from = Data.Groups.IndexOf(group);
-        if (from < 0) return;
-        index = Math.Clamp(index, 0, Data.Groups.Count - 1);
-        if (from == index) return;
-        Data.Groups.RemoveAt(from);
-        Data.Groups.Insert(index, group);
+        if (!Data.Groups.Contains(group)) return;
+        group.Col = Math.Max(0, col);
+        group.Row = Math.Max(0, row);
+        group.PinnedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         Save(null);
+    }
+
+    // One card (or all with null) back to flowing in order.
+    public void Unpin(QuickGroup? group)
+    {
+        bool any = false;
+        foreach (var g in Data.Groups)
+        {
+            if ((group is not null && g != group) || g.Col is null) continue;
+            g.Col = g.Row = null;
+            g.PinnedAt = 0;
+            any = true;
+        }
+        if (any) Save(null);
+    }
+
+    public void MarkAutoNamed(QuickGroup group)
+    {
+        if (group.AutoNamed) return;
+        group.AutoNamed = true;
+        Save(null, notify: false);
     }
 
     public void SetExpanded(QuickGroup group, bool expanded)
@@ -311,9 +345,7 @@ public sealed class QuickStore
         try
         {
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(_path)!);
-            string tmp = _path + ".tmp";
-            File.WriteAllText(tmp, JsonSerializer.Serialize(Data, Json));
-            File.Move(tmp, _path, true);
+            DurableFile.Write(_path, JsonSerializer.Serialize(Data, Json));
         }
         catch (IOException ex) { Log.Error("quick-save", ex); }
         catch (UnauthorizedAccessException ex) { Log.Error("quick-save", ex); }
@@ -322,19 +354,13 @@ public sealed class QuickStore
 
     private static QuickData Load(string path)
     {
-        try
-        {
-            if (File.Exists(path) && JsonSerializer.Deserialize<QuickData>(File.ReadAllText(path)) is { } d)
-            {
-                d.Items.RemoveAll(i => string.IsNullOrWhiteSpace(i.Path));
-                foreach (var i in d.Items) i.Group = i.Group?.Trim() ?? "";
-                d.Groups ??= new();
-                Prune(d);
-                return d;
-            }
-        }
-        catch (JsonException ex) { Log.Error("quick-load", ex); }
-        catch (IOException ex) { Log.Error("quick-load", ex); }
-        return new QuickData();
+        var d = DurableFile.Read(path, t => JsonSerializer.Deserialize<QuickData>(t), "quick");
+        if (d is null) return new QuickData();
+        d.Items ??= new();
+        d.Items.RemoveAll(i => string.IsNullOrWhiteSpace(i.Path));
+        foreach (var i in d.Items) i.Group = i.Group?.Trim() ?? "";
+        d.Groups ??= new();
+        Prune(d);
+        return d;
     }
 }

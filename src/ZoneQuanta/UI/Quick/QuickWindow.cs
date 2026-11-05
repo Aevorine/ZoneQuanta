@@ -1,10 +1,10 @@
 using System;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
 using ZoneQuanta.Core.Quick;
 using Win32 = Microsoft.Win32;
 
@@ -25,8 +25,7 @@ public sealed class QuickWindow : LauncherWindow
     private readonly ToggleButton _groups, _tiles, _list;
     private readonly FrameworkElement _empty;
     private readonly Controls.WindowMemory _memory;
-    private readonly Border _sizeBadge;
-    private readonly TextBlock _sizeText = new() { FontSize = 20, FontWeight = FontWeights.SemiBold };
+    private readonly Controls.SizeBadge _sizeBadge = new();
 
     public QuickWindow(QuickActions actions, Action openSettings) : base("ZoneQuanta Quick")
     {
@@ -71,7 +70,6 @@ public sealed class QuickWindow : LauncherWindow
         root.Children.Add(bar);
         Grid.SetRow(body, 1);
         root.Children.Add(body);
-        _sizeBadge = BuildSizeBadge();
         Grid.SetRowSpan(_sizeBadge, 2);
         root.Children.Add(_sizeBadge);
         SetRoot(root);
@@ -98,9 +96,7 @@ public sealed class QuickWindow : LauncherWindow
         SyncView();
         SyncEmpty();
         _memory = new Controls.WindowMemory(this, () => actions.Settings.QuickBounds, b => actions.Settings.QuickBounds = b);
-        _memory.Resizing += ShowSize;
-        _memory.ResizeEnded += () => _sizeBadge.BeginAnimation(OpacityProperty,
-            new DoubleAnimation(0, TimeSpan.FromMilliseconds(320)) { BeginTime = TimeSpan.FromMilliseconds(650) });
+        _sizeBadge.Attach(_memory);
     }
 
     public Action? ImportStart { get; set; }
@@ -122,33 +118,6 @@ public sealed class QuickWindow : LauncherWindow
             _ => Controls.WindowMemory.Spot.Last,
         };
         _memory.Place(spot, Place(work, firstTime).Size, rise: 0.4);
-    }
-
-    private void ShowSize(Size px)
-    {
-        _sizeText.Text = $"{px.Width} × {px.Height}";
-        _sizeBadge.BeginAnimation(OpacityProperty, null);
-        _sizeBadge.Opacity = 1;
-    }
-
-    private Border BuildSizeBadge()
-    {
-        _sizeText.SetResourceReference(TextBlock.ForegroundProperty, "TextBrush");
-        System.Windows.Documents.Typography.SetNumeralAlignment(_sizeText, FontNumeralAlignment.Tabular);
-        var badge = new Border
-        {
-            Child = _sizeText,
-            CornerRadius = new CornerRadius(12),
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(20, 10, 20, 11),
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            IsHitTestVisible = false,
-            Opacity = 0,
-        };
-        badge.SetResourceReference(Border.BackgroundProperty, "RaisedBrush");
-        badge.SetResourceReference(Border.BorderBrushProperty, "LineBrush");
-        return badge;
     }
 
     protected override void OnPresented()
@@ -238,6 +207,12 @@ public sealed class QuickWindow : LauncherWindow
         var auto = new MenuItem { Header = "自动分类", IsCheckable = true, IsChecked = _actions.Settings.QuickAutoGroup };
         auto.Click += (_, _) => _actions.Settings.QuickAutoGroup = auto.IsChecked;
         menu.Items.Add(auto);
+        if (_actions.Store.Groups.Any(g => g.Col is not null))
+        {
+            var flow = new MenuItem { Header = "全部自动排列", Tag = FindResource("Icon.Groups") };
+            flow.Click += (_, _) => _actions.Unpin(null);
+            menu.Items.Add(flow);
+        }
         menu.IsOpen = true;
     }
 

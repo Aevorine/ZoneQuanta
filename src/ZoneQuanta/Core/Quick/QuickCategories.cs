@@ -9,7 +9,7 @@ namespace ZoneQuanta.Core.Quick;
 
 // What is known about a launch target beyond its name: the shortcut's target and the program's own
 // description. Filled in by the platform layer.
-public sealed record TargetHint(string Target, string Arguments, string Description, string Product)
+public sealed record TargetHint(string Target, string Arguments, string Description, string Product, string Company = "")
 {
     public bool IsWebApp
     {

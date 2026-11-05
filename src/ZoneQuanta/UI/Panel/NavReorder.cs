@@ -56,6 +56,12 @@ internal sealed class NavReorder
     private void OnMove(object sender, MouseEventArgs e)
     {
         var p = e.GetPosition(_nav);
+        // The release was never seen (it went to another window or a menu loop): end the lift, change nothing.
+        if (_lifted is not null && e.LeftButton != MouseButtonState.Pressed)
+        {
+            Drop(commit: false);
+            return;
+        }
         if (_lifted is null)
         {
             // Moving before the hold elapses drags the window; the item is released, so it is not a click.
@@ -103,8 +109,13 @@ internal sealed class NavReorder
     private void Lift()
     {
         _hold.Stop();
-        if (_pressed is null || Mouse.LeftButton != MouseButtonState.Pressed) return;
+        if (_pressed is null || Mouse.LeftButton != MouseButtonState.Pressed || !Platform.Native.LeftButtonDown())
+        {
+            _pressed = null;
+            return;
+        }
         _lifted = _pressed;
+        Core.Log.Write($"nav lift {_lifted.Content}");
         _pressed = null;
         _from = _to = _nav.Children.IndexOf(_lifted);
         _slot = _lifted.ActualHeight + _lifted.Margin.Top + _lifted.Margin.Bottom;
@@ -138,6 +149,7 @@ internal sealed class NavReorder
         item.Opacity = 1;
         System.Windows.Controls.Panel.SetZIndex(item, 0);
         if (_nav.IsMouseCaptured) _nav.ReleaseMouseCapture();
+        Core.Log.Write($"nav drop {item.Content} {_from}->{_to} {(commit ? "commit" : "cancel")}");
         if (!commit || _to == _from) return;
 
         _nav.Children.RemoveAt(_from);

@@ -20,14 +20,15 @@ internal static class ShellLinks
             if (path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase) && File.Exists(path))
                 (target, args) = Resolve(path);
             if (target.Length == 0) return null;
-            string desc = "", product = "";
+            string desc = "", product = "", company = "";
             if (target.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(target))
             {
                 var v = FileVersionInfo.GetVersionInfo(target);
                 desc = v.FileDescription?.Trim() ?? "";
                 product = v.ProductName?.Trim() ?? "";
+                company = v.CompanyName?.Trim() ?? "";
             }
-            return new TargetHint(target, args, desc, product);
+            return new TargetHint(target, args, desc, product, company);
         }
         catch (Exception ex) when (ex is COMException or IOException or UnauthorizedAccessException or ArgumentException or InvalidCastException)
         {
