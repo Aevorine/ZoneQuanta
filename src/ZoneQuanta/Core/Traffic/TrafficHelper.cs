@@ -63,7 +63,9 @@ public static class TrafficHelper
                     pending[app] = send ? (cur.Up + size, cur.Down) : (cur.Up, cur.Down + size);
                 }
             }
-            catch (Exception ex) when (ex is InvalidCastException or FormatException or OverflowException or NullReferenceException) { }
+            // This runs inside ETW's native callback: any exception leaving it ends the whole process,
+            // past every try/catch, so one malformed event (seen while the session stops) must not escape.
+            catch (Exception) { }
         };
 
         int ticks = 0;

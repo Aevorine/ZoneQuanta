@@ -53,7 +53,20 @@ public static class HelperLauncher
         ClearStop();
         // /Query fails only when the task does not exist, which tells "removed" apart from "could not start".
         if (!await RunHiddenAsync("schtasks.exe", $"/Query /TN {TaskName}")) return HelperState.Missing;
-        return await RunHiddenAsync("schtasks.exe", $"/Run /TN {TaskName}") ? HelperState.Started : HelperState.Failed;
+        // Task Scheduler ignores a start while a previous instance is still exiting (for instance while
+        // Windows records its crash), so confirm the helper came up and ask again a few times.
+        for (int attempt = 1; ; attempt++)
+        {
+            if (!await RunHiddenAsync("schtasks.exe", $"/Run /TN {TaskName}")) return HelperState.Failed;
+            for (int i = 0; i < 12 && !IsRunning(); i++) await Task.Delay(250);
+            bool up = IsRunning();
+            if (up || attempt == 6)
+            {
+                if (attempt > 1) Log.Write($"helper start attempt {attempt} -> {(up ? "running" : "not running")}");
+                return HelperState.Started;
+            }
+            await Task.Delay(2000);
+        }
     }
 
     // After an update the helper still runs from the previous image. Removing that image kills it

@@ -1,5 +1,10 @@
 # 更新日志 · Changelog
 
+## 1.4.3 — 2026-11-05
+- 中文：修复自动更新后「应用流量统计」可能停止：旧统计助手在收到退出请求、停止网络事件跟踪时，某条不完整的事件让它在系统回调里抛出未处理异常而崩溃；Windows 记录崩溃期间旧进程仍被视为在运行，更新后的新程序请求启动的新助手因此被计划任务忽略。现在事件回调不会再把异常抛出进程，并且启动助手后会确认它确实在运行，没有就每隔几秒再请求一次（最多 6 次）。
+- English: fixed per-app traffic counting possibly stopping after an auto-update. While the old helper shut its network trace down on request, one malformed event made it throw inside the system callback and crash; Windows kept the dying process registered while recording the crash, so Task Scheduler ignored the new helper the updated program started. The event callback now never lets an exception escape, and after starting the helper the program confirms it is running and asks again every few seconds if not (up to six times).
+- Validation: the 1.4.1 → 1.4.2 self-update on the real desktop logged APPCRASH 0xE0434352 for the old helper at 21:33:01, the task's start at 21:33:05 was ignored, and no helper ran afterwards.
+
 ## 1.4.2 — 2026-11-05
 - 中文：快捷面板新增「分组」视图（默认）：像启动器主屏那样，每组一张圆角卡片、组名在下，最多显示两行，「+N」展开全部（记住展开状态）。自动分类：新加入且未分组的项按名称、快捷方式指向的程序及其说明、文件类型归入 AI、浏览器、社交通讯、邮件、办公学习、开发、嵌入式与工程、设计、影音、游戏、购物、资讯、网络与远程、网盘下载、系统工具、网站、文件夹、文档等组；已经有分组的项（无论自动还是手动分的）永远不会被自动分类改动，手动移出分组的也不会被再次归组。手动分类：右键「移到分组 → 某组 / 新建分组 / 移出分组」；拖到卡片上移入该组，拖到另一个未分组的图标上两者组成新组并立即命名，拖到空白处移出分组，拖动卡片调整组的顺序，把文件拖到卡片上直接加入该组；右键组名可重命名、展开 / 收起、解散分组；「快捷」页与排序菜单里可关闭自动分类。托盘「快捷项」按组分成子菜单。
 - 中文：修复：快捷面板大小只在用户拖动边缘后才记住（之前每次关闭都会记下当前大小，换到大屏后仍保持小尺寸）；在启动同步进行中点「从「开始」导入」不再被降级为普通同步；「打开所在位置」「加入快捷面板」「补全路径」不能设成会挡住输入的单个字母键；应用说明缓存并发写入不再互相覆盖；商店应用没有中文名时显示包名而不是「App」。

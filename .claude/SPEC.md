@@ -60,7 +60,7 @@ Windows 桌面时钟组件（本地 + 洛杉矶），WPF / .NET 8 单文件 exe�
 > 更早的恢复点、已完成任务与学习候选见 `.claude/history/2026-10_11.md`；v1.4.0 / v1.4.1 与第四轮（瀑布流，已被第五轮取代）见 `history/2026-11_v1.0-1.4.1.md`。
 2026-11-05 第二 / 三轮（未提交，目标 v1.4.2）：快捷键全可改（`KeyChord` + `LocalKeys`、`HotkeyBox.Guard` 点击才录入、录入时暂停全局快捷键）；流量按应用行（`Platform/AppDirectory` 进程名→exe 路径+说明，缓存 `apps-meta.json`）；「开始」固定应用导入（`Platform/StartLayout` + `UI/Quick/StartPinSync`，`StartSeen` 防止已移除的回来）；下载 15 s 无数据换线续传。第三轮加分组：自动分类只填「未分组且非手动」的项，已分类的永不改动。测试时 settings.json 的 Rename 被改成 F3，发布前从 `scratchpad\backup2\settings.json` 还原。
 2026-11-05 第五轮（未提交，仍属 v1.4.2）：用户不要「三列等宽」，要起始页式可选卡片大小：`CellGridPanel` 格子网格 + `SizePicker`，大小存 `QuickGroup.Cols / Rows` 与 `AppSettings.QuickCardCols / Rows`。网格行高 = 一行图标高，n 行卡片占 n + 1 行（多出那行放边框与组名），避免多行卡片内部被拉松。验证见 CHANGELOG 1.4.2 Validation。用户期间自己改了分组顺序与面板大小（1538 × 864），测试只还原了自己改的部分，备份在 `scratchpad\backup5`。
-2026-11-05 第六轮：`UI/Controls/WindowDrag`（空白处直接拖窗口、内容上按住 0.3 秒再拖）、`UI/Panel/NavReorder`（长按导航排序，`AppSettings.NavOrder`）、卡片右下角 `Thumb`（主题 `CornerGrip`）。Rename 测试遗留 F3 已清除；用户自己把快捷面板热键改成了 Alt + Space（未动）。发布 v1.4.2 前派了独立审查。
+2026-11-05 第六轮：`UI/Controls/WindowDrag`（空白处直接拖窗口、内容上按住 0.3 秒再拖）、`UI/Panel/NavReorder`（长按导航排序，`AppSettings.NavOrder`）、卡片右下角 `Thumb`（主题 `CornerGrip`）。Rename 测试遗留 F3 已清除；用户自己把快捷面板热键改成了 Alt + Space（未动）。发布 v1.4.2 前派了独立审查（APPROVE，3 个小问题已修）。v1.4.2 已发布（提交 9fd724b / 6aa345e），已安装版自更新 1.4.1→1.4.2 约 4 分 45 秒、SHA-256 一致；但旧统计助手停止时在 ETW 回调里崩溃、新助手启动被忽略 → v1.4.3 修复（回调吞掉异常 + 启动后确认在运行、最多重试 6 次）。
 
 <!-- wf:resume:start -->
 （机器快照，PreCompact 钩子写，勿手改；恢复时以真实 Git 与代码为准）
