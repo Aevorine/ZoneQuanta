@@ -11,7 +11,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>ZoneQuanta</AssemblyName>
     <RootNamespace>ZoneQuanta</RootNamespace>
-    <Version>1.3.3</Version>
+    <Version>1.4.0</Version>
     <NoWarn>$(NoWarn);WFAC010</NoWarn>
     <Product>ZoneQuanta</Product>
     <Description>Windows world clock and taskbar network / daily data / CPU / memory monitor with per-app traffic statistics, a monthly data cap with forecasts, an Explorer-integrated quick panel and an open-a-path hotkey.</Description>
