@@ -17,7 +17,7 @@ Windows 桌面时钟组件（本地 + 洛杉矶），WPF / .NET 8 单文件 exe�
 | T-20261002-4 | v1.1.0 | 主线 | 待验收 | 证据见 `history/2026-11_v1.0-1.4.1.md`（2026-10-02） |
 | T-20261008-1 | v1.3.0 显示速度 | 主线 | 待验收 | 证据见 `history/2026-11_v1.0-1.4.1.md`（2026-10-08） |
 | T-20261101-1 | v1.3.2 面板最大化 / 还原按钮 | 主线 | 待验收 | 提交 eb8642d；证据见 `history/2026-11_v1.0-1.4.1.md`（2026-11-01） |
-| T-20261105-1 | v1.4.0 流量额度查询 + 快捷面板 | 主线 | 待验收 | 提交 43305aa / 9f886db / 6d2b054 / 0007227（v1.4.4）；证据见 `history/2026-11_v1.0-1.4.1.md`（2026-11-05） |
+| T-20261105-1 | v1.4.0 流量额度查询 + 快捷面板 | 主线 | 待验收 | 提交 43305aa / 9f886db / 6d2b054 / 0007227（v1.4.4）/ 7ea3356（v1.4.5）；证据见 `history/2026-11_v1.0-1.4.1.md`（2026-11-05） |
 | T-20261101-2 | v1.3.3 页面随窗口填满 | 主线 | 待验收 | 提交 82bd00e；证据见 `history/2026-11_v1.0-1.4.1.md`（2026-11-01） |
 
 ### T-20261105-1 第一轮验收（v1.4.0 / v1.4.1，1–6）见 `history/2026-11_v1.0-1.4.1.md`
@@ -45,7 +45,7 @@ Windows 桌面时钟组件（本地 + 洛杉矶），WPF / .NET 8 单文件 exe�
 
 ## 恢复点
 > 更早的恢复点见 `history/2026-10_11.md`、`history/2026-11_v1.0-1.4.1.md`、`history/2026-11_v1.4.2-1.4.4.md`。
-2026-11-05 第八轮（v1.4.5）：用户问快捷面板右侧为何空白、要卡片自由拖动、组合后自动命名、重启与更新后记住。右侧空白根因：`CellGridPanel` 恒取最大列数，4 / 2 列卡片在奇数列时每行剩一列；改为在 [⌈0.8·最大⌉, 最大] 里按空格子最少选列数。新增 `UI/Controls/CellGridPanel.cs`（独立文件：Pin 列 / 行 / 等级、Frozen、滑动动画、CellAt）、`QuickGroup.Col / Row / PinnedAt / AutoNamed`、`Core/Quick/GroupNamer`、`Core/DurableFile`（写穿 + File.Replace 留 .bak + 读取回退并修复）、`UI/Controls/SizeBadge`、`AppSettings.PanelPage`、App `SessionEnding → PrepareExit`。测试中复现导航「卡在浮起」（松开未被收到，下次单击把它放到点击处）→ 移动时按键已松开即取消、浮起前查物理按键、日志 `nav lift / nav drop`。测试用 Reddit + Firefox（测试前把 Firefox、一个 Telegram 设为未分组），备份在本会话 scratchpad\backup8，测完还原。
+2026-11-05 第八轮（v1.4.5）：用户问快捷面板右侧为何空白、要卡片自由拖动、组合后自动命名、重启与更新后记住。右侧空白根因：`CellGridPanel` 恒取最大列数，4 / 2 列卡片在奇数列时每行剩一列；改为在 [⌈0.8·最大⌉, 最大] 里按空格子最少选列数。新增 `UI/Controls/CellGridPanel.cs`（独立文件：Pin 列 / 行 / 等级、Frozen、滑动动画、CellAt）、`QuickGroup.Col / Row / PinnedAt / AutoNamed`、`Core/Quick/GroupNamer`、`Core/DurableFile`（写穿 + File.Replace 留 .bak + 读取回退并修复）、`UI/Controls/SizeBadge`、`AppSettings.PanelPage`、App `SessionEnding → PrepareExit`。测试中复现导航「卡在浮起」（松开未被收到，下次单击把它放到点击处）→ 移动时按键已松开即取消、浮起前查物理按键、日志 `nav lift / nav drop`。测试用 Reddit + Firefox（测试前把 Firefox、一个 Telegram 设为未分组），备份在本会话 scratchpad\backup8，测完还原。独立审查（REQUEST_CHANGES）4 条 + 3 条小问题已修（底边拖动越拖越低、名称自带数字被误加「 2」、命名在界面线程读盘、修复失败丢备份等）。v1.4.5 已发布（提交 7ea3356），Releases 只剩 v1.4.5 / v1.4.4；已安装版自更新 1.4.4→1.4.5 约 138 秒、SHA-256 一致（58ef7dc6…）、`.old` 已删、统计助手 Running；更新后快捷面板仍为 1920 × 1078。用户数据已按测试前备份逐字节还原，测试期 .bak 已删；本地 dist 只有 v1.4.5，bin / obj 与备份已删。
 <!-- wf:resume:start -->
 （机器快照，PreCompact 钩子写，勿手改；恢复时以真实 Git 与代码为准）
 - 快照时间：2026-11-05T13:45:38.336Z（PreCompact/auto，会话 e7b7b0cb）
