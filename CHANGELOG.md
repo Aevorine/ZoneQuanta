@@ -1,5 +1,10 @@
 # 更新日志 · Changelog
 
+## 1.4.1 — 2026-11-05
+- 中文：修复自动更新后「应用流量统计」停止计数：更新后的新程序几秒内删除旧版程序文件，而管理员统计助手仍在旧文件上运行，被一并终止；新程序请求启动助手时旧助手还在，计划任务忽略了这次启动，结果直到下次登录都不再统计。现在更新后先通知旧助手保存并退出，再删除旧版文件、启动新助手；助手的定时保存出错时记日志而不再退出。
+- English: fixed per-app traffic counting stopping after an auto-update. The updated program deleted the previous executable within seconds while the elevated helper still ran from it, which killed the helper; the new program's start request had come while the old helper was alive and was ignored by Task Scheduler, so nothing was counted until the next sign-in. After an update the old helper is now asked to save and exit first, then the old executable is removed and the new helper started; an error in the helper's periodic save is logged instead of ending it.
+- Validation: before, Windows logged an APPCRASH (0xE0434352) for the helper 8 s after the 1.3.3 → 1.4.0 update and no helper ran afterwards.
+
 ## 1.4.0 — 2026-11-05
 - 中文：新增快捷面板与「快捷」页。资源管理器右键「添加到快捷面板」（文件、文件夹、磁盘、文件夹空白处；Windows 11 在「显示更多选项」里），拖入文件或「添加」按钮也可；显示系统图标、图片缩略图与名称，网格 / 列表视图；单击打开，右键打开、以管理员身份运行、打开方式、打开所在位置、复制路径、重命名、属性、移除；拖动排序，多种排序（含 7 天半衰期使用热度），模糊搜索；路径、类型、大小、修改时间、打开次数分别开关显示；右键菜单、打开后收起、托盘列表、两个快捷键各自开关。
 - 中文：新增「打开路径」输入框（`Ctrl + Alt + G`）：引号路径、环境变量、`~`、`shell:`、网址、常用位置名称，边输边补全，最近打开记录；快捷面板默认 `Ctrl + Alt + Space`，默认组合被占用时自动换成空闲组合。

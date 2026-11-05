@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using ZoneQuanta.Core.Monitor;
 
@@ -53,6 +54,27 @@ public static class HelperLauncher
         // /Query fails only when the task does not exist, which tells "removed" apart from "could not start".
         if (!await RunHiddenAsync("schtasks.exe", $"/Query /TN {TaskName}")) return HelperState.Missing;
         return await RunHiddenAsync("schtasks.exe", $"/Run /TN {TaskName}") ? HelperState.Started : HelperState.Failed;
+    }
+
+    // After an update the helper still runs from the previous image. Removing that image kills it
+    // mid-write and Task Scheduler ignores a new start while it lives, so stop it cleanly first.
+    public static async Task StopRunningAsync()
+    {
+        if (!IsRunning()) return;
+        RequestStop();
+        for (int i = 0; i < 40 && IsRunning(); i++) await Task.Delay(250);
+        Log.Write($"helper stop for update -> {(IsRunning() ? "still running" : "stopped")}");
+    }
+
+    private static bool IsRunning()
+    {
+        try
+        {
+            using var m = Mutex.OpenExisting(TrafficHelper.MutexName);
+            return true;
+        }
+        catch (WaitHandleCannotBeOpenedException) { return false; }
+        catch (UnauthorizedAccessException) { return true; } // owned by the elevated helper
     }
 
     public static void RequestStop()

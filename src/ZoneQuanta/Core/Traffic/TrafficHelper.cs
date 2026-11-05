@@ -14,6 +14,7 @@ public static class TrafficHelper
 {
     public const string StopFileName = "traffic.stop";
     public const string AppsFileName = "apps.tsv";
+    public const string MutexName = "ZoneQuanta.TrafficHelper.7F3A";
     private static readonly Guid KernelNetwork = new("7DD42A49-5329-4832-8DFD-43D979153A88");
     private static readonly HashSet<int> SendIds = new() { 10, 26, 42, 58 };
     private static readonly HashSet<int> RecvIds = new() { 11, 27, 43, 59 };
@@ -26,7 +27,7 @@ public static class TrafficHelper
 
     public static int Run()
     {
-        using var mutex = new Mutex(true, "ZoneQuanta.TrafficHelper.7F3A", out bool first);
+        using var mutex = new Mutex(true, MutexName, out bool first);
         if (!first || !IsElevated()) return 1;
 
         string dir = TrafficFile.DefaultDir;
@@ -68,12 +69,16 @@ public static class TrafficHelper
         int ticks = 0;
         var timer = new Timer(_ =>
         {
-            if (File.Exists(stopFile))
+            try
             {
-                session.Stop();
-                return;
+                if (File.Exists(stopFile))
+                {
+                    session.Stop();
+                    return;
+                }
+                if (++ticks % 30 == 0) Flush(file, pending, gate, path);
             }
-            if (++ticks % 30 == 0) Flush(file, pending, gate, path);
+            catch (Exception ex) { Log.Error("traffic-helper-timer", ex); } // a timer exception would end the process
         }, null, 2000, 2000);
 
         session.Source.Process();

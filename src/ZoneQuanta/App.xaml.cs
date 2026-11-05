@@ -73,7 +73,7 @@ public partial class App : Application
         _ = Task.Run(TaskbarLayout.Warmup);
 
         _controller = new AppController();
-        _controller.Start(showPanel: !autostart && !command);
+        _controller.Start(showPanel: !autostart && !command, updated);
         if (command) _controller.Execute(e.Args);
 
         _wait = ThreadPool.RegisterWaitForSingleObject(_showEvent,

@@ -73,9 +73,10 @@ public sealed class AppController : IPanelHost, IDisposable
         double.IsNaN(_widget.Left) ? 0 : _widget.Left,
         double.IsNaN(_widget.Top) ? 0 : _widget.Top);
 
-    public void Start(bool showPanel)
+    public void Start(bool showPanel, bool updated = false)
     {
-        UpdateService.CleanupLeftovers();
+        bool helperFirst = updated && Settings.TrackApps;
+        if (!helperFirst) UpdateService.CleanupLeftovers();
 
         _dispatcher = Application.Current.Dispatcher;
         var s = Settings;
@@ -100,7 +101,7 @@ public sealed class AppController : IPanelHost, IDisposable
         ShowPendingUpdateFailure();
         _widget.ApplyInitial(CurrentSecond());
         _band.Sync();
-        if (s.TrackApps) _ = StartTrackingHelperAsync();
+        if (s.TrackApps) _ = StartTrackingHelperAsync(helperFirst);
         s.PropertyChanged += OnSettingChanged;
         _hotkey.Pressed += OnHotkey;
         RegisterHotkey(HotkeyService.PanelId);
@@ -252,8 +253,13 @@ public sealed class AppController : IPanelHost, IDisposable
         Log.Write($"quota alert {level}");
     }
 
-    private async Task StartTrackingHelperAsync()
+    private async Task StartTrackingHelperAsync(bool afterUpdate)
     {
+        if (afterUpdate)
+        {
+            await HelperLauncher.StopRunningAsync();
+            UpdateService.CleanupLeftovers();
+        }
         if (await HelperLauncher.StartIfInstalledAsync() != HelperState.Missing) return;
         // The scheduled task is gone (removed by hand or by a cleanup tool): say so instead of
         // leaving the switch on while nothing is being counted.

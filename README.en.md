@@ -30,6 +30,10 @@
 | Display speed | A dedicated high-resolution timer thread wakes about 12 ms before each second, so the new second is presented in the frame that contains the boundary; sampling runs on a background thread and the taskbar numbers refresh every 0.5 s by default (0.25 / 0.5 / 1 / 2 s selectable); the hover card opens in about 10 ms; the monitor follows an auto-hidden taskbar within a few milliseconds of it appearing |
 | Low footprint | Redraws only what changes; sampling drops to once a second while the band is tucked away and the panel is closed; about 75 MB RAM and normally under 1% of one core when idle |
 
+## v1.4.1
+
+Fixed per-app traffic counting stopping after an auto-update (the old helper died with the deleted previous executable and the new one never started).
+
 ## v1.4.0
 
 New Quick page and quick panel: add items from Explorer's right-click menu (on Windows 11 under "Show more options", or Shift + right-click) or by dropping files; the panel shows system icons and names, opens on click and offers run as administrator, open file location, copy path, rename, properties and more on right-click, with drag-to-reorder and per-field display switches. New open-a-path hotkey with completion. The Traffic page gains a data cap: monthly cap, reset day, remaining, daily allowance, projected usage and run-out time, per-day bars and alerts; per-app traffic can be searched and sorted by upload / download. The panel no longer repeats the page name in its top-left corner, and icon buttons show their name on hover.
