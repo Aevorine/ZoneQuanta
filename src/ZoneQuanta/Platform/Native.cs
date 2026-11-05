@@ -245,4 +245,20 @@ internal static class Native
         int round = 2;
         DwmSetWindowAttribute(hwnd, 33, ref round, sizeof(int));
     }
+
+    [DllImport("user32.dll")]
+    private static extern bool ReleaseCapture();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+    private const int HTCAPTION = 2;
+
+    // Hands the current press to the system caption drag: Snap, Shake and dragging a maximized window out.
+    public static void BeginCaptionDrag(IntPtr hwnd)
+    {
+        GetCursorPos(out var p);
+        ReleaseCapture();
+        SendMessage(hwnd, WM_NCLBUTTONDOWN, new IntPtr(HTCAPTION), new IntPtr(((p.Y & 0xFFFF) << 16) | (p.X & 0xFFFF)));
+    }
 }

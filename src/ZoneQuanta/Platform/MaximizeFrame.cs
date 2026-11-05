@@ -10,7 +10,6 @@ namespace ZoneQuanta.Platform;
 // real maximize button, which is what makes Windows 11 offer Snap Layouts on hover.
 internal sealed class MaximizeFrame
 {
-    private const int RevealPx = 2;
     private readonly FrameworkElement _button;
     private bool _hover, _pressed;
 
@@ -29,7 +28,7 @@ internal sealed class MaximizeFrame
         switch (msg)
         {
             case Native.WM_GETMINMAXINFO:
-                FitWorkArea(hwnd, lParam); // left unhandled: WPF still applies MinWidth / MinHeight
+                MaximizeFit.Apply(hwnd, lParam); // left unhandled: WPF still applies MinWidth / MinHeight
                 break;
             case Native.WM_NCHITTEST:
                 if (Contains(lParam))
@@ -99,38 +98,5 @@ internal sealed class MaximizeFrame
             hwndTrack = hwnd,
         };
         Native.TrackMouseEvent(ref track);
-    }
-
-    private static void FitWorkArea(IntPtr hwnd, IntPtr lParam)
-    {
-        IntPtr monitor = Native.MonitorFromWindow(hwnd, Native.MONITOR_DEFAULTTONEAREST);
-        var mi = new Native.MONITORINFO { cbSize = Marshal.SizeOf<Native.MONITORINFO>() };
-        if (monitor == IntPtr.Zero || !Native.GetMonitorInfo(monitor, ref mi)) return;
-
-        var area = LeaveRevealEdges(mi.rcWork, mi.rcMonitor);
-        var info = Marshal.PtrToStructure<Native.MINMAXINFO>(lParam);
-        info.MaxPosition = new Native.POINT { X = area.Left - mi.rcMonitor.Left, Y = area.Top - mi.rcMonitor.Top };
-        info.MaxSize = new Native.POINT { X = area.Right - area.Left, Y = area.Bottom - area.Top };
-        Marshal.StructureToPtr(info, lParam, false);
-    }
-
-    // An auto-hide taskbar reserves no work area, and Explorer stops revealing it once a window's client
-    // area covers the monitor (it takes that for a full-screen app). Staying clear of its edge prevents that.
-    private static Native.RECT LeaveRevealEdges(Native.RECT work, Native.RECT monitor)
-    {
-        var bar = new Native.APPBARDATA { cbSize = Marshal.SizeOf<Native.APPBARDATA>(), rc = monitor };
-        for (uint edge = 0; edge < 4; edge++)
-        {
-            bar.uEdge = edge;
-            if (Native.SHAppBarMessage(Native.ABM_GETAUTOHIDEBAREX, ref bar) == IntPtr.Zero) continue;
-            switch (edge)
-            {
-                case 0: work.Left += RevealPx; break;
-                case 1: work.Top += RevealPx; break;
-                case 2: work.Right -= RevealPx; break;
-                default: work.Bottom -= RevealPx; break;
-            }
-        }
-        return work;
     }
 }

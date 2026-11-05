@@ -313,6 +313,9 @@
                             <Setter TargetName="Bg" Property="Background" Value="{DynamicResource RaisedBrush}"/>
                             <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
                         </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bg" Property="Opacity" Value="0.35"/>
+                        </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>

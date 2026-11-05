@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Text.Json.Serialization;
 
 namespace ZoneQuanta.Core.Settings;
 
@@ -152,8 +153,25 @@ public sealed class AppSettings : Observable
 
     public bool QuickStartSync { get => _quickStartSync; set => Set(ref _quickStartSync, value); }
     public bool QuickAutoGroup { get => _quickAutoGroup; set => Set(ref _quickAutoGroup, value); }
+    // Pre-1.4.4 quick panel size; read once into QuickBounds, then no longer written.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public double QuickWidth { get => _quickWidth; set => Set(ref _quickWidth, Math.Max(0, value)); }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public double QuickHeight { get => _quickHeight; set => Set(ref _quickHeight, Math.Max(0, value)); }
+
+    private WindowBounds? _quickBounds, _panelBounds;
+    private string _quickPlacement = "Last";
+
+    public WindowBounds? QuickBounds { get => _quickBounds; set => Set(ref _quickBounds, value); }
+    public WindowBounds? PanelBounds { get => _panelBounds; set => Set(ref _panelBounds, value); }
+    // Where the quick panel opens: Last (where it was left), Center (screen centre) or Cursor (around the pointer).
+    public string QuickPlacement { get => _quickPlacement; set => Set(ref _quickPlacement, value is "Center" or "Cursor" ? value : "Last"); }
+
+    public void MigrateLegacy()
+    {
+        if (_quickBounds is null && _quickWidth > 0 && _quickHeight > 0) _quickBounds = new WindowBounds(_quickWidth, _quickHeight);
+        _quickWidth = _quickHeight = 0;
+    }
 
     // In-launcher shortcuts, stored as "Ctrl+Return" style chords; missing entries fall back to defaults.
     public static readonly IReadOnlyDictionary<string, string> DefaultLocalKeys = new Dictionary<string, string>

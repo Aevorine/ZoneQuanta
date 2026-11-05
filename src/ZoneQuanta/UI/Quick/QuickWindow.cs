@@ -3,8 +3,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
-using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using ZoneQuanta.Core.Quick;
 using Win32 = Microsoft.Win32;
 
@@ -24,6 +24,9 @@ public sealed class QuickWindow : LauncherWindow
     private readonly QuickGrid _grid;
     private readonly ToggleButton _groups, _tiles, _list;
     private readonly FrameworkElement _empty;
+    private readonly Controls.WindowMemory _memory;
+    private readonly Border _sizeBadge;
+    private readonly TextBlock _sizeText = new() { FontSize = 20, FontWeight = FontWeights.SemiBold };
 
     public QuickWindow(QuickActions actions, Action openSettings) : base("ZoneQuanta Quick")
     {
@@ -56,8 +59,6 @@ public sealed class QuickWindow : LauncherWindow
         bar.Children.Add(_search);
         Grid.SetColumn(tools, 1);
         bar.Children.Add(tools);
-        // Gaps move the window at once; the search field and buttons after a short hold.
-        Controls.WindowDrag.Attach(bar, this, source => source == bar || source == tools);
 
         _empty = BuildEmpty();
         var body = new Grid();
@@ -70,7 +71,20 @@ public sealed class QuickWindow : LauncherWindow
         root.Children.Add(bar);
         Grid.SetRow(body, 1);
         root.Children.Add(body);
+        _sizeBadge = BuildSizeBadge();
+        Grid.SetRowSpan(_sizeBadge, 2);
+        root.Children.Add(_sizeBadge);
         SetRoot(root);
+        // Margins and bar gaps move at once; buttons and the empty part of the field once the pointer travels.
+        Controls.WindowDrag.Attach(this, this, e =>
+        {
+            // Popups have their own presentation source: never a window move.
+            if (e.OriginalSource is not Visual src || PresentationSource.FromVisual(src) != PresentationSource.FromVisual(this)) return Controls.WindowDrag.Grip.None;
+            if (src == bar || src == tools || !root.IsAncestorOf(src)) return Controls.WindowDrag.Grip.Blank;
+            if (!bar.IsAncestorOf(src)) return Controls.WindowDrag.Grip.None;
+            return Controls.WindowDrag.Ancestor<TextBox>(src) == _search && Controls.WindowDrag.OnCharacters(_search, e)
+                ? Controls.WindowDrag.Grip.Text : Controls.WindowDrag.Grip.Content;
+        });
         MinWidth = 420;
         MinHeight = 300;
 
@@ -83,35 +97,58 @@ public sealed class QuickWindow : LauncherWindow
         _grid.LeftTop += () => _search.Focus();
         SyncView();
         SyncEmpty();
-        SourceInitialized += (_, _) => HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(SizeMoveHook);
+        _memory = new Controls.WindowMemory(this, () => actions.Settings.QuickBounds, b => actions.Settings.QuickBounds = b);
+        _memory.Resizing += ShowSize;
+        _memory.ResizeEnded += () => _sizeBadge.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(0, TimeSpan.FromMilliseconds(320)) { BeginTime = TimeSpan.FromMilliseconds(650) });
     }
 
     public Action? ImportStart { get; set; }
 
-    // Large by default; a size the user drags to is remembered across restarts.
+    // Default before the user sizes it: large, centred a little above the middle.
     protected override Rect Place(Rect work, bool firstTime)
     {
-        var s = _actions.Settings;
-        double w = s.QuickWidth > 0 ? s.QuickWidth : Math.Clamp(work.Width * 0.64, 640, 1320);
-        double h = s.QuickHeight > 0 ? s.QuickHeight : Math.Clamp(work.Height * 0.78, 460, 980);
-        w = Math.Min(w, work.Width - 16);
-        h = Math.Min(h, work.Height - 16);
+        double w = Math.Clamp(work.Width * 0.64, 640, 1320), h = Math.Clamp(work.Height * 0.78, 460, 980);
         return new Rect(work.Left + (work.Width - w) / 2, work.Top + (work.Height - h) * 0.4, w, h);
     }
 
-    // Only a size the user drags to is remembered; the computed default keeps following the monitor.
-    private Size _sizeAtGrab;
-
-    private IntPtr SizeMoveHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    // Reopens at the size, spot and maximized state it was left in (see WindowMemory).
+    protected override void PlaceOn(Rect work, bool firstTime)
     {
-        const int EnterSizeMove = 0x0231, ExitSizeMove = 0x0232;
-        if (msg == EnterSizeMove) _sizeAtGrab = new Size(ActualWidth, ActualHeight);
-        else if (msg == ExitSizeMove && (Math.Abs(ActualWidth - _sizeAtGrab.Width) > 1 || Math.Abs(ActualHeight - _sizeAtGrab.Height) > 1))
+        var spot = _actions.Settings.QuickPlacement switch
         {
-            _actions.Settings.QuickWidth = Math.Round(ActualWidth);
-            _actions.Settings.QuickHeight = Math.Round(ActualHeight);
-        }
-        return IntPtr.Zero;
+            "Center" => Controls.WindowMemory.Spot.Center,
+            "Cursor" => Controls.WindowMemory.Spot.Cursor,
+            _ => Controls.WindowMemory.Spot.Last,
+        };
+        _memory.Place(spot, Place(work, firstTime).Size, rise: 0.4);
+    }
+
+    private void ShowSize(Size px)
+    {
+        _sizeText.Text = $"{px.Width} × {px.Height}";
+        _sizeBadge.BeginAnimation(OpacityProperty, null);
+        _sizeBadge.Opacity = 1;
+    }
+
+    private Border BuildSizeBadge()
+    {
+        _sizeText.SetResourceReference(TextBlock.ForegroundProperty, "TextBrush");
+        System.Windows.Documents.Typography.SetNumeralAlignment(_sizeText, FontNumeralAlignment.Tabular);
+        var badge = new Border
+        {
+            Child = _sizeText,
+            CornerRadius = new CornerRadius(12),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(20, 10, 20, 11),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            IsHitTestVisible = false,
+            Opacity = 0,
+        };
+        badge.SetResourceReference(Border.BackgroundProperty, "RaisedBrush");
+        badge.SetResourceReference(Border.BorderBrushProperty, "LineBrush");
+        return badge;
     }
 
     protected override void OnPresented()

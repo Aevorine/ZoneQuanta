@@ -22,7 +22,7 @@ public partial class App : Application
     private RegisteredWaitHandle? _wait;
     private AppController? _controller;
 
-    private static readonly string[] Commands = { "--quick-add", "--quick", "--path-bar", "--open", "--panel" };
+    private static readonly string[] Commands = { "--quick-add", "--quick", "--path-bar", "--open", "--panel", "--exit" };
 
     public static bool Exiting { get; private set; }
 
@@ -57,13 +57,19 @@ public partial class App : Application
         _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
         if (!first)
         {
-            if (command && CommandPipe.Send(Absolutize(e.Args)))
+            // --exit never falls back to showing the panel, even when the pipe could not be reached.
+            if ((command && CommandPipe.Send(Absolutize(e.Args))) || Array.IndexOf(e.Args, "--exit") >= 0)
             {
                 Shutdown();
                 return;
             }
             _showEvent.Set();
             Shutdown();
+            return;
+        }
+        if (Array.IndexOf(e.Args, "--exit") >= 0)
+        {
+            Shutdown(); // nothing running to stop
             return;
         }
 

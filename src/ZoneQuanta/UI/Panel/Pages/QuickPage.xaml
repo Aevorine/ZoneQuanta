@@ -30,6 +30,12 @@
                     <WrapPanel x:Name="Fields"/>
                     <TextBlock Text="排序" Style="{StaticResource Heading}" Margin="0,8,0,10"/>
                     <UniformGrid x:Name="Sorts" Rows="1" Margin="0,0,8,6"/>
+                    <DockPanel Margin="0,8,8,10">
+                        <Button x:Name="ResetSize" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Tag="{StaticResource Icon.Reset}" ToolTip="恢复默认大小" Margin="0,-8,-6,-8"/>
+                        <TextBlock x:Name="SizeText" DockPanel.Dock="Right" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0" Typography.NumeralAlignment="Tabular" ToolTip="快捷面板大小"/>
+                        <TextBlock Text="打开位置" Style="{StaticResource Heading}"/>
+                    </DockPanel>
+                    <UniformGrid x:Name="Places" Rows="1" Margin="0,0,8,6"/>
                 </StackPanel>
             </Border>
         </Grid>

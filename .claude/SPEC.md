@@ -17,7 +17,7 @@ Windows 桌面时钟组件（本地 + 洛杉矶），WPF / .NET 8 单文件 exe�
 | T-20261002-4 | v1.1.0 | 主线 | 待验收 | 证据见 `history/2026-11_v1.0-1.4.1.md`（2026-10-02） |
 | T-20261008-1 | v1.3.0 显示速度 | 主线 | 待验收 | 证据见 `history/2026-11_v1.0-1.4.1.md`（2026-10-08） |
 | T-20261101-1 | v1.3.2 面板最大化 / 还原按钮 | 主线 | 待验收 | 提交 eb8642d；证据见 `history/2026-11_v1.0-1.4.1.md`（2026-11-01） |
-| T-20261105-1 | v1.4.0 流量额度查询 + 快捷面板 | 主线 | 待验收 | 提交 43305aa / 9f886db / 6d2b054；证据见 `history/2026-11_v1.0-1.4.1.md`（2026-11-05） |
+| T-20261105-1 | v1.4.0 流量额度查询 + 快捷面板 | 主线 | 待验收 | 提交 43305aa / 9f886db / 6d2b054 / v1.4.4 见第七轮；证据见 `history/2026-11_v1.0-1.4.1.md`（2026-11-05） |
 | T-20261101-2 | v1.3.3 页面随窗口填满 | 主线 | 待验收 | 提交 82bd00e；证据见 `history/2026-11_v1.0-1.4.1.md`（2026-11-01） |
 
 ### T-20261105-1 第一轮验收（v1.4.0 / v1.4.1，1–6）见 `history/2026-11_v1.0-1.4.1.md`
@@ -46,8 +46,14 @@ Windows 桌面时钟组件（本地 + 洛杉矶），WPF / .NET 8 单文件 exe�
 
 ### T-20261105-1 第六轮验收（v1.4.2，拖动）
 21. 长按面板导航项约 0.3 秒后上下拖动调整顺序，写入 settings.json `NavOrder`，重启保持；右键导航「恢复默认顺序」清空
-22. 按住导航栏空白处拖动移动面板；快捷面板顶栏空隙直接拖动、搜索框与按钮按住 0.3 秒后拖动移动窗口
+22. （已被第七轮 24–25 取代：不再需要长按）
 23. 分组卡片右下角手柄拖动按整格改 列 × 行，实时显示「c 列 × r 行」，松开写入 quick.json
+
+### T-20261105-1 第七轮验收（v1.4.4，导航直接拖动 + 记住快捷面板大小）
+24. 按住导航栏任意位置（导航项、空白处、版本号）一移动就拖动面板，不需要长按；单击导航项仍切换页面；按住导航项 0.3 秒不动再拖仍是调整顺序；面板最大化时拖导航会还原并跟随指针；双击导航空白处最大化 / 还原
+25. 快捷面板四周边距、顶栏空隙、按钮、搜索框空白处一移动就拖动窗口，单击照旧；只有按在已输入的文字上拖动仍是选中文字
+26. 快捷面板与主面板记住大小、位置、最大化状态：关闭再开、`--exit` 后重启、自动更新后与上次一致；换显示器 / 分辨率按比例放置且完整可见；拖动边缘时面板中央显示像素大小
+27. 「快捷」页「打开位置」可选上次位置 / 屏幕中央 / 跟随指针，显示已记住的大小，↺ 恢复默认大小；新增 `--exit` 命令
 
 ## 明确不做
 - [2026-11-05] 安卓手机 / 平板版、网页版（React、shadcn/ui、Motion、dnd-kit、Zustand 等前端栈）｜安卓、平板、React、shadcn、Web — 本项目是 WPF 桌面组件（ADR 0001），通用需求模板里的这些条目不适用；对应诉求用 WPF 自带控件实现（Thumb、拖放、动画）
@@ -61,12 +67,12 @@ Windows 桌面时钟组件（本地 + 洛杉矶），WPF / .NET 8 单文件 exe�
 2026-11-05 第二 / 三轮（未提交，目标 v1.4.2）：快捷键全可改（`KeyChord` + `LocalKeys`、`HotkeyBox.Guard` 点击才录入、录入时暂停全局快捷键）；流量按应用行（`Platform/AppDirectory` 进程名→exe 路径+说明，缓存 `apps-meta.json`）；「开始」固定应用导入（`Platform/StartLayout` + `UI/Quick/StartPinSync`，`StartSeen` 防止已移除的回来）；下载 15 s 无数据换线续传。第三轮加分组：自动分类只填「未分组且非手动」的项，已分类的永不改动。测试时 settings.json 的 Rename 被改成 F3，发布前从 `scratchpad\backup2\settings.json` 还原。
 2026-11-05 第五轮（未提交，仍属 v1.4.2）：用户不要「三列等宽」，要起始页式可选卡片大小：`CellGridPanel` 格子网格 + `SizePicker`，大小存 `QuickGroup.Cols / Rows` 与 `AppSettings.QuickCardCols / Rows`。网格行高 = 一行图标高，n 行卡片占 n + 1 行（多出那行放边框与组名），避免多行卡片内部被拉松。验证见 CHANGELOG 1.4.2 Validation。用户期间自己改了分组顺序与面板大小（1538 × 864），测试只还原了自己改的部分，备份在 `scratchpad\backup5`。
 2026-11-05 第六轮：`UI/Controls/WindowDrag`（空白处直接拖窗口、内容上按住 0.3 秒再拖）、`UI/Panel/NavReorder`（长按导航排序，`AppSettings.NavOrder`）、卡片右下角 `Thumb`（主题 `CornerGrip`）。Rename 测试遗留 F3 已清除；用户自己把快捷面板热键改成了 Alt + Space（未动）。发布 v1.4.2 前派了独立审查（APPROVE，3 个小问题已修）。v1.4.2 已发布（提交 9fd724b / 6aa345e），已安装版自更新 1.4.1→1.4.2 约 4 分 45 秒、SHA-256 一致；但旧统计助手停止时在 ETW 回调里崩溃、新助手启动被忽略 → v1.4.3 修复（回调吞掉异常 + 启动后确认在运行、最多重试 6 次）。v1.4.3 已发布（提交 4397719），Releases 只剩 v1.4.3 / v1.4.2；已安装版自更新 1.4.2→1.4.3 用时 101 秒、SHA-256 一致、`.old` 已删、统计助手 Running、无崩溃事件；本地 dist 只有 v1.4.3，测试备份与开发构建已删。
-
+2026-11-05 第七轮（v1.4.4）：用户要导航栏直接拖动（不长按）+ 真正记住快捷面板大小。根因：导航项只有长按（=排序）一种手势、快捷面板 16 DIP 边距不在顶栏里；旧 `Place` 每次把记住的大小再减 16 并居中，最大化 / 贴靠被存成带外溢的普通尺寸（1538 × 864）。改为 `WindowDrag` 三种按压（Blank / Content / Text，交给系统标题栏拖动 `Native.BeginCaptionDrag`）、`NavReorder` 未到 0.3 秒就移动 = 拖窗口、`UI/Controls/WindowMemory`（大小 + 中心占工作区比例 + 最大化 + 屏幕名，`AppSettings.QuickBounds / PanelBounds / QuickPlacement`，旧 QuickWidth/Height 迁移）、`Platform/MaximizeFit`（从 MaximizeFrame 抽出，含自动隐藏任务栏留边的 `UsableArea`）、`--exit`。本机「拖动时显示窗口内容」关闭（只画轮廓），尺寸角标用 WM_SIZING 矩形。测试前备份 settings/quick.json 到本会话 scratchpad\backup，测完还原，并把上轮测试误改的快捷面板大小 1328 × 720 改回用户自己的 1538 × 864。
 <!-- wf:resume:start -->
 （机器快照，PreCompact 钩子写，勿手改；恢复时以真实 Git 与代码为准）
-- 快照时间：2026-11-05T11:37:50.051Z（PreCompact/auto，会话 f19c7341）
-- Git：main → origin/main @ 6d2b054（+0 -0）；未提交 27 个：.claude/SPEC.md，CHANGELOG.md，README.en.md，README.md，src/ZoneQuanta/AppController.cs，src/ZoneQuanta/Core/Quick/PathEngine.cs，src/ZoneQuanta/Core/Quick/QuickStore.cs，src/ZoneQuanta/Core/Settings/AppSettings.cs，src/ZoneQuanta/Core/Update/ParallelDownloader.cs，src/ZoneQuanta/UI/Controls/HotkeyBox.cs，src/ZoneQuanta/UI/Panel/Pages/QuickPage.xaml，src/ZoneQuanta/UI/Panel/Pages/QuickPage.xaml.cs，src/ZoneQuanta/UI/Panel/Pages/SystemPage.xaml.cs，src/ZoneQuanta/UI/Panel/Pages/TrafficPage.xaml，src/ZoneQuanta/UI/Panel/Pages/TrafficPage.xaml.cs…
-- 最近 3 小时改过的文件（项目根，前 15）：README.en.md，README.md，CHANGELOG.md，src\ZoneQuanta\UI\Controls\HotkeyBox.cs，src\ZoneQuanta\AppController.cs，src\ZoneQuanta\obj\ZoneQuanta.csproj.nuget.dgspec.json，src\ZoneQuanta\obj\project.nuget.cache，src\ZoneQuanta\obj\project.assets.json，src\ZoneQuanta\obj\ZoneQuanta.csproj.nuget.g.targets，src\ZoneQuanta\obj\ZoneQuanta.csproj.nuget.g.props，src\ZoneQuanta\UI\Quick\QuickGrid.cs，src\ZoneQuanta\UI\Quick\QuickWindow.cs，src\ZoneQuanta\Platform\AppDirectory.cs，src\ZoneQuanta\UI\Quick\StartPinSync.cs，src\ZoneQuanta\UI\Quick\QuickActions.cs
+- 快照时间：2026-11-05T13:45:38.336Z（PreCompact/auto，会话 e7b7b0cb）
+- Git：main → origin/main @ 12f1700（+0 -0）；未提交 0 个
+- 最近 3 小时改过的文件（项目根，前 15）：.claude\SPEC.md，src\ZoneQuanta\ZoneQuanta.csproj，CHANGELOG.md，src\ZoneQuanta\Core\Traffic\HelperLauncher.cs，src\ZoneQuanta\Core\Traffic\TrafficHelper.cs，.claude\privacy-allow.txt，src\ZoneQuanta\UI\Quick\QuickGrid.cs，src\ZoneQuanta\AppController.cs，src\ZoneQuanta\UI\Quick\StartPinSync.cs，README.en.md，README.md，src\ZoneQuanta\UI\Panel\NavReorder.cs，src\ZoneQuanta\UI\Panel\PanelWindow.xaml.cs，src\ZoneQuanta\UI\Quick\QuickGrid.Board.cs，src\ZoneQuanta\UI\Theme\Theme.xaml
 <!-- wf:resume:end -->
 
 ## 学习候选

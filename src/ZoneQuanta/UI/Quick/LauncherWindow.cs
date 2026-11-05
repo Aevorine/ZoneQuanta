@@ -38,7 +38,12 @@ public abstract class LauncherWindow : Window
             CornerRadius = new CornerRadius(0),
             UseAeroCaptionButtons = false,
         });
-        SourceInitialized += (_, _) => Native.RoundCorners(new WindowInteropHelper(this).Handle);
+        SourceInitialized += (_, _) =>
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            Native.RoundCorners(hwnd);
+            MaximizeFit.Attach(HwndSource.FromHwnd(hwnd));
+        };
         Deactivated += (_, _) => { if (!KeepOpen && IsVisible) Hide(); };
         PreviewKeyDown += (_, e) =>
         {
@@ -67,6 +72,15 @@ public abstract class LauncherWindow : Window
     // DIP rectangle for this pop-up inside the given work area (DIPs).
     protected abstract Rect Place(Rect work, bool firstTime);
 
+    protected virtual void PlaceOn(Rect work, bool firstTime)
+    {
+        var r = Place(work, firstTime);
+        Left = r.Left;
+        Top = r.Top;
+        Width = r.Width;
+        if (!double.IsNaN(r.Height)) Height = r.Height;
+    }
+
     protected virtual void OnPresented() { }
 
     protected virtual bool OnEscape() => false;
@@ -88,12 +102,8 @@ public abstract class LauncherWindow : Window
         var work = CursorWorkArea();
         if (!IsVisible)
         {
-            var r = Place(work, !_placed);
+            PlaceOn(work, !_placed);
             _placed = true;
-            Left = r.Left;
-            Top = r.Top;
-            Width = r.Width;
-            if (!double.IsNaN(r.Height)) Height = r.Height;
         }
         Show();
         Activate();

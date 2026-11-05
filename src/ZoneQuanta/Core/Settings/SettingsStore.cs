@@ -46,6 +46,7 @@ public sealed class SettingsStore
                 if (s is not null)
                 {
                     if (s.Zones.Count == 0) s.Zones = new AppSettings().Zones;
+                    s.MigrateLegacy();
                     return s;
                 }
             }

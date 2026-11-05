@@ -217,6 +217,9 @@ public sealed class AppController : IPanelHost, IDisposable
                 case "--open":
                     if (i + 1 < args.Length) _quick.OpenText(args[++i]);
                     break;
+                case "--exit":
+                    ExitApp();
+                    return;
                 case "--panel":
                     ShowPanel();
                     if (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal)) _panel!.SelectPage(args[++i]);
@@ -361,7 +364,6 @@ public sealed class AppController : IPanelHost, IDisposable
         _ticker.Dispose();
         _sampler.Dispose();
         _foreground.Dispose();
-        _store.Flush();
         _totals.Flush();
         _hotkey.Dispose();
         _pipe.Dispose();
@@ -373,6 +375,8 @@ public sealed class AppController : IPanelHost, IDisposable
         _band.Close();
         _widget.Close();
         _panel?.Close();
+        // Last: closing the windows commits where they were left.
+        _store.Flush();
     }
 
     // Fast sampling only pays off while something on screen shows the numbers. Otherwise a one-second

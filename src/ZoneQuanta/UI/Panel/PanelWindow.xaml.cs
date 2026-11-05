@@ -35,6 +35,7 @@ public partial class PanelWindow : Window
     private readonly IPanelHost _host;
     private readonly Dictionary<string, UserControl> _pages = new();
     private readonly Thickness _resizeBorder;
+    private readonly Controls.WindowMemory _memory;
     private MaximizeFrame? _maximizeFrame;
     private bool _maximized; // survives a trip through Minimized, where WindowState no longer says
 
@@ -44,20 +45,17 @@ public partial class PanelWindow : Window
         InitializeComponent();
         _resizeBorder = WindowChrome.GetWindowChrome(this).ResizeBorderThickness;
 
-        var area = SystemParameters.WorkArea;
-        Width = Math.Min(Width, area.Width - 24);
-        Height = Math.Min(Height, area.Height - 24);
-        MinWidth = Math.Min(MinWidth, Width);
-        MinHeight = Math.Min(MinHeight, Height);
-        Left = area.Left + (area.Width - Width) / 2;
-        Top = area.Top + (area.Height - Height) / 2;
+        // Opens where it was left: size, spot and maximized state survive restarts and updates.
+        _memory = new Controls.WindowMemory(this, () => _host.Settings.PanelBounds, b => _host.Settings.PanelBounds = b);
+        _memory.Place(Controls.WindowMemory.Spot.Last, new Size(Width, Height), onCursorScreen: false);
         VersionText.Text = $"v{UpdateService.CurrentVersion}";
 
         BuildNav();
         ((RadioButton)Nav.Children[0]).IsChecked = true;
-        _ = new NavReorder(Nav, order => _host.Settings.NavOrder = order.ToList());
-        // The sidebar's blank space moves the window like the caption does.
-        Controls.WindowDrag.Attach(Sidebar, this, source => source == Sidebar || source is TextBlock { Name: "VersionText" }, holdOnContent: false);
+        _ = new NavReorder(Nav, order => _host.Settings.NavOrder = order.ToList(), () => Controls.WindowDrag.Begin(this));
+        // The rest of the sidebar is title bar too: drag to move, double-click to maximize.
+        Controls.WindowDrag.Attach(Sidebar, this, e => e.OriginalSource == Sidebar || e.OriginalSource is TextBlock { Name: "VersionText" }
+            ? Controls.WindowDrag.Grip.Blank : Controls.WindowDrag.Grip.None);
         var reset = new MenuItem { Header = "恢复默认顺序", Tag = TryFindResource("Icon.Reset") };
         reset.Click += (_, _) => { _host.Settings.NavOrder = new(); BuildNav(); };
         Nav.ContextMenu = new ContextMenu();
@@ -70,6 +68,7 @@ public partial class PanelWindow : Window
         StateChanged += (_, _) => OnWindowStateChanged();
         SourceInitialized += (_, _) => OnSourceInitialized();
         Closing += OnClosing;
+        OnWindowStateChanged();
     }
 
     private WindowState RestoredState => _maximized ? WindowState.Maximized : WindowState.Normal;

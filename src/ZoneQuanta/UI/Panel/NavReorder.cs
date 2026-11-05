@@ -11,23 +11,25 @@ using System.Windows.Threading;
 
 namespace ZoneQuanta.UI.Panel;
 
-// Long-press a nav item to lift it, drag it up or down, release to drop it there; the new order is
-// handed to Save. Items it passes slide out of the way. A short click still navigates.
+// A nav item dragged straight away moves the window; held still for HoldMs it lifts instead, follows the
+// pointer up or down and drops into its new slot (order handed to Save). A short click still navigates.
 internal sealed class NavReorder
 {
     private static readonly Duration Slide = TimeSpan.FromMilliseconds(140);
     private readonly StackPanel _nav;
     private readonly Action<IReadOnlyList<string>> _save;
+    private readonly Action _moveWindow;
     private readonly DispatcherTimer _hold = new() { Interval = TimeSpan.FromMilliseconds(Controls.WindowDrag.HoldMs) };
     private ButtonBase? _pressed, _lifted;
     private Point _downAt;
     private int _from, _to;
     private double _slot;
 
-    public NavReorder(StackPanel nav, Action<IReadOnlyList<string>> save)
+    public NavReorder(StackPanel nav, Action<IReadOnlyList<string>> save, Action moveWindow)
     {
         _nav = nav;
         _save = save;
+        _moveWindow = moveWindow;
         _hold.Tick += (_, _) => Lift();
         nav.PreviewMouseLeftButtonDown += OnDown;
         nav.PreviewMouseMove += OnMove;
@@ -56,8 +58,14 @@ internal sealed class NavReorder
         var p = e.GetPosition(_nav);
         if (_lifted is null)
         {
-            // Moving before the hold elapses cancels the lift; the press stays an ordinary click.
-            if (_pressed is not null && Math.Abs(p.Y - _downAt.Y) > SystemParameters.MinimumVerticalDragDistance) Cancel();
+            // Moving before the hold elapses drags the window; the item is released, so it is not a click.
+            if (_pressed is not null && (Math.Abs(p.X - _downAt.X) > SystemParameters.MinimumHorizontalDragDistance
+                || Math.Abs(p.Y - _downAt.Y) > SystemParameters.MinimumVerticalDragDistance))
+            {
+                Cancel();
+                _moveWindow();
+                e.Handled = true;
+            }
             return;
         }
         double dy = Math.Clamp(p.Y - _downAt.Y, -_from * _slot, (_nav.Children.Count - 1 - _from) * _slot);

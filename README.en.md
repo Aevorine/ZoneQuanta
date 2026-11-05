@@ -30,6 +30,10 @@
 | Display speed | A dedicated high-resolution timer thread wakes about 12 ms before each second, so the new second is presented in the frame that contains the boundary; sampling runs on a background thread and the taskbar numbers refresh every 0.5 s by default (0.25 / 0.5 / 1 / 2 s selectable); the hover card opens in about 10 ms; the monitor follows an auto-hidden taskbar within a few milliseconds of it appearing |
 | Low footprint | Redraws only what changes; sampling drops to once a second while the band is tucked away and the panel is closed; about 75 MB RAM and normally under 1% of one core when idle |
 
+## v1.4.4
+
+Drag the navigation to move the panel, no long press needed (a click still switches pages, holding an entry still for about 0.3 s then dragging still reorders, and dragging it while maximized restores the window under the pointer); double-click the navigation's blank space to maximize or restore. On the quick panel the buttons, the empty part of the search box and the margins move the window directly; only a press on typed text still selects. Both panels remember their last size, position and maximized state across restarts and updates; the pixel size is shown in the middle while an edge is dragged; the Quick page picks where the quick panel opens (last position, screen centre, around the pointer), shows the remembered size and resets it. New `--exit` command for a clean exit.
+
 ## v1.4.2
 
 The quick panel gains a Groups view (an icon-cell grid where each card's columns × rows size can be chosen from a picker or by dragging its corner grip, no large empty areas) with automatic and manual grouping (right-click "Move to group", drag onto a card, drag onto another icon to make a group); items that already have a group are never changed by automatic grouping. New Shortcuts page where every shortcut can be re-recorded, switched off and reset, and is remembered; the quick panel is larger, remembers its size and imports every app pinned to Start, then new pins automatically; the Traffic page lists each app with icon, description, upload, download, total and share; fixed self-update occasionally hanging.
@@ -77,7 +81,7 @@ With a local proxy or TUN adapter, traffic is attributed to the proxy process.
 ## Usage
 
 - Left-click the tray icon to open / close the panel; the taskbar entry disappears when it is closed. Right-click for switches, the quick panel, open-a-path and the quick item list
-- Ten pages: Console, Display, Time zones, Monitor, Traffic, Quick, Shortcuts, Window, System, Update. Long-press a navigation entry (about 0.3 s) and drag it to reorder (right-click the navigation to restore the default order); drag the navigation's blank space to move the panel, and the quick panel's top bar (after a 0.3 s hold on the search box or buttons) to move the quick panel. Hover a group card and drag its corner grip to resize it by whole cells. Every shortcut can be changed, switched off or reset on the Shortcuts page and is remembered in settings.json; apps pinned to Start are imported into the quick panel automatically and shown in groups (automatic grouping only fills items that have no group yet; manual placement always wins)
+- Ten pages: Console, Display, Time zones, Monitor, Traffic, Quick, Shortcuts, Window, System, Update. Drag anywhere on the navigation (entries, blank space, version label) to move the panel, a click still switches pages; hold an entry still for about 0.3 s, then drag it to reorder (right-click the navigation to restore the default order); double-click the blank space to maximize or restore, and drag it while maximized to restore under the pointer. On the quick panel the margins, top-bar gaps, buttons and the empty part of the search box move the window directly (typed text: a drag selects, a 0.3 s hold then drag moves). Both panels reopen at their last size, position and maximized state (mapped proportionally and kept fully visible on another monitor or resolution); the Quick page sets where the quick panel opens and resets its size. Hover a group card and drag its corner grip to resize it by whole cells. Every shortcut can be changed, switched off or reset on the Shortcuts page and is remembered in settings.json; apps pinned to Start are imported into the quick panel automatically and shown in groups (automatic grouping only fills items that have no group yet; manual placement always wins)
 - Settings, logs and statistics live in `%APPDATA%\ZoneQuanta` (quick items in `quick.json`)
 
 | Hotkey | Action |
@@ -97,6 +101,7 @@ Command line (usable from scripts and Claude Code; a second launch hands the com
 | `ZoneQuanta.exe --path-bar` | Show the open-a-path input |
 | `ZoneQuanta.exe --open <path or URL>` | Open a location with the same rules as the input |
 | `ZoneQuanta.exe --panel [page]` | Open the panel, optionally on a page, e.g. `--panel 流量` |
+| `ZoneQuanta.exe --exit` | Exit the running instance cleanly (settings and window positions are saved first) |
 
 `%APPDATA%\ZoneQuanta\app.log` has millisecond timestamps and records quick-panel add / open timings, hotkey conflicts and fallbacks, data-cap alerts and Explorer menu registration.
 
