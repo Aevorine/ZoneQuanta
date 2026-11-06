@@ -659,13 +659,17 @@ public sealed class QuickActions
         return result;
     }
 
+    // How well an item matches a search (name, path, link); below zero: no match. The launcher's search and the
+    // folder view's use the same score.
+    public static int Match(string query, QuickItem i) =>
+        Math.Max(Math.Max(Fuzzy.Score(query, i.DisplayName), Fuzzy.Score(query, i.Path)), i.Url is { } u ? Fuzzy.Score(query, u) : -1);
+
     public IEnumerable<QuickItem> View(string filter)
     {
         var items = Store.Items;
         string f = filter.Trim();
         if (f.Length > 0)
-            return items.Select(i => (i, s: Math.Max(Math.Max(Fuzzy.Score(f, i.DisplayName), Fuzzy.Score(f, i.Path)), i.Url is { } u ? Fuzzy.Score(f, u) : -1)))
-                .Where(x => x.s >= 0).OrderByDescending(x => x.s).Select(x => x.i);
+            return items.Select(i => (i, s: Match(f, i))).Where(x => x.s >= 0).OrderByDescending(x => x.s).Select(x => x.i);
         long now = QuickStore.Now;
         return Settings.QuickSort switch
         {

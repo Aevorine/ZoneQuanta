@@ -55,7 +55,8 @@ public abstract class LauncherWindow : Window
         Closing += (s, e) => { if (!App.Exiting) { e.Cancel = true; Hide(); } };
     }
 
-    protected bool KeepOpen { get; set; }
+    // Set while a dialog of the pop-up is open: losing activation to it must not hide the pop-up.
+    public bool KeepOpen { get; set; }
     protected System.Windows.Controls.TextBox? MainInput { get; set; }
 
     protected void SetRoot(FrameworkElement root)

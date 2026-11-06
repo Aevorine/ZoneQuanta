@@ -200,6 +200,7 @@ public sealed partial class QuickGrid
             tile.GotKeyboardFocus += (_, _) => _focused = tile;
             _boardTiles[item] = tile;
         }
+        Adopt(tile, "board");
         tile.Margin = view == "Grid" ? new Thickness(4, 6, 4, 6) : new Thickness(0);
         tile.VerticalAlignment = VerticalAlignment.Top;
         tile.Layout(view, _m);
@@ -530,18 +531,27 @@ public sealed partial class QuickGrid
         // Right-click on a tile bubbles here too; that tile's own menu is the one that opens.
         // (Setting Handled would cancel it.)
         if (TileAt(e.OriginalSource) is not null) return;
-        var menu = card.ContextMenu!;
+        FillGroupMenu(card.ContextMenu!, card, card.BeginRename, inFolder: false);
+    }
+
+    // The group's menu, the same on its card and in its folder view (there, unfolding in place closes the view).
+    private void FillGroupMenu(ContextMenu menu, GroupCard card, Action rename, bool inFolder)
+    {
         menu.Items.Clear();
         Add(menu, "撤销", "Icon.Reset", "Ctrl+Z", () => _actions.Undo(), _actions.Store.CanUndo);
         Add(menu, "重做", "Icon.Right", "Ctrl+Y", () => _actions.Redo(), _actions.Store.CanRedo);
         menu.Items.Add(new Separator());
-        Add(menu, "重命名分组", "Icon.Edit", "", card.BeginRename, true);
+        Add(menu, "重命名分组", "Icon.Edit", "", rename, true);
         var group = card.Group;
         menu.Items.Add(CardSizeMenu(menu, group.Cols, group.Rows, "跟随默认", (c, r) => _actions.SetSize(group, c, r)));
         if (card.CanExpand)
         {
-            if (card.Folded) Add(menu, "查看全部", "Icon.Grid", "", () => OpenFolder(card), true);
-            Add(menu, group.Expanded ? "收起" : "原地展开", group.Expanded ? "Icon.Up" : "Icon.Down", "", card.Toggle, true);
+            if (card.Folded && !inFolder) Add(menu, "查看全部", "Icon.Grid", "", () => OpenFolder(card), true);
+            Add(menu, group.Expanded ? "收起" : "原地展开", group.Expanded ? "Icon.Up" : "Icon.Down", "", () =>
+            {
+                if (inFolder && !group.Expanded) CloseFolder(animate: false);
+                card.Toggle();
+            }, true);
         }
         Add(menu, "按内容命名", "Icon.Bolt", "", () => _actions.NameByContent(group), true);
         if (group.Col is not null) Add(menu, "取消固定位置", "Icon.Pin", "", () => _actions.Unpin(group), true);

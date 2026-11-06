@@ -82,7 +82,11 @@ public sealed partial class QuickGrid : UserControl
         IsVisibleChanged += (_, _) =>
         {
             if (IsVisible) Sync();
-            else CloseFolder(animate: false);
+            else
+            {
+                CloseFolder(animate: false);
+                FinishFading();
+            }
         };
         ApplyView();
     }

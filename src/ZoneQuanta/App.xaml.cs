@@ -16,7 +16,13 @@ public partial class App : Application
 {
     private const string MutexName = "ZoneQuanta.SingleInstance.7F3A";
     private const string ShowEventName = "ZoneQuanta.ShowPanel.7F3A";
+    private const string RecoveredFlag = "--recovered";
+    // A recovered instance that bursts again this soon ends instead of restarting in a loop.
+    private const long RecoveryCalmMs = 10 * 60_000;
+    private static readonly long StartedAt = Environment.TickCount64;
 
+    private string[] _args = Array.Empty<string>();
+    private bool _recovering;
     private Mutex? _mutex;
     private EventWaitHandle? _showEvent;
     private RegisteredWaitHandle? _wait;
@@ -45,6 +51,7 @@ public partial class App : Application
             return;
         }
 
+        _args = e.Args;
         WatchUnhandled();
         try { DataPaths.Init(e.Args); }
         catch (ArgumentException ex)
@@ -100,7 +107,10 @@ public partial class App : Application
         };
         if (DataPaths.Sandboxed) Log.Write($"sandbox instance on {DataPaths.Root}");
         _controller = new AppController();
-        _controller.Start(showPanel: !autostart && !command, updated);
+        // A recovery restart comes back quietly, as the user left it (tray, widget, hotkeys), without the panel.
+        bool recovered = Array.IndexOf(e.Args, RecoveredFlag) >= 0;
+        if (recovered) Log.Write("recovered after a burst of errors");
+        _controller.Start(showPanel: !autostart && !command && !recovered, updated);
         if (command) _controller.Execute(e.Args);
 
         _wait = ThreadPool.RegisterWaitForSingleObject(_showEvent,
@@ -145,7 +155,8 @@ public partial class App : Application
     }
 
     // Anything that escapes an event handler is logged in full; the app keeps running unless failures repeat
-    // in a burst (then it is better to end than to spin).
+    // in a burst. Then it saves and starts again once (the user sees it come back, not vanish); a recovered
+    // instance that bursts again within ten minutes ends, so a fault on start-up cannot loop.
     private void WatchUnhandled()
     {
         var recent = new System.Collections.Generic.Queue<long>();
@@ -162,11 +173,18 @@ public partial class App : Application
             recent.Enqueue(now);
             while (recent.Count > 0 && now - recent.Peek() > 60_000) recent.Dequeue();
             e.Handled = recent.Count <= 10;
-            if (!e.Handled)
+            if (e.Handled) return;
+            if (CanRecover(now))
             {
-                try { _controller?.Dispose(); }
-                catch (Exception ex) { Log.Error("crash-save", ex); }
+                _recovering = true;
+                e.Handled = true;
+                Log.Write($"crash burst ({recent.Count} errors in a minute): saving and restarting");
+                Restart(flag: RecoveredFlag);
+                return;
             }
+            Log.Write("crash burst again soon after a recovery: exiting");
+            try { _controller?.Dispose(); }
+            catch (Exception ex) { Log.Error("crash-save", ex); }
         };
         AppDomain.CurrentDomain.UnhandledException += (_, e) => { if (e.ExceptionObject is Exception ex) Log.Crash("domain", ex); };
         TaskScheduler.UnobservedTaskException += (_, e) =>
@@ -175,6 +193,10 @@ public partial class App : Application
             e.SetObserved();
         };
     }
+
+    private bool CanRecover(long now) =>
+        !_recovering && Environment.ProcessPath is not null
+        && !(Array.IndexOf(_args, RecoveredFlag) >= 0 && now - StartedAt < RecoveryCalmMs);
 
     private void Quit(int code = 0)
     {
@@ -205,7 +227,8 @@ public partial class App : Application
 
     // Saves and stops everything, runs apply (e.g. writing a restored version) while no part of the app can
     // write the files any more, then starts a fresh instance that takes over once this one has exited.
-    public void Restart(Action? apply = null)
+    // flag goes to the new instance (--recovered after a burst of errors).
+    public void Restart(Action? apply = null, string? flag = null)
     {
         string? exe = Environment.ProcessPath;
         if (exe is null) return;
@@ -217,6 +240,7 @@ public partial class App : Application
         psi.ArgumentList.Add("--restart");
         psi.ArgumentList.Add("--from");
         psi.ArgumentList.Add(Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        if (flag is not null) psi.ArgumentList.Add(flag);
         if (DataPaths.Sandboxed)
         {
             psi.ArgumentList.Add("--data-dir");

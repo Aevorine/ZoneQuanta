@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -10,50 +12,116 @@ using System.Windows.Media.Effects;
 using System.Windows.Threading;
 using ZoneQuanta.Core.Quick;
 using ZoneQuanta.UI.Controls;
+using Win32 = Microsoft.Win32;
 
 namespace ZoneQuanta.UI.Quick;
 
-// Folder view: every member of a folded group in a panel over the board, grown out of the card. The board
-// underneath never moves. Open, right-click, rename, reorder by dragging inside, drag out over the dimmed
-// board to drop anywhere on it (the view gets out of the way), drop files on it to add them to the group.
+// Folder view: every member of a group in a panel over the board, grown out of the card. The board underneath
+// never moves. Search inside it, step to the previous / next group, right-click for the group's menu, add files
+// or folders to the group; open, rename, reorder by dragging inside, drag out over the dimmed board to drop
+// anywhere on it (the view gets out of the way), drop files on it to add them to the group.
+// Its tiles are cached across openings (icons stay loaded), so every way a view closes ends in Release, which
+// hands them back; a view still fading out finishes at once when another one needs them.
 public sealed partial class QuickGrid
 {
     private readonly Grid _boardRoot = new();
     private readonly Dictionary<QuickItem, Tile> _folderTiles = new();
     private Folder? _folder;
+    private Folder? _fading;
+    private static bool _adoptLogged;
 
-    // Esc closes the folder view first (the window's own Esc comes after).
+    // A cached tile is shown in one place at a time. One still held by a panel it no longer belongs to (a view
+    // that did not hand it back, a card the last build dropped) leaves that panel first, instead of WPF refusing
+    // it a second parent. Logged once: it means some path forgot to hand its tiles back.
+    private static void Adopt(FrameworkElement element, string where)
+    {
+        if (element.Parent is not System.Windows.Controls.Panel stale) return;
+        stale.Children.Remove(element);
+        if (_adoptLogged) return;
+        _adoptLogged = true;
+        Core.Log.Write($"quick tile taken back from a stale parent ({where})");
+    }
+
+    // Esc: the folder's search first, then the folder (the window's own Esc comes after).
     public bool CloseFolderIfOpen()
     {
-        if (_folder is null) return false;
-        CloseFolder(animate: true);
+        if (_folder is not { } f) return false;
+        if (!f.ClearSearch()) CloseFolder(animate: true);
         return true;
     }
 
     private void OpenFolder(GroupCard card)
     {
         CloseFolder(animate: false);
-        var f = new Folder(this, card);
-        _folder = f;
-        _boardRoot.Children.Add(f);
-        Core.Log.Write($"quick folder \"{card.Group.Name}\" opened: {card.Items.Count} items");
+        FinishFading();
+        Folder? f = null;
+        try
+        {
+            f = new Folder(this, card);
+            _boardRoot.Children.Add(f);
+            _folder = f;
+            Core.Log.Write($"quick folder \"{card.Group.Name}\" opened: {card.Items.Count} items");
+        }
+        catch (Exception ex)
+        {
+            // A view must never take the app down: drop what was built and unfold the card in place,
+            // the other way to see every member.
+            Core.Log.Error($"quick folder \"{card.Group.Name}\" failed, unfolding in place", ex);
+            _folder = null;
+            if (f is not null)
+            {
+                f.Release();
+                _boardRoot.Children.Remove(f);
+            }
+            if (!card.Group.Expanded && card.Parent is not null) card.Toggle();
+        }
     }
 
+    // Also finishes a view still fading out, so any caller that closes (a layout switch too) frees every tile.
     private void CloseFolder(bool animate)
     {
+        FinishFading();
         if (_folder is not { } f) return;
         _folder = null;
-        f.Close(animate, () => _boardRoot.Children.Remove(f));
+        if (animate) _fading = f;
+        f.Close(animate, () =>
+        {
+            if (_fading == f) _fading = null;
+            f.Release();
+            _boardRoot.Children.Remove(f);
+        });
     }
+
+    private void FinishFading() => _fading?.FinishClose();
 
     // After a rebuild: the open folder follows its group (renamed, reordered, members gone), or closes.
     private void RefreshFolder()
     {
         if (_folder is not { } f) return;
-        var card = _cards.FirstOrDefault(c => c.Group == f.Group)
-            ?? _cards.FirstOrDefault(c => string.Equals(c.Group.Name, f.Group.Name, StringComparison.OrdinalIgnoreCase));
-        if (card is null || card.Items.Count == 0) CloseFolder(animate: false);
-        else f.Fill(card);
+        var card = CardOf(f.Group);
+        if (card is null || card.Items.Count == 0)
+        {
+            CloseFolder(animate: false);
+            return;
+        }
+        try { f.Fill(card); }
+        catch (Exception ex)
+        {
+            Core.Log.Error($"quick folder \"{card.Group.Name}\" refresh", ex);
+            CloseFolder(animate: false);
+        }
+    }
+
+    private GroupCard? CardOf(QuickGroup group) =>
+        _cards.FirstOrDefault(c => c.Group == group)
+        ?? _cards.FirstOrDefault(c => string.Equals(c.Group.Name, group.Name, StringComparison.OrdinalIgnoreCase));
+
+    // The previous / next group in board order, round the ends.
+    private GroupCard? Neighbour(QuickGroup group, int delta)
+    {
+        if (_cards.Count < 2) return null;
+        int i = Math.Max(0, _cards.FindIndex(c => c.Group == group));
+        return _cards[((i + delta) % _cards.Count + _cards.Count) % _cards.Count];
     }
 
     private Tile FolderTile(QuickItem item)
@@ -66,6 +134,7 @@ public sealed partial class QuickGrid
             tile.ContextMenuOpening += OnMenu;
             _folderTiles[item] = tile;
         }
+        Adopt(tile, "folder");
         tile.Margin = new Thickness(0);
         tile.VerticalAlignment = VerticalAlignment.Center;
         tile.Layout("Card", _m);
@@ -74,7 +143,8 @@ public sealed partial class QuickGrid
 
     private sealed class Folder : Grid
     {
-        private static readonly Duration OpenTime = TimeSpan.FromMilliseconds(200), CloseTime = TimeSpan.FromMilliseconds(150);
+        private static readonly Duration OpenTime = TimeSpan.FromMilliseconds(200), CloseTime = TimeSpan.FromMilliseconds(150), SlideTime = TimeSpan.FromMilliseconds(190);
+        private const double SearchMin = 110, SearchMax = 220, TitleMin = 96;
         private readonly QuickGrid _owner;
         private readonly Border _scrim = new() { Opacity = 0 };
         private readonly Border _panel = new() { CornerRadius = new CornerRadius(20), BorderThickness = new Thickness(1), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
@@ -82,18 +152,25 @@ public sealed partial class QuickGrid
         private readonly ScrollViewer _scroll = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Focusable = false, AllowDrop = true };
         private readonly TextBlock _title = new() { FontSize = 15, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         private readonly TextBlock _count = new() { FontSize = 13, Margin = new Thickness(8, 1, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        private readonly Grid _titleHost = new() { Background = Brushes.Transparent, Cursor = Cursors.IBeam };
+        private readonly Grid _titleHost = new() { Background = Brushes.Transparent, Cursor = Cursors.IBeam, MinWidth = TitleMin };
+        private readonly TextBox _search = new() { FontSize = 13, Width = SearchMax, Margin = new Thickness(10, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+        private readonly StackPanel _buttons = new() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        private readonly Button _prev, _next, _unfold;
         private readonly Border _slotBar = new() { Width = 3, CornerRadius = new CornerRadius(1.5), Visibility = Visibility.Collapsed, IsHitTestVisible = false, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
         private readonly ScaleTransform _zoom = new(1, 1);
-        private readonly TranslateTransform _shift = new();
+        private readonly TranslateTransform _shift = new(), _slide = new();
         private readonly DispatcherTimer _outside = new() { Interval = TimeSpan.FromMilliseconds(260) };
         private GroupCard _card;
-        private List<QuickItem> _items = new();
+        // Every member in the group's order, and the ones shown (the search's matches, best first).
+        private List<QuickItem> _all = new(), _items = new();
         private Tile? _down;
         private Point _downAt;
         private int _slot = -1;
-        private bool _closing;
+        private bool _closing, _quiet, _hadFocus;
+        private Action? _done;
         private TextBox? _editor;
+        private Action<bool>? _finishRename;
+        private List<QuickItem>? _pop;
 
         public Folder(QuickGrid owner, GroupCard card)
         {
@@ -116,6 +193,13 @@ public sealed partial class QuickGrid
             _panel.RenderTransformOrigin = new Point(0.5, 0.5);
             _panel.RenderTransform = new TransformGroup { Children = { _zoom, _shift } };
             _panel.MouseLeftButtonDown += (_, e) => e.Handled = true;
+            // Right-click on the header or between the icons: the group's own menu (a tile keeps its item menu).
+            _panel.ContextMenu = new ContextMenu();
+            _panel.ContextMenuOpening += (_, e) =>
+            {
+                if (TileAt(e.OriginalSource) is not null || Within<TextBox>(e.OriginalSource)) return;
+                _owner.FillGroupMenu(_panel.ContextMenu, _card, BeginRename, inFolder: true);
+            };
 
             _title.SetResourceReference(TextBlock.ForegroundProperty, "TextBrush");
             _count.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
@@ -130,20 +214,34 @@ public sealed partial class QuickGrid
             };
             _titleHost.ToolTip = "重命名";
 
-            var header = new Grid { Margin = new Thickness(18, 10, 8, 4) };
-            header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            header.Children.Add(_titleHost);
-            var buttons = new StackPanel { Orientation = Orientation.Horizontal };
-            buttons.Children.Add(HeaderButton("Icon.Down", "原地展开", () =>
+            _search.SetResourceReference(StyleProperty, "IconField");
+            _search.Tag = Application.Current.TryFindResource("Icon.Search");
+            System.Windows.Automation.AutomationProperties.SetName(_search, "搜索本组");
+            _search.TextChanged += (_, _) => { if (!_quiet) Show(); };
+            _search.PreviewKeyDown += OnSearchKey;
+
+            _prev = HeaderButton("Icon.Left", "上一个分组", () => Step(-1));
+            _next = HeaderButton("Icon.Right", "下一个分组", () => Step(1));
+            Button? add = null;
+            add = HeaderButton("Icon.Plus", "添加到本组", () => OpenAddMenu(add!));
+            _unfold = HeaderButton("Icon.Down", "原地展开", () =>
             {
                 var c = _card;
                 _owner.CloseFolder(animate: false);
                 if (!c.Group.Expanded) c.Toggle();
-            }));
-            buttons.Children.Add(HeaderButton("Icon.Close", "关闭", () => _owner.CloseFolder(animate: true)));
-            Grid.SetColumn(buttons, 1);
-            header.Children.Add(buttons);
+            });
+            foreach (var b in new[] { _prev, _next, add, _unfold, HeaderButton("Icon.Close", "关闭", () => _owner.CloseFolder(animate: true)) })
+                _buttons.Children.Add(b);
+
+            var header = new Grid { Margin = new Thickness(18, 10, 8, 4) };
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            header.Children.Add(_titleHost);
+            Grid.SetColumn(_search, 1);
+            header.Children.Add(_search);
+            Grid.SetColumn(_buttons, 2);
+            header.Children.Add(_buttons);
             DockPanel.SetDock(header, Dock.Top);
 
             var body = new Grid();
@@ -151,6 +249,7 @@ public sealed partial class QuickGrid
             body.Children.Add(_slotBar);
             _slotBar.SetResourceReference(Border.BackgroundProperty, "Accent1Brush");
             _scroll.Content = body;
+            _scroll.RenderTransform = _slide;
             _scroll.PreviewMouseLeftButtonDown += OnDown;
             _scroll.PreviewMouseMove += OnMove;
             _scroll.PreviewMouseLeftButtonUp += OnUp;
@@ -158,7 +257,7 @@ public sealed partial class QuickGrid
             _scroll.DragLeave += (_, _) => ShowSlot(-1);
             _scroll.Drop += OnPanelDrop;
 
-            var dock = new DockPanel();
+            var dock = new DockPanel { ClipToBounds = true };
             dock.Children.Add(header);
             dock.Children.Add(_scroll);
             _panel.Child = dock;
@@ -171,12 +270,21 @@ public sealed partial class QuickGrid
                 _owner.CloseFolder(animate: false);
             };
             PreviewKeyDown += OnKey;
+            PreviewTextInput += OnType;
+            // The mouse's back button closes, as it leaves a page.
+            PreviewMouseDown += (_, e) =>
+            {
+                if (e.ChangedButton != MouseButton.XButton1) return;
+                _owner.CloseFolder(animate: true);
+                e.Handled = true;
+            };
             SizeChanged += (_, _) => Reflow();
             Fill(card);
             Loaded += (_, _) => Dispatcher.BeginInvoke(new Action(Grow), DispatcherPriority.Loaded);
         }
 
         public QuickGroup Group { get; private set; }
+        private bool Searching => _search.Text.Trim().Length > 0;
 
         private static Button HeaderButton(string icon, string tip, Action act)
         {
@@ -187,13 +295,45 @@ public sealed partial class QuickGrid
             return b;
         }
 
+        private static bool Within<T>(object source) where T : DependencyObject
+        {
+            for (var d = source as DependencyObject; d is not null; d = d is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
+                if (d is T) return true;
+            return false;
+        }
+
         public void Fill(GroupCard card)
         {
             _card = card;
             Group = card.Group;
-            _items = card.Items.ToList();
+            _all = card.Items.ToList();
             if (_editor is null) _title.Text = Group.Name;
-            _count.Text = _items.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            bool many = _owner._cards.Count > 1;
+            _prev.Visibility = _next.Visibility = many ? Visibility.Visible : Visibility.Collapsed;
+            _unfold.Visibility = card.CanExpand && !Group.Expanded ? Visibility.Visible : Visibility.Collapsed;
+            Show();
+            if (_pop is { } pop)
+            {
+                // Items just added from this view light up here, not on the card underneath.
+                _pop = null;
+                var first = true;
+                foreach (var t in _cells.Children.OfType<Tile>().Where(t => pop.Contains(t.Item)))
+                {
+                    if (first) t.BringIntoView();
+                    first = false;
+                    t.Pop();
+                }
+            }
+        }
+
+        // The members the search matches (all of them without one), best match first like the launcher's search.
+        private void Show()
+        {
+            string q = _search.Text.Trim();
+            _items = q.Length == 0 ? _all
+                : _all.Select(i => (Item: i, Score: QuickActions.Match(q, i))).Where(x => x.Score >= 0)
+                    .OrderByDescending(x => x.Score).Select(x => x.Item).ToList();
+            _count.Text = q.Length == 0 ? N(_all.Count) : $"{N(_items.Count)} / {N(_all.Count)}";
             var keep = Keyboard.FocusedElement as Tile;
             _cells.Children.Clear();
             foreach (var item in _items) _cells.Children.Add(_owner.FolderTile(item));
@@ -201,8 +341,35 @@ public sealed partial class QuickGrid
             if (keep is not null && _cells.Children.Contains(keep)) keep.Focus();
         }
 
-        // Columns close to a 3:2 block, at least the card's own, at most what the board area holds;
-        // rows beyond the height scroll.
+        private static string N(int n) => n.ToString(CultureInfo.InvariantCulture);
+
+        // Hands every tile back so the next view (or a rebuild) can show them.
+        public void Release()
+        {
+            _outside.Stop();
+            _cells.Children.Clear();
+        }
+
+        public bool ClearSearch()
+        {
+            if (_search.Text.Length == 0) return false;
+            bool inField = _search.IsKeyboardFocusWithin;
+            _search.Clear();
+            if (inField) FocusFirst();
+            return true;
+        }
+
+        private void FocusFirst()
+        {
+            if (_cells.Children.OfType<Tile>().FirstOrDefault() is { } t)
+            {
+                t.Focus();
+                t.BringIntoView();
+            }
+        }
+
+        // Columns close to a 3:2 block, at least the card's own, at most what the board area holds; rows beyond the
+        // height scroll. Sized by every member, not the search's matches, so the panel holds still while typing.
         private void Reflow()
         {
             var m = _owner._m;
@@ -211,7 +378,7 @@ public sealed partial class QuickGrid
             if (w <= 0 || h <= 0) return;
             double padX = Math.Max(10, m.InsetX), padY = Math.Max(6, m.InsetY);
             int fit = Math.Max(1, (int)Math.Floor((w - 40 - 2 * padX) / m.PitchX));
-            int n = Math.Max(1, _items.Count);
+            int n = Math.Max(1, _all.Count);
             int want = Math.Max(Math.Min(n, Math.Max(4, _card.Columns)), (int)Math.Ceiling(Math.Sqrt(n * 1.5)));
             int cols = Math.Clamp(want, 1, fit);
             int rows = (int)Math.Ceiling(n / (double)cols);
@@ -223,12 +390,19 @@ public sealed partial class QuickGrid
             double tileW = Math.Min(m.TileWidth, m.PitchX);
             foreach (var t in _cells.Children.OfType<Tile>()) t.FitCard(tileW, m.PitchY);
             _scroll.MaxHeight = Math.Max(m.PitchY + 2 * padY, h - 40 - 58);
-            _panel.Width = cols * m.PitchX + 2 * padX + 2 + (rows * m.PitchY + 2 * padY > _scroll.MaxHeight ? 12 : 0);
+            // The header always fits: title, search and buttons get their room even for a small group.
+            _buttons.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            double chrome = 18 + 8 + 16 + _buttons.DesiredSize.Width;
+            double content = cols * m.PitchX + 2 * padX + 2 + (rows * m.PitchY + 2 * padY > _scroll.MaxHeight ? 12 : 0);
+            double width = Math.Min(Math.Max(content, chrome + TitleMin + SearchMin), Math.Max(content, w - 40));
+            _panel.Width = width;
+            _search.Width = Math.Clamp(width - chrome - TitleMin - 40, SearchMin, SearchMax);
         }
 
         // Grows out of the card face: scaled and moved onto it, then eased to the middle.
         private void Grow()
         {
+            if (_closing) return;
             _scrim.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 0.62, OpenTime));
             if (!FromCard(out double sx, out double sy, out double dx, out double dy))
             {
@@ -243,7 +417,7 @@ public sealed partial class QuickGrid
                 _shift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(dy, 0, OpenTime) { EasingFunction = ease });
                 _panel.BeginAnimation(OpacityProperty, new DoubleAnimation(0.35, 1, OpenTime));
             }
-            (_cells.Children.OfType<Tile>().FirstOrDefault())?.Focus();
+            FocusFirst();
         }
 
         private bool FromCard(out double sx, out double sy, out double dx, out double dy)
@@ -268,27 +442,24 @@ public sealed partial class QuickGrid
             return true;
         }
 
+        // Shrinks back into the card and fades; done runs exactly once, at the end or when FinishClose cuts it short.
         public void Close(bool animate, Action done)
         {
             if (_closing) return;
             _closing = true;
+            _done = done;
             _outside.Stop();
             IsHitTestVisible = false;
-            if (_editor is not null) Keyboard.ClearFocus();
-            bool hadFocus = IsKeyboardFocusWithin;
+            _finishRename?.Invoke(true);
+            _hadFocus = IsKeyboardFocusWithin;
             if (!animate || !IsLoaded)
             {
-                done();
-                if (hadFocus) _owner.FocusBoard();
+                FinishClose();
                 return;
             }
             var ease = new CubicEase { EasingMode = EasingMode.EaseIn };
             var fade = new DoubleAnimation(0, CloseTime);
-            fade.Completed += (_, _) =>
-            {
-                done();
-                if (hadFocus) _owner.FocusBoard();
-            };
+            fade.Completed += (_, _) => FinishClose();
             _scrim.BeginAnimation(OpacityProperty, new DoubleAnimation(0, CloseTime));
             if (FromCard(out double sx, out double sy, out double dx, out double dy))
             {
@@ -300,19 +471,72 @@ public sealed partial class QuickGrid
             _panel.BeginAnimation(OpacityProperty, fade);
         }
 
+        public void FinishClose()
+        {
+            if (_done is not { } done) return;
+            _done = null;
+            done();
+            if (_hadFocus) _owner.FocusBoard();
+        }
+
+        // Ctrl+← / → (or Ctrl+PageUp / PageDown): the neighbouring group, sliding in from that side.
+        private void Step(int delta)
+        {
+            if (_closing || _owner.Neighbour(Group, delta) is not { } next || next.Group == Group) return;
+            _finishRename?.Invoke(true);
+            double was = _panel.ActualWidth;
+            try
+            {
+                _quiet = true;
+                _search.Clear();
+                _quiet = false;
+                Fill(next);
+            }
+            catch (Exception ex)
+            {
+                _quiet = false;
+                Core.Log.Error($"quick folder step to \"{next.Group.Name}\"", ex);
+                _owner.CloseFolder(animate: false);
+                return;
+            }
+            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+            _slide.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(34 * Math.Sign(delta), 0, SlideTime) { EasingFunction = ease });
+            _scroll.BeginAnimation(OpacityProperty, new DoubleAnimation(0.15, 1, SlideTime));
+            _title.BeginAnimation(OpacityProperty, new DoubleAnimation(0.3, 1, SlideTime));
+            if (was > 0 && Math.Abs(was - _panel.Width) > 1)
+                _panel.BeginAnimation(WidthProperty, new DoubleAnimation(was, _panel.Width, SlideTime) { EasingFunction = ease, FillBehavior = FillBehavior.Stop });
+            _scroll.ScrollToHome();
+            Dispatcher.BeginInvoke(new Action(FocusFirst), DispatcherPriority.Loaded);
+            Core.Log.Write($"quick folder \"{Group.Name}\" opened (step {(delta > 0 ? "next" : "previous")}): {_all.Count} items");
+        }
+
         private void OnKey(object sender, KeyEventArgs e)
         {
             if (e.OriginalSource is TextBox) return;
+            var mods = Keyboard.Modifiers;
             if (e.Key == Key.Escape)
             {
-                _owner.CloseFolder(animate: true);
+                if (!ClearSearch()) _owner.CloseFolder(animate: true);
+                e.Handled = true;
+                return;
+            }
+            if (mods == ModifierKeys.Control && e.Key == Key.F)
+            {
+                _search.Focus();
+                _search.SelectAll();
+                e.Handled = true;
+                return;
+            }
+            if (mods == ModifierKeys.Control && e.Key is Key.Left or Key.Right or Key.PageUp or Key.PageDown)
+            {
+                Step(e.Key is Key.Left or Key.PageUp ? -1 : 1);
                 e.Handled = true;
                 return;
             }
             var tiles = _cells.Children.OfType<Tile>().ToList();
             if (tiles.Count == 0) return;
             int i = Keyboard.FocusedElement is Tile t ? tiles.IndexOf(t) : -1;
-            if (Keyboard.Modifiers == ModifierKeys.None && e.Key is Key.Left or Key.Right or Key.Up or Key.Down or Key.Home or Key.End)
+            if (mods == ModifierKeys.None && e.Key is Key.Left or Key.Right or Key.Up or Key.Down or Key.Home or Key.End)
             {
                 int cols = Math.Max(1, _cells.Columns);
                 int next = i < 0 ? 0 : e.Key switch
@@ -325,10 +549,45 @@ public sealed partial class QuickGrid
                     tiles[next].Focus();
                     tiles[next].BringIntoView();
                 }
+                else if (e.Key == Key.Up && next < 0)
+                {
+                    // Up from the first row: into the search field.
+                    _search.Focus();
+                    _search.CaretIndex = _search.Text.Length;
+                }
                 e.Handled = true;
                 return;
             }
             if (i >= 0 && _owner.ItemKey(tiles[i], e)) e.Handled = true;
+        }
+
+        // Typing anywhere in the view searches it.
+        private void OnType(object sender, TextCompositionEventArgs e)
+        {
+            if (e.OriginalSource is TextBox || _editor is not null || string.IsNullOrWhiteSpace(e.Text) || e.Text.Any(char.IsControl)) return;
+            _search.Focus();
+            _search.Text += e.Text;
+            _search.CaretIndex = _search.Text.Length;
+            e.Handled = true;
+        }
+
+        private void OnSearchKey(object sender, KeyEventArgs e)
+        {
+            switch (e.Key)
+            {
+                case Key.Enter when Keyboard.Modifiers == ModifierKeys.None:
+                    if (_items.FirstOrDefault() is { } first) _owner._actions.Open(first);
+                    break;
+                case Key.Down:
+                    FocusFirst();
+                    break;
+                case Key.Escape:
+                    if (!ClearSearch()) _owner.CloseFolder(animate: true);
+                    break;
+                default:
+                    return;
+            }
+            e.Handled = true;
         }
 
         private void OnDown(object sender, MouseButtonEventArgs e)
@@ -381,12 +640,16 @@ public sealed partial class QuickGrid
             if (!_outside.IsEnabled) _outside.Start();
         }
 
+        // While searching the shown order is the match order, not the group's: a member dropped back stays where it
+        // is, anything else joins the group at the end.
         private void OnPanelDrag(object sender, DragEventArgs e)
         {
             _outside.Stop();
             bool ours = e.Data.GetDataPresent(DragFormat), files = e.Data.GetDataPresent(DataFormats.FileDrop);
-            e.Effects = ours || files ? DragDropEffects.Link : DragDropEffects.None;
-            ShowSlot(ours || files ? SlotAt(e.GetPosition(_cells)) : -1);
+            var dragged = ours && e.Data.GetData(DragFormat) is string p ? _owner._actions.Store.Find(p) : null;
+            bool still = Searching && dragged is not null && _all.Contains(dragged);
+            e.Effects = (ours || files) && !still ? DragDropEffects.Link : DragDropEffects.None;
+            ShowSlot((ours || files) && !Searching ? SlotAt(e.GetPosition(_cells)) : -1);
             e.Handled = true;
         }
 
@@ -395,17 +658,64 @@ public sealed partial class QuickGrid
             int slot = _slot >= 0 ? _slot : SlotAt(e.GetPosition(_cells));
             ShowSlot(-1);
             e.Handled = true;
+            var actions = _owner._actions;
             if (e.Data.GetData(DragFormat) is string path)
             {
-                if (_owner._actions.Store.Find(path) is not { } item) return;
-                _owner._actions.PlaceInGroup(item, Group.Name, Before(slot, item));
+                if (actions.Store.Find(path) is not { } item) return;
+                if (!Searching) actions.PlaceInGroup(item, Group.Name, Before(slot, item));
+                else if (!_all.Contains(item)) actions.PlaceInGroup(item, Group.Name, null);
                 return;
             }
-            if (e.Data.GetData(DataFormats.FileDrop) is string[] drop)
+            if (e.Data.GetData(DataFormats.FileDrop) is string[] drop) AddHere(drop, Searching ? -1 : slot);
+        }
+
+        // New members from a drop or the + menu: in the group (at the slot in the custom order), lit up in this view.
+        private void AddHere(IEnumerable<string> paths, int slot)
+        {
+            var actions = _owner._actions;
+            var added = actions.Add(paths, -1, Group.Name);
+            if (added.Count == 0) return;
+            if (slot >= 0 && actions.Settings.QuickSort == "Custom")
+                foreach (var item in added) actions.PlaceInGroup(item, Group.Name, Before(slot, item));
+            actions.ClearHighlight();
+            _pop = added;
+        }
+
+        private void OpenAddMenu(FrameworkElement anchor)
+        {
+            var menu = new ContextMenu { PlacementTarget = anchor, Placement = PlacementMode.Bottom };
+            Add(menu.Items, "添加文件", "Icon.File", "", () => AddFromDialog(folders: false), true);
+            Add(menu.Items, "添加文件夹", "Icon.Folder", "", () => AddFromDialog(folders: true), true);
+            menu.IsOpen = true;
+        }
+
+        private void AddFromDialog(bool folders)
+        {
+            var window = Window.GetWindow(this);
+            var launcher = window as LauncherWindow;
+            if (launcher is not null) launcher.KeepOpen = true;
+            try
             {
-                var added = _owner._actions.Add(drop, -1, Group.Name);
-                if (_owner._actions.Settings.QuickSort == "Custom")
-                    foreach (var item in added) _owner._actions.PlaceInGroup(item, Group.Name, Before(slot, item));
+                string[]? picked = null;
+                if (folders)
+                {
+                    var dlg = new Win32.OpenFolderDialog { Multiselect = true };
+                    if (dlg.ShowDialog(window) == true) picked = dlg.FolderNames;
+                }
+                else
+                {
+                    var dlg = new Win32.OpenFileDialog { Multiselect = true, DereferenceLinks = false };
+                    if (dlg.ShowDialog(window) == true) picked = dlg.FileNames;
+                }
+                if (picked is { Length: > 0 } && !_closing) AddHere(picked, -1);
+            }
+            finally
+            {
+                if (launcher is not null)
+                {
+                    launcher.KeepOpen = false;
+                    launcher.Activate();
+                }
             }
         }
 
@@ -452,27 +762,28 @@ public sealed partial class QuickGrid
 
         private void BeginRename()
         {
-            if (_editor is not null) return;
+            if (_editor is not null || _closing) return;
             var box = new TextBox { Text = Group.Name, MinWidth = 160, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
             box.SetResourceReference(StyleProperty, "Field");
             _editor = box;
             _title.Visibility = Visibility.Hidden;
             _titleHost.Children.Add(box);
-            bool done = false;
+            string was = Group.Name;
             void Finish(bool save)
             {
-                if (done) return;
-                done = true;
+                if (_editor != box) return;
+                _finishRename = null;
                 string text = box.Text.Trim();
                 _titleHost.Children.Remove(box);
                 _title.Visibility = Visibility.Visible;
                 _editor = null;
-                if (save && text.Length > 0 && text != Group.Name)
-                {
-                    _title.Text = text;
-                    _owner._actions.RenameGroup(Group, text);
-                }
+                // Looked up by the name it had: an undo while typing replaces every group object in the store.
+                var group = _owner._actions.Store.Groups.FirstOrDefault(g => string.Equals(g.Name, was, StringComparison.OrdinalIgnoreCase));
+                if (!save || group is null || text.Length == 0 || text == group.Name) return;
+                if (string.Equals(Group.Name, was, StringComparison.OrdinalIgnoreCase)) _title.Text = text;
+                _owner._actions.RenameGroup(group, text);
             }
+            _finishRename = Finish;
             box.KeyDown += (_, e) =>
             {
                 if (e.Key == Key.Enter) { Finish(true); e.Handled = true; }

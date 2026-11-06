@@ -32,7 +32,7 @@
 
 ## v1.6.0
 
-Quick panel: adjustable spacing (icon gaps, border distances, gap between groups, compact / standard / roomy presets, fill width) that fits more icons per group and more groups on screen without changing the icon size (compact: 18 icons in a 4 × 2 card); folded groups open as a folder view over the board ("+N" or a click on the card) while the board stays put; shortcuts may include Win (recorded through a low-level keyboard hook, Win combinations Windows owns are taken over); newly installed apps join the panel by themselves, grouped (Start menu and chosen folders are watched).
+Quick panel: adjustable spacing (icon gaps, border distances, gap between groups, compact / standard / roomy presets, fill width) that fits more icons per group and more groups on screen without changing the icon size (compact: 18 icons in a 4 × 2 card); folded groups open as a folder view over the board ("+N" or a click on the card) while the board stays put, with search inside the group (just type), previous / next group (‹ › or Ctrl+← / →), the group's menu on right-click and "+" to add files to the group; shortcuts may include Win (recorded through a low-level keyboard hook, Win combinations Windows owns are taken over); newly installed apps join the panel by themselves, grouped (Start menu and chosen folders are watched).
 
 ## v1.5.0
 
