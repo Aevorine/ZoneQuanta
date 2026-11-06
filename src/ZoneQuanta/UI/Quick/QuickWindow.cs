@@ -44,6 +44,13 @@ public sealed class QuickWindow : LauncherWindow
         _groups.Click += (_, _) => actions.Settings.QuickLayout = "Groups";
         _tiles.Click += (_, _) => actions.Settings.QuickLayout = "Grid";
         _list.Click += (_, _) => actions.Settings.QuickLayout = "List";
+        var spacing = IconButton("Icon.Spacing", "间距");
+        System.Windows.Controls.Primitives.Popup? spacingFlyout = null;
+        spacing.Click += (_, _) =>
+        {
+            spacingFlyout ??= SpacingPanel.Flyout(spacing, actions.Settings);
+            spacingFlyout.IsOpen = true;
+        };
         var sort = IconButton("Icon.Sort", "排序");
         sort.Click += (_, _) => OpenSortMenu(sort);
         var add = IconButton("Icon.Plus", "添加");
@@ -63,7 +70,7 @@ public sealed class QuickWindow : LauncherWindow
         SyncClean();
 
         var tools = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        foreach (var b in new UIElement[] { _clean, _groups, _tiles, _list, sort, add, settings }) tools.Children.Add(b);
+        foreach (var b in new UIElement[] { _clean, _groups, _tiles, _list, spacing, sort, add, settings }) tools.Children.Add(b);
 
         var bar = new Grid { Background = Brushes.Transparent };
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -164,6 +171,7 @@ public sealed class QuickWindow : LauncherWindow
 
     protected override bool OnEscape()
     {
+        if (_grid.CloseFolderIfOpen()) return true;
         if (_search.Text.Length == 0) return false;
         _search.Clear();
         return true;
@@ -308,8 +316,15 @@ public sealed class QuickWindow : LauncherWindow
         d.Click += (_, _) => AddFolder();
         var st = new MenuItem { Header = "从「开始」导入", Tag = FindResource("Icon.Start") };
         st.Click += (_, _) => ImportStart?.Invoke();
+        var sm = new MenuItem { Header = "导入「开始」菜单中的应用", Tag = FindResource("Icon.Folder"), IsEnabled = _actions.FolderSync is not null };
+        sm.Click += async (_, _) =>
+        {
+            int n = _actions.FolderSync is { } fs ? await fs.RunAsync(importExisting: true) : 0;
+            _sizeBadge.Flash(n > 0 ? $"已导入 {n}" : "没有新的应用");
+        };
         menu.Items.Add(f);
         menu.Items.Add(d);
+        menu.Items.Add(sm);
         menu.Items.Add(st);
         menu.Items.Add(ImportMenu());
         menu.IsOpen = true;

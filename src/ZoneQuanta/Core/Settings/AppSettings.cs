@@ -150,6 +150,40 @@ public sealed class AppSettings : Observable
     // Default group card size in icon cells (columns × rows); 0 sizes each card by its item count.
     public int QuickCardCols { get => _quickCardCols; set => Set(ref _quickCardCols, Math.Clamp(value, 0, 8)); }
     public int QuickCardRows { get => _quickCardRows; set => Set(ref _quickCardRows, Math.Clamp(value, 0, 6)); }
+
+    // Board spacing in DIP. -1 follows the built-in default (the 1.5.0 look), see UI/Quick/BoardMetrics.
+    private int _quickGapX = -1, _quickGapY = -1, _quickPadX = -1, _quickPadY = -1, _quickGroupGap = 14;
+    private bool _quickFill = true, _quickWatch = true;
+    private List<string> _quickWatchFolders = new();
+
+    // New shortcuts in the Start menu folders (and the extra folders) join the quick panel, grouped.
+    public bool QuickWatch { get => _quickWatch; set => Set(ref _quickWatch, value); }
+    public List<string> QuickWatchFolders { get => _quickWatchFolders; set => Set(ref _quickWatchFolders, value ?? new()); }
+
+    // Grid columns widen to fill the panel (1.5.0); off keeps the chosen spacing exactly, the block centred.
+    public bool QuickFill { get => _quickFill; set => Set(ref _quickFill, value); }
+
+    public int QuickGapX { get => _quickGapX; set => Set(ref _quickGapX, Math.Clamp(value, -1, 96)); }
+    public int QuickGapY { get => _quickGapY; set => Set(ref _quickGapY, Math.Clamp(value, -1, 96)); }
+    public int QuickPadX { get => _quickPadX; set => Set(ref _quickPadX, Math.Clamp(value, -1, 64)); }
+    public int QuickPadY { get => _quickPadY; set => Set(ref _quickPadY, Math.Clamp(value, -1, 64)); }
+    public int QuickGroupGap { get => _quickGroupGap; set => Set(ref _quickGroupGap, Math.Clamp(value, 0, 48)); }
+
+    // All at once, so the board rebuilds a single time (presets and reset).
+    public void SetQuickSpacing(int gapX, int gapY, int padX, int padY, int groupGap, bool fill)
+    {
+        _quickFill = fill;
+        _quickGapX = Math.Clamp(gapX, -1, 96);
+        _quickGapY = Math.Clamp(gapY, -1, 96);
+        _quickPadX = Math.Clamp(padX, -1, 64);
+        _quickPadY = Math.Clamp(padY, -1, 64);
+        _quickGroupGap = Math.Clamp(groupGap, 0, 48);
+        Raise(nameof(QuickSpacing));
+    }
+
+    // Change marker for the spacing group (raised once by SetQuickSpacing); not saved.
+    [JsonIgnore]
+    public int QuickSpacing => 0;
     private Dictionary<string, string> _localKeys = new();
 
     public bool QuickStartSync { get => _quickStartSync; set => Set(ref _quickStartSync, value); }

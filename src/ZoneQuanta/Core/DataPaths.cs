@@ -19,6 +19,9 @@ public static class DataPaths
 
     public static bool Sandboxed { get; private set; }
 
+    // "--sandbox-hotkeys": a sandbox registers its own global shortcuts too (end-to-end tests of hotkeys).
+    public static bool SandboxHotkeys { get; private set; }
+
     // Appended to mutex / event / pipe names so a sandbox runs next to the user's instance.
     public static string InstanceSuffix { get; private set; } = "";
 
@@ -53,6 +56,7 @@ public static class DataPaths
         if (string.Equals(full.TrimEnd('\\'), Default, StringComparison.OrdinalIgnoreCase)) return;
         Root = full;
         Sandboxed = true;
+        SandboxHotkeys = Array.Exists(args, a => a.Equals("--sandbox-hotkeys", StringComparison.OrdinalIgnoreCase));
         InstanceSuffix = "." + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(full.ToUpperInvariant())))[..8];
     }
 }

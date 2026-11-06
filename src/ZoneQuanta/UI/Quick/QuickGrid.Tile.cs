@@ -79,7 +79,7 @@ public sealed partial class QuickGrid
             else BorderBrush = Brushes.Transparent;
         }
 
-        public void Layout(string view)
+        public void Layout(string view, BoardMetrics? metrics = null)
         {
             bool showIcon = _s.QuickShowIcon || !_s.QuickShowName;
             _view = view;
@@ -112,21 +112,24 @@ public sealed partial class QuickGrid
             else if (view == "Mini")
             {
                 // A one-column card: smaller icons only, the name stays in the tooltip.
-                Width = MiniCell;
+                const double mini = 40;
+                Width = mini;
+                Height = double.NaN;
                 Padding = new Thickness(4);
-                _icon.Width = _icon.Height = MiniCell - 8;
+                _icon.Width = _icon.Height = mini - 8;
                 _icon.Margin = new Thickness(0);
                 _icon.HorizontalAlignment = HorizontalAlignment.Center;
                 Child = _icon;
-                SetIconSize(MiniCell - 8);
+                SetIconSize(mini - 8);
             }
             else if (view == "Card")
             {
                 // Inside a group card: icon first, short name, no details (they stay in grid and list).
-                Width = _s.QuickShowName ? 80 : 64;
-                Padding = new Thickness(4, 8, 4, 6);
+                var m = metrics ?? BoardMetrics.From(_s);
+                _cardIcon = m.Icon;
+                FitCard(m.TileWidth, m.CellHeight);
                 var st = new StackPanel();
-                _icon.Width = _icon.Height = 42;
+                _icon.Width = _icon.Height = m.Icon;
                 _icon.Margin = new Thickness(0, 0, 0, _s.QuickShowName ? 6 : 0);
                 _icon.HorizontalAlignment = HorizontalAlignment.Center;
                 _name.TextAlignment = TextAlignment.Center;
@@ -136,7 +139,7 @@ public sealed partial class QuickGrid
                 if (showIcon) st.Children.Add(_icon);
                 st.Children.Add(_text);
                 Child = st;
-                SetIconSize(42);
+                SetIconSize(m.Icon);
             }
             else
             {
@@ -161,6 +164,20 @@ public sealed partial class QuickGrid
             // Re-parented tiles can keep a stale hover look until the mouse moves over them again.
             if (_hover && !IsKeyboardFocused) Background = Brushes.Transparent;
             Refresh();
+        }
+
+        private double _cardIcon = 42;
+
+        // A card tile in a slot of this size: the icon centred, the padding shrunk so the name still fits.
+        public void FitCard(double width, double height)
+        {
+            if (_view is not ("Card" or "")) return;
+            double content = _cardIcon + (_s.QuickShowName ? 22 : 0);
+            double room = Math.Max(0, height - content);
+            double top = Math.Min(8, room * 0.57), bottom = Math.Min(6, room - top);
+            double side = Math.Clamp((width - _cardIcon) / 2, 0, 4);
+            Width = width;
+            Padding = new Thickness(side, top, side, bottom);
         }
 
         public void Refresh()

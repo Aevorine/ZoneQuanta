@@ -36,6 +36,8 @@ public sealed partial class QuickGrid : UserControl
     private Point _downAt;
     private Tile? _downTile, _dropTile;
     private bool _dragging;
+    // Spacing changes arrive per slider step; the board rebuilds once they settle.
+    private readonly System.Windows.Threading.DispatcherTimer _spacingTimer = new() { Interval = TimeSpan.FromMilliseconds(90) };
 
     public QuickGrid(QuickActions actions, bool singleClickOpen)
     {
@@ -67,12 +69,21 @@ public sealed partial class QuickGrid : UserControl
         actions.IconsChanged += files =>
         {
             var set = new HashSet<string>(files, StringComparer.OrdinalIgnoreCase);
-            foreach (var t in _boardTiles.Values.Concat(_tiles.Values))
+            foreach (var t in _boardTiles.Values.Concat(_tiles.Values).Concat(_folderTiles.Values))
                 if (t.Item.Icon is { } f && set.Contains(f)) t.ReloadIcon();
         };
-        actions.GoneChanged += () => { foreach (var t in OnBoard ? _boardTiles.Values : _tiles.Values) t.RefreshMeta(true); };
+        actions.GoneChanged += () => { foreach (var t in OnBoard ? _boardTiles.Values.Concat(_folderTiles.Values) : _tiles.Values) t.RefreshMeta(true); };
         actions.Settings.PropertyChanged += OnSetting;
-        IsVisibleChanged += (_, _) => { if (IsVisible) Sync(); };
+        _spacingTimer.Tick += (_, _) =>
+        {
+            _spacingTimer.Stop();
+            if (OnBoard) Invalidate();
+        };
+        IsVisibleChanged += (_, _) =>
+        {
+            if (IsVisible) Sync();
+            else CloseFolder(animate: false);
+        };
         ApplyView();
     }
 
@@ -148,6 +159,12 @@ public sealed partial class QuickGrid : UserControl
         {
             if (OnBoard) Invalidate();
         }
+        else if (n is nameof(AppSettings.QuickGapX) or nameof(AppSettings.QuickGapY)
+            or nameof(AppSettings.QuickPadX) or nameof(AppSettings.QuickPadY) or nameof(AppSettings.QuickGroupGap) or nameof(AppSettings.QuickSpacing) or nameof(AppSettings.QuickFill))
+        {
+            _spacingTimer.Stop();
+            _spacingTimer.Start();
+        }
         else if (n.StartsWith("QuickShow", StringComparison.Ordinal))
         {
             ApplyView();
@@ -204,13 +221,16 @@ public sealed partial class QuickGrid : UserControl
         var alive = new HashSet<QuickItem>(_actions.Store.Items);
         foreach (var gone in _tiles.Keys.Where(k => !alive.Contains(k)).ToList()) _tiles.Remove(gone);
         foreach (var gone in _boardTiles.Keys.Where(k => !alive.Contains(k)).ToList()) _boardTiles.Remove(gone);
+        foreach (var gone in _folderTiles.Keys.Where(k => !alive.Contains(k)).ToList()) _folderTiles.Remove(gone);
         if (OnBoard)
         {
             _list.Items.Clear();
             BuildBoard();
-            Content = _boardScroll;
+            Content = _boardRoot;
+            RefreshFolder();
             return;
         }
+        CloseFolder(animate: false);
         ClearBoard();
         Content = _list;
 

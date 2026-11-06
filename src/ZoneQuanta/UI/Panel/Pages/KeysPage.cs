@@ -82,6 +82,7 @@ public sealed class KeysPage : UserControl
         HotkeyBox box = null!;
         box = new HotkeyBox(() => { var (m, k) = GetGlobal(g.Id); return KeyChord.FromGlobal(m, k); }, chord =>
         {
+            if (Platform.HotkeyService.IsReserved(chord.GlobalMods, chord.VirtualKey)) return "Win + L 由系统保留";
             foreach (var other in Globals.Where(o => o.Id != g.Id))
             {
                 var (m, k) = GetGlobal(other.Id);
@@ -104,6 +105,8 @@ public sealed class KeysPage : UserControl
         {
             if (chord.Mods == ModifierKeys.None && Reserved.Contains(chord.Key)) return "该键用于导航";
             if (TypedIn.Contains(id) && TypingKey(chord)) return "该键用于输入，请加 Ctrl 或 Alt";
+            // Inside the panel a Win combination works only if no one (Windows included) holds it globally.
+            if ((chord.Mods & ModifierKeys.Windows) != 0 && !Platform.HotkeyService.IsFree(chord.GlobalMods, chord.VirtualKey)) return "该组合由系统占用";
             foreach (var (other, otherLabel) in Locals.Where(o => o.Id != id))
                 if (KeyChord.Parse(_s.LocalKey(other)) == chord) return $"与「{otherLabel}」相同";
             _s.SetLocalKey(id, chord.Storage);

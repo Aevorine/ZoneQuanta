@@ -24,7 +24,7 @@ public partial class SystemPage : UserControl
 
         ShowHotkey();
         HotkeyBox.PreviewKeyDown += OnKey;
-        Controls.HotkeyBox.Guard(HotkeyBox, () => HotkeyBox.Text = "按下新的快捷键…", ShowHotkey);
+        Controls.HotkeyBox.Guard(HotkeyBox, () => HotkeyBox.Text = "按下新的快捷键…", ShowHotkey, SetHotkey);
         FolderButton.Click += (_, _) => host.OpenSettingsFolder();
         ExitButton.Click += (_, _) => host.ExitApp();
 
@@ -145,16 +145,16 @@ public partial class SystemPage : UserControl
             return;
         }
 
-        uint mods = 0;
-        var m = Keyboard.Modifiers;
-        if (m.HasFlag(ModifierKeys.Control)) mods |= Native.MOD_CONTROL;
-        if (m.HasFlag(ModifierKeys.Alt)) mods |= Native.MOD_ALT;
-        if (m.HasFlag(ModifierKeys.Shift)) mods |= Native.MOD_SHIFT;
-        if (m.HasFlag(ModifierKeys.Windows)) mods |= Native.MOD_WIN;
-        if (mods == 0) return;
+        SetHotkey(new Controls.KeyChord(Controls.KeyChord.CurrentMods(), key));
+    }
 
-        _host.Settings.HotkeyModifiers = mods;
-        _host.Settings.HotkeyKey = (uint)KeyInterop.VirtualKeyFromKey(key);
+    // Needs Ctrl, Alt or Win; Win + L belongs to the system.
+    private void SetHotkey(Controls.KeyChord chord)
+    {
+        if (chord.Key == Key.None || Controls.KeyChord.IsModifier(chord.Key)) return;
+        uint mods = chord.GlobalMods;
+        if ((mods & ~Native.MOD_SHIFT) == 0 || HotkeyService.IsReserved(mods, chord.VirtualKey)) return;
+        _host.Settings.SetGlobalHotkey("Panel", mods, chord.VirtualKey);
         Controls.HotkeyBox.Release(HotkeyBox);
         ShowHotkey();
     }

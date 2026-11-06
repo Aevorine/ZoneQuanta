@@ -27,6 +27,10 @@ public sealed class CellGridPanel : System.Windows.Controls.Panel
         nameof(Gap), typeof(double), typeof(CellGridPanel),
         new FrameworkPropertyMetadata(14.0, FrameworkPropertyMetadataOptions.AffectsMeasure));
 
+    public static readonly DependencyProperty StretchProperty = DependencyProperty.Register(
+        nameof(Stretch), typeof(bool), typeof(CellGridPanel),
+        new FrameworkPropertyMetadata(true, FrameworkPropertyMetadataOptions.AffectsMeasure));
+
     public static readonly DependencyProperty ColSpanProperty = Attached("ColSpan", 1);
     public static readonly DependencyProperty RowSpanProperty = Attached("RowSpan", 1);
     public static readonly DependencyProperty PinColProperty = Attached("PinCol", -1);
@@ -68,6 +72,16 @@ public sealed class CellGridPanel : System.Windows.Controls.Panel
         set => SetValue(GapProperty, value);
     }
 
+    // Columns widen to fill the width (true), or keep CellWidth with the block centred (exact spacing).
+    public bool Stretch
+    {
+        get => (bool)GetValue(StretchProperty);
+        set => SetValue(StretchProperty, value);
+    }
+
+    // Left edge of the first column (non-zero only when not stretched).
+    private double _offset;
+
     // Keeps the current column count (while a child is dragged, so the grid under the pointer holds still).
     public bool Frozen { get; set; }
 
@@ -97,7 +111,7 @@ public sealed class CellGridPanel : System.Windows.Controls.Panel
     public (int Col, int Row) CellAt(Point p, int colSpan, int maxRow)
     {
         double step = Track + Gap;
-        int col = step > 0 ? (int)Math.Round(p.X / step) : 0;
+        int col = step > 0 ? (int)Math.Round((p.X - _offset) / step) : 0;
         int row = (int)Math.Round(p.Y / Math.Max(1, CellHeight));
         return (Math.Clamp(col, 0, Math.Max(0, Columns - Math.Min(Math.Max(1, colSpan), Columns))), Math.Clamp(row, 0, Math.Max(0, maxRow)));
     }
@@ -107,7 +121,7 @@ public sealed class CellGridPanel : System.Windows.Controls.Panel
     public (int Col, int Row) CellUnder(Point p)
     {
         double step = Track + Gap;
-        int col = step > 0 ? (int)Math.Floor(Math.Max(0, p.X) / step) : 0;
+        int col = step > 0 ? (int)Math.Floor(Math.Max(0, p.X - _offset) / step) : 0;
         int row = (int)Math.Floor(Math.Max(0, p.Y) / Math.Max(1, CellHeight));
         return (Math.Clamp(col, 0, Math.Max(0, Columns - 1)), Math.Clamp(row, 0, RowsUsed));
     }
@@ -173,6 +187,12 @@ public sealed class CellGridPanel : System.Windows.Controls.Panel
         }
         int cols = best!.Columns;
         double track = Math.Max(0, (width - gap * (cols - 1)) / cols);
+        _offset = 0;
+        if (!Stretch && track > CellWidth)
+        {
+            _offset = Math.Floor((width - (cols * CellWidth + gap * (cols - 1))) / 2);
+            track = CellWidth;
+        }
         Columns = cols;
         Track = track;
         RowsUsed = best.Rows;
@@ -181,7 +201,7 @@ public sealed class CellGridPanel : System.Windows.Controls.Panel
         for (int i = 0; i < kids.Count; i++)
         {
             var (row, col, c, r) = best.Cells[i];
-            var rect = new Rect(col * (track + gap), row * cellH, c * track + (c - 1) * gap, r * cellH);
+            var rect = new Rect(_offset + col * (track + gap), row * cellH, c * track + (c - 1) * gap, r * cellH);
             kids[i].Measure(rect.Size);
             _rects.Add(rect);
             _cellOf[kids[i]] = (col, row);

@@ -30,6 +30,10 @@
 | Display speed | A dedicated high-resolution timer thread wakes about 12 ms before each second, so the new second is presented in the frame that contains the boundary; sampling runs on a background thread and the taskbar numbers refresh every 0.5 s by default (0.25 / 0.5 / 1 / 2 s selectable); the hover card opens in about 10 ms; the monitor follows an auto-hidden taskbar within a few milliseconds of it appearing |
 | Low footprint | Redraws only what changes; sampling drops to once a second while the band is tucked away and the panel is closed; about 75 MB RAM and normally under 1% of one core when idle |
 
+## v1.6.0
+
+Quick panel: adjustable spacing (icon gaps, border distances, gap between groups, compact / standard / roomy presets, fill width) that fits more icons per group and more groups on screen without changing the icon size (compact: 18 icons in a 4 × 2 card); folded groups open as a folder view over the board ("+N" or a click on the card) while the board stays put; shortcuts may include Win (recorded through a low-level keyboard hook, Win combinations Windows owns are taken over); newly installed apps join the panel by themselves, grouped (Start menu and chosen folders are watched).
+
 ## v1.5.0
 
 Quick panel: a folded group shows all its cells (1×4 shows 4 icons) with "+N" on a pill beside the name; dragging an icon shows where it lands (a slot bar in a card, a ring on an icon to make a group, a dashed placeholder cell it is pinned to while the icons around make room) under any sort; unfolding or folding a group never moves it; the panel really reopens at its last size, also when it fills the screen; one click clears items whose target is gone; group names follow their members for hand-made groups too (typed names stay); new bookmark import from iTab backups, browser bookmarks and bookmarks.html — every link opens on click, has an icon at once (replaced by its real icon in the background) and is grouped by site, name and its original folder.
@@ -132,6 +136,7 @@ Command line (usable from scripts and Claude Code; a second launch hands the com
 | `ZoneQuanta.exe --quick-add <path> [<path> …]` | Add files / folders to the quick panel (relative paths use the current directory) |
 | `ZoneQuanta.exe --quick-import <file>` | Import a bookmark file (iTab backup, bookmarks.html, browser bookmark JSON) into grouped quick items |
 | `ZoneQuanta.exe --quick-clean` | Remove quick items whose target is gone (one undo step) |
+| `ZoneQuanta.exe --quick-scan [all]` | Import new shortcuts from the watched Start menu / extra folders now (`all`: also those already there) |
 | `ZoneQuanta.exe --quick` | Show the quick panel |
 | `ZoneQuanta.exe --path-bar` | Show the open-a-path input |
 | `ZoneQuanta.exe --open <path or URL>` | Open a location with the same rules as the input |

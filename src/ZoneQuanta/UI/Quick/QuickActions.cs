@@ -43,6 +43,8 @@ public sealed class QuickActions
 
     public QuickStore Store { get; }
     public AppSettings Settings { get; }
+    // Watched Start menu / extra folders (set by the app; null in tools that have none).
+    public ShortcutFolderSync? FolderSync { get; set; }
     public QuickImport Importer { get; }
     public QuickItem? Highlight { get; private set; }
 
@@ -571,9 +573,11 @@ public sealed class QuickActions
     }
 
     // Only items that are ungrouped and were never placed by hand are touched; names, shortcut targets
-    // and program descriptions are read off the UI thread.
-    public async Task<int> AutoGroupAsync()
+    // and program descriptions are read off the UI thread. only: just these items, even with automatic
+    // grouping switched off (new apps found in the watched folders).
+    public async Task<int> AutoGroupAsync(IReadOnlyCollection<QuickItem>? only = null)
     {
+        if (only is not null) return await GroupNowAsync(only);
         if (_autoRunning)
         {
             _autoAgain = true;
@@ -612,6 +616,31 @@ public sealed class QuickActions
                 _autoAgain = false;
                 ScheduleAutoGroup();
             }
+        }
+    }
+
+    private async Task<int> GroupNowAsync(IReadOnlyCollection<QuickItem> only)
+    {
+        var todo = only.Where(i => Store.Items.Contains(i) && QuickStore.NeedsGroup(i)).Select(i => (Item: i, i.Path, Name: i.DisplayName)).ToList();
+        if (todo.Count == 0) return 0;
+        try
+        {
+            var manual = ManualPlacements();
+            var kinds = GroupKinds();
+            var picks = await Task.Run(() =>
+            {
+                var learned = Learn(manual, kinds);
+                return todo.Select(t => { var p = Pick(t.Path, t.Name, learned); return (t.Item, p.Kind, p.Group, p.Why); }).ToList();
+            });
+            int n = Store.AutoAssign(picks.Select(p => new Placement(p.Item, p.Kind, p.Group)), QuickCategories.Order);
+            Log.Write($"auto-group (new apps) {n}/{todo.Count}: {Describe(picks)}");
+            if (n > 0) RefreshAutoNames();
+            return n;
+        }
+        catch (Exception ex)
+        {
+            Log.Error("auto-group new apps", ex);
+            return 0;
         }
     }
 

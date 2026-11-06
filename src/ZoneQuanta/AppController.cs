@@ -41,6 +41,7 @@ public sealed class AppController : IPanelHost, IDisposable
     private QuickWindow? _quickWindow;
     private PathBarWindow? _pathBar;
     private StartPinSync? _startSync;
+    private ShortcutFolderSync? _folderSync;
     private bool _recordingKeys;
     private readonly object _gate = new();
     private Dispatcher _dispatcher = null!;
@@ -132,6 +133,14 @@ public sealed class AppController : IPanelHost, IDisposable
             bulk ? $"已从「开始」导入 {names.Count} 个应用" : "已加入快捷面板",
             bulk ? $"按 {UI.Panel.Pages.SystemPage.Format(s.QuickHotkeyModifiers, s.QuickHotkeyKey)} 打开快捷面板" : string.Join("、", names.Take(6)));
         _startSync.Apply(s.QuickStartSync);
+        _folderSync = new ShortcutFolderSync(_quick, s, _dispatcher);
+        _quick.FolderSync = _folderSync;
+        _folderSync.Imported += names =>
+        {
+            PrewarmIcons(names.Count);
+            _tray.Notify(names.Count == 1 ? $"已加入快捷面板：{names[0]}" : $"已加入快捷面板 {names.Count} 个新应用", string.Join("、", names.Take(6)));
+        };
+        _folderSync.Apply(s.QuickWatch);
         _quick.Regrouped += n => _tray.Notify("快捷面板分类已更新", $"{n} 项移到了更合适的分组，在快捷面板按 Ctrl+Z 可撤销");
         _ = _quick.RegroupAsync().ContinueWith(_ => _quick.ScheduleAutoGroup(), TaskScheduler.FromCurrentSynchronizationContext());
         _pipe.Received += args => _dispatcher.BeginInvoke(new Action(() => Execute(args)));
@@ -232,6 +241,12 @@ public sealed class AppController : IPanelHost, IDisposable
                 // Every item whose target is gone leaves the panel (one undo step).
                 case "--quick-clean":
                     _ = CleanGoneAsync();
+                    break;
+                // New shortcuts in the watched Start menu / extra folders now ("--quick-scan all": also the ones already there).
+                case "--quick-scan":
+                    bool all = i + 1 < args.Length && args[i + 1].Equals("all", StringComparison.OrdinalIgnoreCase);
+                    if (all) i++;
+                    if (_folderSync is { } fs) _ = fs.RunAsync(importExisting: all);
                     break;
                 case "--quick":
                     QuickWindow().Present();
@@ -414,6 +429,7 @@ public sealed class AppController : IPanelHost, IDisposable
         _hotkey.Dispose();
         _pipe.Dispose();
         _startSync?.Dispose();
+        _folderSync?.Dispose();
         _tray.Dispose();
         _quickWindow?.Close();
         _pathBar?.Close();
@@ -578,6 +594,10 @@ public sealed class AppController : IPanelHost, IDisposable
             case nameof(AppSettings.QuickContextMenu):
                 ApplyExplorerMenu();
                 break;
+            case nameof(AppSettings.QuickWatch):
+            case nameof(AppSettings.QuickWatchFolders):
+                _folderSync?.Apply(Settings.QuickWatch);
+                break;
             case nameof(AppSettings.QuickStartSync):
                 _startSync?.Apply(Settings.QuickStartSync);
                 break;
@@ -593,7 +613,7 @@ public sealed class AppController : IPanelHost, IDisposable
     private void RegisterHotkey(int id)
     {
         var s = Settings;
-        if (_recordingKeys || DataPaths.Sandboxed) return;
+        if (_recordingKeys || (DataPaths.Sandboxed && !DataPaths.SandboxHotkeys)) return;
         var (on, mods, key, page) = id switch
         {
             HotkeyService.QuickId => (s.QuickHotkeyEnabled, s.QuickHotkeyModifiers, s.QuickHotkeyKey, "快捷键"),
@@ -610,5 +630,6 @@ public sealed class AppController : IPanelHost, IDisposable
             _tray.Notify("快捷键不可用", $"{UI.Panel.Pages.SystemPage.Format(mods, key)} 已被其他程序占用，请在「{page}」页更换");
             Log.Write($"hotkey busy {id:X}");
         }
+        else Log.Write($"hotkey {id:X} {UI.Panel.Pages.SystemPage.Format(mods, key)} via {_hotkey.Route(id) ?? "-"}");
     }
 }

@@ -22,6 +22,10 @@
                     <ToggleButton Style="{StaticResource SwitchRow}" Content="托盘菜单显示" IsChecked="{Binding QuickInTray, Mode=TwoWay}"/>
                     <ToggleButton Style="{StaticResource SwitchRow}" Content="同步「开始」固定的应用" IsChecked="{Binding QuickStartSync, Mode=TwoWay}"/>
                     <ToggleButton Style="{StaticResource SwitchRow}" Content="自动分类" IsChecked="{Binding QuickAutoGroup, Mode=TwoWay}"/>
+                    <Grid>
+                        <ToggleButton Style="{StaticResource SwitchRow}" Content="自动导入新安装的应用" IsChecked="{Binding QuickWatch, Mode=TwoWay}"/>
+                        <Button x:Name="WatchFolders" Style="{StaticResource IconButton}" Tag="{StaticResource Icon.Folder}" ToolTip="监视的文件夹" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,64,0"/>
+                    </Grid>
                 </StackPanel>
             </Border>
 
@@ -55,7 +59,8 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0" VerticalAlignment="Center">
                     <ToggleButton x:Name="GroupMode" Style="{StaticResource IconToggle}" Tag="{StaticResource Icon.Groups}" ToolTip="分组"/>
                     <ToggleButton x:Name="TileMode" Style="{StaticResource IconToggle}" Tag="{StaticResource Icon.Grid}" ToolTip="网格"/>
-                    <ToggleButton x:Name="ListMode" Style="{StaticResource IconToggle}" Tag="{StaticResource Icon.List}" ToolTip="列表" Margin="0,0,10,0"/>
+                    <ToggleButton x:Name="ListMode" Style="{StaticResource IconToggle}" Tag="{StaticResource Icon.List}" ToolTip="列表"/>
+                    <Button x:Name="SpacingButton" Style="{StaticResource IconButton}" Tag="{StaticResource Icon.Spacing}" ToolTip="间距" Margin="0,0,10,0"/>
                     <Button x:Name="AddFiles" Style="{StaticResource Action}" Content="添加文件" Margin="0,0,6,0"/>
                     <Button x:Name="AddFolder" Style="{StaticResource Action}" Content="添加文件夹" Margin="0,0,6,0"/>
                     <Button x:Name="ImportLinks" Style="{StaticResource Action}" Content="导入书签" Margin="0,0,6,0"/>

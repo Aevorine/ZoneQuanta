@@ -22,13 +22,12 @@ namespace ZoneQuanta.UI.Quick;
 // make room, and stays pinned where it is dropped. Unfolding a card keeps it where it is.
 public sealed partial class QuickGrid
 {
-    // Card chrome around the icon grid: padding 8 + border 1 on each side.
+    // Chrome of a one-column (small icon) card: padding 8 + border 1 on each side.
     private const double CardChrome = 18;
     // Room under each card for its name (and the space before the next row of cards).
-    private const double LabelStrip = 34;
-    // A one-column card shows a single column of smaller icons in cells of this size.
-    private const double MiniCell = 40;
-    private const double ColumnGap = 14;
+    private const double LabelStrip = BoardMetrics.LabelStrip;
+    // Spacing from the settings, refreshed on every build.
+    private BoardMetrics _m;
     // The middle part of an icon (fraction of its size) where a drop makes a group instead of taking the cell.
     private const double MergeZone = 0.56;
     // The vertical gutter is always reserved: a scroll bar appearing must not change the width and reflow the grid.
@@ -40,7 +39,7 @@ public sealed partial class QuickGrid
         Background = Brushes.Transparent,
         AllowDrop = true,
     };
-    private readonly CellGridPanel _board = new() { Background = Brushes.Transparent, Margin = new Thickness(2, 2, 2, 4), Gap = ColumnGap };
+    private readonly CellGridPanel _board = new() { Background = Brushes.Transparent, Margin = new Thickness(2, 2, 2, 4) };
     private readonly Grid _boardHost = new();
     private readonly Canvas _overlay = new() { IsHitTestVisible = false };
     private readonly Border _slotBar = new() { Width = 3, CornerRadius = new CornerRadius(1.5), Visibility = Visibility.Collapsed, IsHitTestVisible = false };
@@ -65,13 +64,10 @@ public sealed partial class QuickGrid
     // Card fill: the launcher window sits on SurfaceBrush, the panel page on CardBrush.
     public string GroupBackground { get; set; } = "CardBrush";
 
-    // One icon in a card (the "Card" tile): its width, and its height with or without the name line.
-    private double CellWidth => _actions.Settings.QuickShowName ? 80 : 64;
-    private double TileHeight => _actions.Settings.QuickShowName ? 80 : 58;
-    // A grid row is one row of icons. A card with n icon rows covers n + 1 grid rows: the extra one holds
-    // its chrome and name (CardChrome + LabelStrip < TileHeight), so icon rows stay tight at any height
-    // and cards of different heights still line up on whole rows.
-    private double RowHeight => TileHeight;
+    // A grid row is one row of loose icons. A card with n icon rows covers at most n + 1 grid rows (the extra
+    // one holds its border and name), fewer when its rows are tighter, so cards still line up on whole rows.
+    private double RowHeight => _m.CellHeight;
+    private double ColumnGap => _m.Group;
 
     // Columns × rows of a group card: its own size, else the default, else by item count.
     private (int Cols, int Rows) CardSize(QuickGroup group, int count)
@@ -79,11 +75,21 @@ public sealed partial class QuickGrid
         if (group.Cols > 0 && group.Rows > 0) return (group.Cols, group.Rows);
         var s = _actions.Settings;
         if (s.QuickCardCols > 0 && s.QuickCardRows > 0) return (s.QuickCardCols, s.QuickCardRows);
-        return count <= 2 ? (2, 1) : count <= 4 ? (count, 1) : (4, 2);
+        var (c0, r0) = count <= 2 ? (2, 1) : count <= 4 ? (count, 1) : (4, 2);
+        if (_m.Standard) return (c0, r0);
+        // Tighter spacing: the fewest cells that still show as many icons as the usual size would.
+        int need = Math.Min(count, _m.ColsFor(c0) * _m.RowsFor(r0));
+        var best = (c0, r0);
+        for (int r = 1; r <= r0; r++)
+            for (int c = 2; c <= c0; c++)
+                if (_m.ColsFor(c) * _m.RowsFor(r) >= need && (c * r < best.Item1 * best.Item2 || (c * r == best.Item1 * best.Item2 && c > best.Item1)))
+                    best = (c, r);
+        return best;
     }
 
     private void InitBoard()
     {
+        _m = BoardMetrics.From(_actions.Settings);
         _boardHost.Children.Add(_board);
         _overlay.Children.Add(_slotBar);
         _boardHost.Children.Add(_overlay);
@@ -95,6 +101,7 @@ public sealed partial class QuickGrid
         _ghost.Children.Add(fill);
         _ghost.Children.Add(outline);
         _boardScroll.Content = _boardHost;
+        _boardRoot.Children.Add(_boardScroll);
         _boardScroll.PreviewMouseLeftButtonDown += OnBoardDown;
         _boardScroll.PreviewMouseMove += OnBoardMove;
         _boardScroll.PreviewMouseLeftButtonUp += OnBoardUp;
@@ -114,8 +121,11 @@ public sealed partial class QuickGrid
     private void BuildBoard()
     {
         ClearBoard();
-        _board.CellWidth = CellWidth + 4;
-        _board.CellHeight = RowHeight;
+        _m = BoardMetrics.From(_actions.Settings);
+        _board.CellWidth = _m.CellWidth;
+        _board.CellHeight = _m.CellHeight;
+        _board.Gap = _m.Group;
+        _board.Stretch = _actions.Settings.QuickFill;
         var h = _actions.Highlight;
         foreach (var (group, items) in _actions.Sections())
         {
@@ -192,7 +202,7 @@ public sealed partial class QuickGrid
         }
         tile.Margin = view == "Grid" ? new Thickness(4, 6, 4, 6) : new Thickness(0);
         tile.VerticalAlignment = VerticalAlignment.Top;
-        tile.Layout(view);
+        tile.Layout(view, _m);
         return tile;
     }
 
@@ -270,9 +280,11 @@ public sealed partial class QuickGrid
     {
         var tile = TileAt(e.OriginalSource);
         bool click = !_dragging && tile is not null && tile == _downTile && !tile.Renaming;
+        var card = !_dragging && tile is null && _downCard is { } dc && CardAt(e.OriginalSource) == dc && dc.IsFace(e.OriginalSource) ? dc : null;
         _downTile = null;
         _downCard = null;
         if (click && _singleClick) _actions.Open(tile!.Item);
+        else if (card is { Folded: true }) OpenFolder(card);
     }
 
     private void OnBoardKey(object sender, KeyEventArgs e)
@@ -527,7 +539,10 @@ public sealed partial class QuickGrid
         var group = card.Group;
         menu.Items.Add(CardSizeMenu(menu, group.Cols, group.Rows, "跟随默认", (c, r) => _actions.SetSize(group, c, r)));
         if (card.CanExpand)
-            Add(menu, group.Expanded ? "收起" : "展开全部", group.Expanded ? "Icon.Up" : "Icon.Down", "", card.Toggle, true);
+        {
+            if (card.Folded) Add(menu, "查看全部", "Icon.Grid", "", () => OpenFolder(card), true);
+            Add(menu, group.Expanded ? "收起" : "原地展开", group.Expanded ? "Icon.Up" : "Icon.Down", "", card.Toggle, true);
+        }
         Add(menu, "按内容命名", "Icon.Bolt", "", () => _actions.NameByContent(group), true);
         if (group.Col is not null) Add(menu, "取消固定位置", "Icon.Pin", "", () => _actions.Unpin(group), true);
         if (_actions.Store.Groups.Any(g => g.Col is not null) || _actions.Store.Items.Any(i => i.Col is not null)) Add(menu, "全部自动排列", "Icon.Groups", "", () => _actions.Unpin(null), true);
@@ -556,14 +571,17 @@ public sealed partial class QuickGrid
         return sub;
     }
 
-    // One group: a rounded card covering its columns × rows of grid cells, with the name underneath.
-    // Every one of its columns × rows cells shows an icon (small icons in a one-column card, as many as fit);
-    // the pill beside the name ("+N") unfolds the rest in place, which is remembered per group.
+    // One group: a rounded card in its columns × rows of grid cells, with the name underneath. Icons sit at the
+    // pitch the spacing settings give (small icons in a one-column card, as many as fit); the card is as large
+    // as its icons and the border distance, centred in its cells. The pill beside the name ("+N") opens the
+    // folder view with every member; Ctrl+click or the menu unfolds them in place, remembered per group.
     private sealed class GroupCard : DockPanel
     {
         private readonly QuickGrid _owner;
         private readonly UniformWrapPanel _cells = new();
         private readonly Border _card;
+        private readonly Grid _face = new() { VerticalAlignment = VerticalAlignment.Top };
+        private double _slot, _rowH;
         private readonly Grid _labelHost = new() { Height = LabelStrip, Background = Brushes.Transparent, Cursor = Cursors.SizeAll };
         private readonly StackPanel _labelRow = new() { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(4, 6, 4, 0) };
         private readonly TextBlock _label;
@@ -580,8 +598,11 @@ public sealed partial class QuickGrid
         private int _startCols, _startRows;
 
         // How the card draws at its current width: small icons or full tiles, icon columns, icon rows
-        // while folded, icon rows drawn now, and the grid rows it covers.
-        private readonly record struct Shape(bool Mini, int Cols, int Rows, int DrawnRows, int Span);
+        // while folded, icon rows drawn now, and the grid rows it covers; then the icon slot and row height.
+        private readonly record struct Shape(bool Mini, int Cols, int Rows, int DrawnRows, int Span, double Slot = 0, double RowH = 0)
+        {
+            public bool SameCells(Shape o) => Mini == o.Mini && Cols == o.Cols && Rows == o.Rows && DrawnRows == o.DrawnRows && Span == o.Span;
+        }
 
         public GroupCard(QuickGrid owner, QuickGroup group, List<QuickItem> items, bool peek)
         {
@@ -590,6 +611,7 @@ public sealed partial class QuickGrid
             _peek = peek;
             Group = group;
             Background = Brushes.Transparent;
+            LastChildFill = false;
             (_wantCols, _wantRows) = owner.CardSize(group, items.Count);
             CellGridPanel.SetColSpan(this, _wantCols);
 
@@ -615,16 +637,16 @@ public sealed partial class QuickGrid
             };
             _label.SetResourceReference(TextBlock.ForegroundProperty, "TextBrush");
             _more.SetResourceReference(StyleProperty, "Pill");
+            // Folded: the folder view (Ctrl+click unfolds in place, as before). Unfolded: fold back.
             _more.Click += (_, e) =>
             {
-                Toggle();
+                if (Group.Expanded || _peek || (Keyboard.Modifiers & ModifierKeys.Control) != 0) Toggle();
+                else _owner.OpenFolder(this);
                 e.Handled = true;
             };
             _labelRow.Children.Add(_label);
             _labelRow.Children.Add(_more);
             _labelHost.Children.Add(_labelRow);
-            SetDock(_labelHost, Dock.Bottom);
-            Children.Add(_labelHost);
 
             // Bottom-right grip: drag to resize by whole cells, the size shown live beside it.
             _grip = new System.Windows.Controls.Primitives.Thumb
@@ -643,11 +665,13 @@ public sealed partial class QuickGrid
             };
             _badge.SetResourceReference(Border.BackgroundProperty, "RaisedBrush");
             _badge.SetResourceReference(Border.BorderBrushProperty, "LineBrush");
-            var face = new Grid();
-            face.Children.Add(_card);
-            face.Children.Add(_badge);
-            face.Children.Add(_grip);
-            Children.Add(face);
+            _face.Children.Add(_card);
+            _face.Children.Add(_badge);
+            _face.Children.Add(_grip);
+            SetDock(_face, Dock.Top);
+            Children.Add(_face);
+            SetDock(_labelHost, Dock.Top);
+            Children.Add(_labelHost);
             MouseEnter += (_, _) => ShowGrip(true);
             MouseLeave += (_, _) => { if (!_resizing) ShowGrip(false); };
             _grip.DragStarted += (_, _) => BeginResize();
@@ -660,10 +684,24 @@ public sealed partial class QuickGrid
         }
 
         public QuickGroup Group { get; }
+        public IReadOnlyList<QuickItem> Items => _items;
         public bool Renaming => _editor is not null;
         public bool CanExpand => _items.Count > _shape.Cols * _shape.Rows;
+        public bool Folded => CanExpand && !Group.Expanded && !_peek;
+        public int Columns => _shape.Mini ? Math.Max(2, _wantCols) : _shape.Cols;
+        // The card face in the given element's coordinates (where the folder view grows from).
+        public Rect FaceIn(Visual to) => _face.TransformToVisual(to).TransformBounds(new Rect(0, 0, _face.ActualWidth, _face.ActualHeight));
 
-        private double NarrowWidth => _wantCols * (_owner.CellWidth + 4) + (_wantCols - 1) * ColumnGap;
+        // The face, not the name strip or the controls: a click there opens the folder view.
+        public bool IsFace(object source)
+        {
+            if (IsControl(source)) return false;
+            for (var d = source as DependencyObject; d is not null && d != this; d = d is Visual ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
+                if (d == _face) return true;
+            return false;
+        }
+
+        private double NarrowWidth => _wantCols * _owner._m.CellWidth + (_wantCols - 1) * _owner.ColumnGap;
 
         protected override Size MeasureOverride(Size constraint)
         {
@@ -745,7 +783,7 @@ public sealed partial class QuickGrid
         {
             if (!_resizing) return;
             var d = Mouse.GetPosition(_owner._board) - _gripAt;
-            double colStep = Math.Max(1, _owner._board.Track + ColumnGap);
+            double colStep = Math.Max(1, _owner._board.Track + _owner.ColumnGap);
             int cols = Math.Clamp(_startCols + (int)Math.Round(d.X / colStep), 1, Math.Min(QuickGroup.MaxCols, Math.Max(1, _owner._board.Columns)));
             int rows = Math.Clamp(_startRows + (int)Math.Round(d.Y / _owner.RowHeight), 1, QuickGroup.MaxRows);
             if (cols == _wantCols && rows == _wantRows) return;
@@ -760,7 +798,12 @@ public sealed partial class QuickGrid
             Apply(ShapeFor(NarrowWidth));
         }
 
-        private void ShowSize() => _badgeText.Text = $"{_wantCols} 列 × {_wantRows} 行";
+        private void ShowSize()
+        {
+            var m = _owner._m;
+            int shown = _wantCols >= 2 ? m.ColsFor(_wantCols) * m.RowsFor(_wantRows) : MiniRows(_wantRows + 1);
+            _badgeText.Text = m.Standard ? $"{_wantCols} 列 × {_wantRows} 行" : $"{_wantCols} 列 × {_wantRows} 行 · {shown} 个";
+        }
 
         private void EndResize(bool commit)
         {
@@ -776,33 +819,56 @@ public sealed partial class QuickGrid
 
         // Small icon rows that fit a card covering this many grid rows.
         private int MiniRows(int span) =>
-            Math.Max(1, (int)Math.Floor((span * _owner.RowHeight - LabelStrip - CardChrome + 0.5) / MiniCell));
+            Math.Max(1, (int)Math.Floor((span * _owner.RowHeight - LabelStrip - CardChrome + 0.5) / _owner._m.MiniCell));
 
         private Shape ShapeFor(double width)
         {
-            double inner = Math.Max(0, width - CardChrome);
-            int cols = Math.Min(_wantCols, (int)Math.Floor((inner + 0.5) / _owner.CellWidth));
+            var m = _owner._m;
+            double inner = Math.Max(0, width - 2 - 2 * m.InsetX);
+            // Cells the card covers now (fewer than chosen in a narrow panel), then the icons they hold.
+            int cells = Math.Min(_wantCols, Math.Max(1, (int)Math.Floor((width + m.Group + 0.5) / (m.CellWidth + m.Group))));
+            int cols = cells >= 2 ? Math.Min(m.ColsFor(cells), (int)Math.Floor((inner + 0.5) / (m.Icon + 4))) : 1;
             if (_wantCols >= 2 && cols >= 2)
             {
-                // Full tiles in the chosen rows; unfolded, the card grows by whole rows.
-                int rows = _wantRows;
-                if (Unfolded(cols * _wantRows)) rows = Math.Max(rows, (int)Math.Ceiling(_items.Count / (double)cols));
-                return new Shape(false, cols, _wantRows, rows, rows + 1);
+                // Icon rows the chosen rows hold; unfolded, the card grows by whole grid rows. The icons share out
+                // the card evenly (rows + 1 grid rows: the extra one holds the border and the name).
+                int rows = m.RowsFor(_wantRows), drawn = rows, span = _wantRows + 1;
+                if (Unfolded(cols * rows))
+                    while (drawn * cols < _items.Count) drawn = m.RowsFor(++span - 1);
+                double rowH = (span * m.CellHeight - LabelStrip - 2 * m.InsetY - 2) / drawn;
+                return new Shape(false, cols, rows, drawn, span, Math.Floor(inner / cols * 100) / 100, Math.Floor(rowH * 100) / 100);
             }
-            int miniCols = Math.Max(1, (int)Math.Floor((inner + 0.5) / MiniCell));
-            int span = _wantRows + 1;
-            if (Unfolded(miniCols * MiniRows(span)))
-                while (miniCols * MiniRows(span) < _items.Count) span++;
-            return new Shape(true, miniCols, MiniRows(_wantRows + 1), MiniRows(span), span);
+            double miniInner = Math.Max(0, width - CardChrome);
+            int miniCols = Math.Max(1, (int)Math.Floor((miniInner + 0.5) / m.MiniCell));
+            int miniSpan = _wantRows + 1;
+            if (Unfolded(miniCols * MiniRows(miniSpan)))
+                while (miniCols * MiniRows(miniSpan) < _items.Count) miniSpan++;
+            return new Shape(true, miniCols, MiniRows(_wantRows + 1), MiniRows(miniSpan), miniSpan);
         }
 
         private void Apply(Shape shape)
         {
+            bool refill = !shape.SameCells(_shape) || _cells.Children.Count == 0;
             _shape = shape;
             if (CellGridPanel.GetRowSpan(this) != shape.Span) CellGridPanel.SetRowSpan(this, shape.Span);
             _cells.Columns = shape.Cols;
             _cells.Rows = shape.DrawnRows;
-            Fill();
+            var m = _owner._m;
+            _face.Height = Math.Max(0, shape.Span * m.CellHeight - LabelStrip);
+            // A border closer than half a gap pulls the icons outwards (negative margin).
+            _card.Padding = new Thickness(shape.Mini ? 8 : 0);
+            _cells.Margin = shape.Mini ? new Thickness(0) : new Thickness(m.InsetX, m.InsetY, m.InsetX, m.InsetY);
+            if (refill) Fill();
+            else if (shape.Slot != _slot || shape.RowH != _rowH) FitTiles();
+        }
+
+        // Full tiles take the slot width (never wider than a loose tile) and the row height.
+        private void FitTiles()
+        {
+            (_slot, _rowH) = (_shape.Slot, _shape.RowH);
+            if (_shape.Mini) return;
+            double w = Math.Min(_owner._m.TileWidth, _shape.Slot);
+            foreach (var t in _cells.Children.OfType<Tile>()) t.FitCard(w, _shape.RowH);
         }
 
         public bool IsLabel(object source)
@@ -849,13 +915,14 @@ public sealed partial class QuickGrid
             bool open = (Group.Expanded || _peek) && !_resizing;
             int shown = !overflow || open ? _items.Count : capacity;
             for (int i = 0; i < shown; i++) _cells.Children.Add(_owner.BoardTile(_items[i], view));
+            FitTiles();
             _more.Visibility = overflow ? Visibility.Visible : Visibility.Collapsed;
             if (!overflow) return;
             bool folded = !open;
             _more.Content = folded ? $"+{_items.Count - shown}" : null;
             _more.Tag = folded ? null : Application.Current.TryFindResource("Icon.Up");
-            _more.ToolTip = folded ? "展开全部" : "收起";
-            System.Windows.Automation.AutomationProperties.SetName(_more, $"{(folded ? "展开全部" : "收起")} {Group.Name}");
+            _more.ToolTip = folded ? "查看全部" : "收起";
+            System.Windows.Automation.AutomationProperties.SetName(_more, $"{(folded ? "查看全部" : "收起")} {Group.Name}");
         }
 
         public void BeginRename()

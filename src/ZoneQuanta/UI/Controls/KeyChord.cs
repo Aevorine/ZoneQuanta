@@ -67,7 +67,15 @@ public readonly record struct KeyChord(ModifierKeys Mods, Key Key)
     public bool Matches(KeyEventArgs e)
     {
         Key k = e.Key == Key.System ? e.SystemKey : e.Key;
-        return k == Key && Keyboard.Modifiers == Mods;
+        return k == Key && CurrentMods() == Mods;
+    }
+
+    // Keyboard.Modifiers never reports the Win key (WPF reads only Ctrl, Alt and Shift), so it is added here.
+    public static ModifierKeys CurrentMods()
+    {
+        var m = Keyboard.Modifiers;
+        if (Keyboard.IsKeyDown(Key.LWin) || Keyboard.IsKeyDown(Key.RWin)) m |= ModifierKeys.Windows;
+        return m;
     }
 
     public static bool IsModifier(Key k) =>

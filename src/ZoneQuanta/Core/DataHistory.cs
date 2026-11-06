@@ -201,7 +201,7 @@ public static class DataHistory
         ("QuickHotkey", "快捷键"), ("PathHotkey", "快捷键"), ("Hotkey", "快捷键"), ("LocalKeys", "面板快捷键"),
         ("AutoCheckUpdate", "更新"), ("AutoInstallUpdate", "更新"), ("UseMirrors", "更新"),
         ("Band", "监控条"), ("SampleIntervalMs", "刷新频率"), ("Speed", "网速单位"), ("TrackApps", "应用流量"),
-        ("Traffic", "流量页"), ("AppSort", "流量页"), ("AppGroupBy", "流量页"), ("OnlineIcons", "流量页"), ("QuickClassifier", "快捷面板"), ("Quota", "流量额度"), ("Quick", "快捷面板"),
+        ("Traffic", "流量页"), ("AppSort", "流量页"), ("AppGroupBy", "流量页"), ("OnlineIcons", "流量页"), ("QuickGap", "快捷面板间距"), ("QuickPad", "快捷面板间距"), ("QuickGroupGap", "快捷面板间距"), ("QuickClassifier", "快捷面板"), ("Quota", "流量额度"), ("Quick", "快捷面板"),
     };
 
     private static string Summarize(Dictionary<string, string> before, Dictionary<string, string> after)

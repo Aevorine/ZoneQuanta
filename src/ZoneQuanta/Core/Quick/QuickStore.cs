@@ -91,6 +91,10 @@ public sealed class QuickData
     public List<QuickGroup> Groups { get; set; } = new();
     public List<string> History { get; set; } = new();
     public List<string> StartSeen { get; set; } = new();
+    // Shortcut files already seen in the watched folders (imported or skipped), and folders whose existing
+    // contents were taken as the baseline: only shortcuts that appear later are imported.
+    public List<string> FolderSeen { get; set; } = new();
+    public List<string> FolderRoots { get; set; } = new();
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? Extra { get; set; }

@@ -22,7 +22,7 @@ public partial class App : Application
     private RegisteredWaitHandle? _wait;
     private AppController? _controller;
 
-    private static readonly string[] Commands = { "--quick-add", "--quick-import", "--quick-clean", "--quick", "--path-bar", "--open", "--panel", "--exit" };
+    private static readonly string[] Commands = { "--quick-add", "--quick-import", "--quick-clean", "--quick-scan", "--quick", "--path-bar", "--open", "--panel", "--exit" };
 
     public static bool Exiting { get; private set; }
 

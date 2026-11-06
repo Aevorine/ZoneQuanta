@@ -70,6 +70,18 @@ public partial class QuickPage : UserControl
         GroupMode.Click += (_, _) => s.QuickLayout = "Groups";
         TileMode.Click += (_, _) => s.QuickLayout = "Grid";
         ListMode.Click += (_, _) => s.QuickLayout = "List";
+        System.Windows.Controls.Primitives.Popup? watch = null;
+        WatchFolders.Click += (_, _) =>
+        {
+            watch ??= WatchFoldersPanel.Flyout(WatchFolders, actions);
+            watch.IsOpen = true;
+        };
+        System.Windows.Controls.Primitives.Popup? spacing = null;
+        SpacingButton.Click += (_, _) =>
+        {
+            spacing ??= SpacingPanel.Flyout(SpacingButton, s);
+            spacing.IsOpen = true;
+        };
         SyncView(s);
         s.PropertyChanged += (_, e) =>
         {
