@@ -253,12 +253,9 @@ public sealed class AppController : IPanelHost, IDisposable
         }
     }
 
-    // The scan runs after changes; a command right after start waits for it.
     private async Task CleanGoneAsync()
     {
-        _quick.ScheduleGoneScan();
-        await Task.Delay(2500);
-        int n = _quick.CleanGone();
+        int n = await _quick.CleanGoneNowAsync();
         Core.Log.Write($"quick clean (command): {n} removed");
     }
 

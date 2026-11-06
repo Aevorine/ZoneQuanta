@@ -79,6 +79,26 @@ public sealed class QuickActions
         }
     }
 
+    // A file added as itself, never read as bookmarks.
+    public void AddFile(string path)
+    {
+        var (item, isNew) = Store.Add(path);
+        Highlight = item;
+        if (isNew) Log.Write("quick add 1");
+    }
+
+    // For the command line: scans now instead of trusting the last background pass.
+    public async Task<int> CleanGoneNowAsync()
+    {
+        var items = Store.Items.Select(i => (Item: i, i.Path)).ToList();
+        var gone = await Task.Run(() => items.Where(x => ItemHealth.IsGone(x.Path)).Select(x => x.Item).ToList());
+        int n = Store.RemoveMany(gone, "target gone");
+        _gone = new HashSet<QuickItem>();
+        GoneChanged?.Invoke();
+        if (n > 0) RefreshAutoNames();
+        return n;
+    }
+
     // One click: every item whose target is gone leaves the panel, in one undo step.
     public int CleanGone()
     {
@@ -234,10 +254,10 @@ public sealed class QuickActions
         {
             string p = PathEngine.Clean(raw);
             if (p.Length == 0 || !(Exists(p) || PathEngine.IsShell(p))) continue;
-            // A bookmark file brings its links, not itself.
+            // A bookmark file brings its links, not itself (it is added as a file after all when it holds none).
             if (File.Exists(p) && BookmarkReader.LooksLikeBookmarks(p))
             {
-                _ = Importer.RunAsync(p);
+                _ = Importer.RunAsync(p, addIfNotBookmarks: true);
                 continue;
             }
             if (!PathEngine.IsShell(p) && !Path.IsPathFullyQualified(p)) p = Path.GetFullPath(p);

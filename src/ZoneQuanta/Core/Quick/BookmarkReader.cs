@@ -76,9 +76,12 @@ public static class BookmarkReader
             using var r = new StreamReader(file);
             var buf = new char[64 * 1024];
             string head = new(buf, 0, r.ReadBlock(buf, 0, buf.Length));
+            // Only the shapes bookmark files really have: a browser's roots with its bookmark bar, iTab's navigation,
+            // Firefox's place containers (a package.json with a "roots" setting is not one).
             return ext is ".html" or ".htm"
                 ? head.Contains("NETSCAPE-Bookmark-file", StringComparison.OrdinalIgnoreCase)
-                : head.TrimStart().StartsWith('{') && (head.Contains("\"roots\"") || head.Contains("\"navConfig\"") || head.Contains("x-moz-place"));
+                : head.TrimStart().StartsWith('{') && ((head.Contains("\"roots\"") && head.Contains("\"bookmark_bar\""))
+                    || head.Contains("\"navConfig\"") || head.Contains("text/x-moz-place"));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException) { return false; }
     }
@@ -173,8 +176,18 @@ public static class BookmarkReader
         catch (FormatException) { return null; }
     }
 
-    // One line, single spaces, no control characters.
-    public static string Clean(string s) => Regex.Replace(Regex.Replace(s ?? "", @"[\p{Cc}\p{Cf}]", " "), @"\s+", " ").Trim();
+    public const int MaxTitle = 200;
+
+    // One line, single spaces, no control characters, at most MaxTitle characters (no title is longer in
+    // practice, and every later pattern stays linear).
+    public static string Clean(string s)
+    {
+        string t = s ?? "";
+        if (t.Length > MaxTitle * 4) t = t[..(MaxTitle * 4)];
+        t = Regex.Replace(Regex.Replace(t, @"[\p{Cc}\p{Cf}]", " "), @"\s+", " ").Trim();
+        if (t.Length > MaxTitle) t = t[..(char.IsHighSurrogate(t[MaxTitle - 1]) ? MaxTitle - 1 : MaxTitle)].TrimEnd();
+        return t;
+    }
 
     private static string? NullIfEmpty(string s) => s.Length > 0 ? s : null;
 
@@ -183,8 +196,11 @@ public static class BookmarkReader
     public static string ShortTitle(string title, string url)
     {
         string t = Clean(title);
-        if (t.Length == 0) return Uri.TryCreate(url, UriKind.Absolute, out var u) ? (u.Host.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ? u.Host[4..] : u.Host) : url;
-        if (t.Length >= 12 && !t.Contains("://", StringComparison.Ordinal))
+        // No title, or the address itself as the title (an export of a page without one): the host only, since
+        // the full address may carry a token and the name ends up in the log.
+        if (t.Length == 0 || t.Contains("://", StringComparison.Ordinal) || t.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
+            return Uri.TryCreate(url, UriKind.Absolute, out var u) ? (u.Host.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ? u.Host[4..] : u.Host) : "link";
+        if (t.Length >= 12)
         {
             var parts = Regex.Split(t, @"\s+[-–—|·]+\s+|\s*[|｜]\s*|\s*——\s*|_|\s*[：:]\s*(?=\S)|\s+-\s*$");
             string head = parts[0].Trim(' ', '-', '–', '—', '|', '_');

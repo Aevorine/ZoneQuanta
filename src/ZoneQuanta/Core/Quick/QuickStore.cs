@@ -213,7 +213,8 @@ public sealed class QuickStore
     // Imported links in one undo step, each with its name, address and picture.
     public List<QuickItem> Import(IReadOnlyList<(string Path, string Name, string Url, string? Icon)> entries, string source)
     {
-        var fresh = entries.Where(e => Find(e.Path) is null).GroupBy(e => Normalize(e.Path), StringComparer.OrdinalIgnoreCase).Select(g => g.First()).ToList();
+        var have = new HashSet<string>(Data.Items.Select(i => i.Path), StringComparer.OrdinalIgnoreCase);
+        var fresh = entries.Where(e => !have.Contains(Normalize(e.Path))).GroupBy(e => Normalize(e.Path), StringComparer.OrdinalIgnoreCase).Select(g => g.First()).ToList();
         if (fresh.Count == 0) return new();
         Checkpoint($"import {fresh.Count} link(s) from {source}");
         var added = new List<QuickItem>();

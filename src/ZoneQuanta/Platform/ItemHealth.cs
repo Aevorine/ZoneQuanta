@@ -44,12 +44,13 @@ internal static class ItemHealth
     // The drive is there (a missing removable or network drive says nothing about the file).
     private static bool Reachable(string path) => Path.GetPathRoot(path) is { Length: > 0 } root && Directory.Exists(root);
 
+    // Only "not found" answers mean uninstalled; any other failure (the shell busy at sign-in) says nothing.
     private static bool ShellItemExists(string path)
     {
         var iid = typeof(IShellItem).GUID;
-        if (SHCreateItemFromParsingName(path, IntPtr.Zero, ref iid, out var item) != 0 || item is null) return false;
-        Marshal.ReleaseComObject(item);
-        return true;
+        int hr = SHCreateItemFromParsingName(path, IntPtr.Zero, ref iid, out var item);
+        if (item is not null) Marshal.ReleaseComObject(item);
+        return hr == 0 || !(unchecked((uint)hr) is 0x80070002 or 0x80070003 or 0x80070490);
     }
 
     [ComImport, Guid("43826d1e-e718-42ee-bc55-a1e261c37bfe"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]

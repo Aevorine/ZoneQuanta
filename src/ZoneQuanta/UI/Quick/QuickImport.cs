@@ -32,9 +32,14 @@ public sealed class QuickImport
     public event Action<string>? Finished;
 
     private sealed record Entry(string Path, string Name, string Url, string Icon, string Host, string? IconUrl, string Folders, string? Kind, string Why);
-    private sealed record Plan(string Format, List<Entry> Entries, int Skipped, int Total);
+    private sealed record Plan(string Format, List<Entry> Entries, int Skipped, int Total, int Over, int Failed);
 
-    public async Task<int> RunAsync(string file)
+    // One import takes at most this many new links: a browser profile with thousands of bookmarks would bury the
+    // panel and hold the disk and network for minutes; the rest can be imported from a smaller export.
+    public const int MaxLinks = 800;
+
+    // addIfNotBookmarks: a file that looked like a bookmark file but holds no links is added as a file instead.
+    public async Task<int> RunAsync(string file, bool addIfNotBookmarks = false)
     {
         if (Interlocked.Exchange(ref _busy, 1) == 1) return 0;
         var sw = Stopwatch.StartNew();
@@ -47,6 +52,12 @@ public sealed class QuickImport
             {
                 Log.Error("quick-import", ex);
                 Finished?.Invoke("导入失败");
+                return 0;
+            }
+            if (plan is null && addIfNotBookmarks)
+            {
+                Log.Write($"quick-import {Path.GetFileName(file)}: no links, added as a file");
+                _actions.AddFile(file);
                 return 0;
             }
             if (plan is null || plan.Entries.Count == 0)
@@ -68,9 +79,10 @@ public sealed class QuickImport
             int loose = added.Count(i => i.Group.Length == 0);
             var groups = added.Where(i => i.Group.Length > 0).GroupBy(i => i.Group).OrderByDescending(g => g.Count()).Select(g => $"{g.Key} {g.Count()}");
             Log.Write($"quick-import {plan.Format} {Path.GetFileName(file)}: {plan.Total} link(s), {added.Count} new, {plan.Skipped} already here, "
-                      + $"{grouped} grouped, {loose} loose, {sw.ElapsedMilliseconds}ms; groups: {string.Join(", ", groups)}");
+                      + $"{plan.Over} over the {MaxLinks} limit, {plan.Failed} unwritable, {grouped} grouped, {loose} loose, {sw.ElapsedMilliseconds}ms; "
+                      + $"groups: {string.Join(", ", groups)}");
             Log.Write("quick-import why: " + string.Join(", ", plan.Entries.Take(240).Select(e => $"{e.Name} -> {e.Kind ?? "loose"} ({e.Why})")));
-            Finished?.Invoke(plan.Skipped > 0 ? $"导入 {added.Count} · 跳过 {plan.Skipped}" : $"导入 {added.Count}");
+            Finished?.Invoke($"导入 {added.Count}" + (plan.Skipped > 0 ? $" · 跳过 {plan.Skipped}" : "") + (plan.Over > 0 ? $" · 超出上限 {plan.Over}" : ""));
             var fresh = plan.Entries.Where(e => Of(e) is not null).ToList();
             _ = Task.Run(() => UpgradeIcons(fresh));
             return added.Count;
@@ -83,21 +95,21 @@ public sealed class QuickImport
     {
         if (BookmarkReader.Read(file) is not { } read) return null;
         Directory.CreateDirectory(IconsDir);
-        // What the panel already opens: links by their address, and web apps / web shortcuts by their name
-        // (a site installed as an app has no address to compare: "Kimi" the app is "Kimi" the bookmark).
+        // What the panel already opens: links by their address, and web apps by their name (a site installed as an
+        // app has no address to compare: "Kimi" the app is "Kimi" the bookmark).
         var have = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var webNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (path, url, display) in known)
         {
             var hint = url is null && (path.EndsWith(".url", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)) ? ShellLinks.Describe(path) : null;
             if ((url ?? hint?.Url?.AbsoluteUri) is { } u) have.Add(Key(u));
-            if (url is not null || hint?.IsWebApp == true || hint?.Url is not null) webNames.Add(NameKey(display));
+            if (url is null && hint is { IsWebApp: true, Url: null }) webNames.Add(NameKey(display));
         }
         webNames.Remove("");
         var reuse = ExistingLinks();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var entries = new List<Entry>();
-        int skipped = 0;
+        int skipped = 0, over = 0, failed = 0;
         foreach (var b in read.Links)
         {
             if (!Uri.TryCreate(b.Url, UriKind.Absolute, out var uri)) continue;
@@ -105,40 +117,54 @@ public sealed class QuickImport
             string key = Key(b.Url), landing = Landing(uri, name);
             if (have.Contains(key) || webNames.Contains(NameKey(name))) { skipped++; continue; }
             if (!seen.Add(key) || (landing.Length > 0 && !seen.Add(landing))) { skipped++; continue; }
+            if (entries.Count >= MaxLinks) { over++; continue; }
             string folders = string.Join(" / ", b.Folders.Select(f => f.Replace('/', '／')));
-            string path = reuse.TryGetValue(key, out var old) ? old : NewLinkPath(name);
-            WriteLink(path, uri.AbsoluteUri, folders, read.Format);
             string host = uri.Host.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ? uri.Host[4..] : uri.Host;
             string icon = Path.Combine(IconsDir, Hash(key) + ".png");
-            if (!File.Exists(icon))
+            // One link that cannot be written (a locked file, a name the file system refuses) is skipped, not the import.
+            try
             {
-                if (b.IconData is { } bytes && WebIcons.Picture(bytes) is { } pic) WebIcons.SavePng(icon, pic.Pix, pic.W, pic.H);
-                else LinkIcons.Letter(icon, name, b.Badge, b.Color, host);
+                string path = reuse.TryGetValue(key, out var old) ? old : NewLinkPath(name);
+                WriteLink(path, uri.AbsoluteUri, folders, read.Format);
+                if (!File.Exists(icon))
+                {
+                    if (b.IconData is { } bytes && WebIcons.Picture(bytes) is { } pic) WebIcons.SavePng(icon, pic.Pix, pic.W, pic.H);
+                    else LinkIcons.Letter(icon, name, b.Badge, b.Color, host);
+                }
+                var e = QuickCategories.Explain(path, name, ShellLinks.Describe(path));
+                entries.Add(new Entry(path, name, uri.AbsoluteUri, icon, host, b.IconUrl, folders, QuickCategories.IsCatchAll(e.Group) ? null : e.Group, e.Why));
             }
-            var e = QuickCategories.Explain(path, name, ShellLinks.Describe(path));
-            entries.Add(new Entry(path, name, uri.AbsoluteUri, icon, host, b.IconUrl, folders, QuickCategories.IsCatchAll(e.Group) ? null : e.Group, e.Why));
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+                failed++;
+                Log.Write($"quick-import skipped \"{name}\" ({host}): {ex.GetType().Name}");
+            }
         }
         FollowFolders(entries);
-        return new Plan(read.Format, entries, skipped, read.Links.Count);
+        return new Plan(read.Format, entries, skipped, read.Links.Count, over, failed);
     }
 
     // A link nothing explains takes the kind most links filed beside it share: in its own folder, else in its
     // top folder, when that kind holds at least half of the explained ones there (and two or more).
     private static void FollowFolders(List<Entry> entries)
     {
-        string? Majority(IEnumerable<Entry> peers)
-        {
-            var known = peers.Where(p => p.Kind is not null).ToList();
-            var top = known.GroupBy(p => p.Kind!).OrderByDescending(g => g.Count()).FirstOrDefault();
-            return top is not null && top.Count() >= 2 && top.Count() * 2 >= known.Count ? top.Key : null;
-        }
-        string Top(string folders) => folders.Split(" / ")[0];
+        static string Top(string folders) => folders.Split(" / ")[0];
+        // Each folder's majority is counted once (linear in the number of links).
+        static Dictionary<string, string> Majorities(IEnumerable<Entry> all, Func<Entry, string> folderOf) =>
+            all.Where(p => p.Folders.Length > 0).GroupBy(folderOf).Select(g =>
+            {
+                var known = g.Where(p => p.Kind is not null).ToList();
+                var top = known.GroupBy(p => p.Kind!).OrderByDescending(k => k.Count()).FirstOrDefault();
+                return (Folder: g.Key, Kind: top is not null && top.Count() >= 2 && top.Count() * 2 >= known.Count ? top.Key : null);
+            }).Where(x => x.Kind is not null).ToDictionary(x => x.Folder, x => x.Kind!);
+        var inFolder = Majorities(entries, p => p.Folders);
+        var inTop = Majorities(entries, p => Top(p.Folders));
         for (int i = 0; i < entries.Count; i++)
         {
             var e = entries[i];
             if (e.Kind is not null || e.Folders.Length == 0) continue;
-            if (Majority(entries.Where(p => p.Folders == e.Folders)) is { } inFolder) entries[i] = e with { Kind = inFolder, Why = $"most of \"{e.Folders}\", {e.Why}" };
-            else if (Majority(entries.Where(p => Top(p.Folders) == Top(e.Folders))) is { } inTop) entries[i] = e with { Kind = inTop, Why = $"most of \"{Top(e.Folders)}\", {e.Why}" };
+            if (inFolder.TryGetValue(e.Folders, out var k1)) entries[i] = e with { Kind = k1, Why = $"most of \"{e.Folders}\", {e.Why}" };
+            else if (inTop.TryGetValue(Top(e.Folders), out var k2)) entries[i] = e with { Kind = k2, Why = $"most of \"{Top(e.Folders)}\", {e.Why}" };
         }
     }
 
@@ -210,7 +236,9 @@ public sealed class QuickImport
         foreach (char c in name) sb.Append(Path.GetInvalidFileNameChars().Contains(c) || char.IsControl(c) ? ' ' : c);
         string stem = sb.ToString().Trim().TrimEnd('.');
         if (stem.Length == 0) stem = "link";
-        if (stem.Length > 60) stem = stem[..60].Trim();
+        if (stem.Length > 60) stem = stem[..(char.IsHighSurrogate(stem[59]) ? 59 : 60)].Trim();
+        // Device names (CON, NUL, COM1 ...) are not file names, with or without an extension.
+        if (System.Text.RegularExpressions.Regex.IsMatch(stem, @"^(con|prn|aux|nul|com\d|lpt\d)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)) stem = "_" + stem;
         string path = Path.Combine(LinksDir, stem + ".url");
         for (int n = 2; File.Exists(path); n++) path = Path.Combine(LinksDir, $"{stem} ({n}).url");
         return path;

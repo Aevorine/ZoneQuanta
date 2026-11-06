@@ -128,7 +128,7 @@ public static class GroupNamer
     // Two members whose kind name is taken: named after both ("Chrome与Edge"), when short enough to read.
     private static string? Pair(IReadOnlyList<string> names)
     {
-        if (names.Count != 2) return null;
+        if (names.Count != 2 || names.Any(n => n.Length > 64)) return null;
         string Short(string n) => Regex.Replace(Regex.Replace(n, @"[\(（\[【][^\)）\]】]*[\)）\]】]", " "), @"\s+", " ").Trim();
         string a = Short(names[0]), b = Short(names[1]);
         if (a.Length == 0 || b.Length == 0 || string.Equals(a, b, StringComparison.OrdinalIgnoreCase) || a.Length + b.Length > 14) return null;

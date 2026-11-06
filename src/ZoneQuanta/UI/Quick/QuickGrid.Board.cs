@@ -60,6 +60,7 @@ public sealed partial class QuickGrid
     private DropPlan _plan;
     private (int Col, int Row)? _ghostAt;
     private Tile? _carried;
+    private readonly DispatcherTimer _leaveTimer = new() { Interval = TimeSpan.FromMilliseconds(120) };
 
     // Card fill: the launcher window sits on SurfaceBrush, the panel page on CardBrush.
     public string GroupBackground { get; set; } = "CardBrush";
@@ -99,12 +100,14 @@ public sealed partial class QuickGrid
         _boardScroll.PreviewMouseLeftButtonUp += OnBoardUp;
         _boardScroll.PreviewKeyDown += OnBoardKey;
         _boardScroll.DragOver += OnBoardDragOver;
-        // Leaving one child for another also raises DragLeave: only really leaving the board clears the plan.
-        _boardScroll.DragLeave += (_, e) =>
+        // Leaving one child for another also raises DragLeave, immediately followed by DragOver; only a leave no
+        // DragOver follows (out of the window, Esc, a drag from another program cancelled) clears the plan.
+        _leaveTimer.Tick += (_, _) =>
         {
-            var p = e.GetPosition(_boardScroll);
-            if (p.X < 0 || p.Y < 0 || p.X >= _boardScroll.ActualWidth || p.Y >= _boardScroll.ActualHeight) ShowPlan(default);
+            _leaveTimer.Stop();
+            ShowPlan(default);
         };
+        _boardScroll.DragLeave += (_, _) => _leaveTimer.Start();
         _boardScroll.Drop += OnBoardDrop;
     }
 
@@ -318,6 +321,7 @@ public sealed partial class QuickGrid
 
     private void OnBoardDragOver(object sender, DragEventArgs e)
     {
+        _leaveTimer.Stop();
         EdgeScroll(e);
         if (e.Data.GetDataPresent(GroupDragFormat))
         {
@@ -413,17 +417,21 @@ public sealed partial class QuickGrid
         ShowPlan(default);
         if (dragged is not null)
         {
-            Drop(dragged, plan);
+            DropAt(dragged, plan);
             return;
         }
         if (e.Data.GetData(DataFormats.FileDrop) is string[] files)
         {
+            // Files from outside join the card they were dropped on; they take the exact slot only in the custom
+            // order (another sort the user chose stays as it is).
             var added = _actions.Add(files, -1, plan.Kind == DropKind.IntoCard ? plan.Card!.Group.Name : null);
-            foreach (var item in added) Drop(item, plan);
+            bool custom = _actions.Settings.QuickSort == "Custom";
+            foreach (var item in added)
+                if (plan.Kind != DropKind.IntoCard || custom) DropAt(item, plan);
         }
     }
 
-    private void Drop(QuickItem item, DropPlan plan)
+    private void DropAt(QuickItem item, DropPlan plan)
     {
         switch (plan.Kind)
         {

@@ -317,8 +317,9 @@ public sealed partial class QuickGrid : UserControl
         }
         else if (e.Data.GetData(DataFormats.FileDrop) is string[] files)
         {
+            // Files from outside take the spot only in the custom order; under another sort they are simply added.
             foreach (var added in _actions.Add(files))
-                if (CanReorder) _actions.MoveBefore(added, InsertBefore(e, target, added));
+                if (CanReorder && _actions.Settings.QuickSort == "Custom") _actions.MoveBefore(added, InsertBefore(e, target, added));
         }
         e.Handled = true;
     }
