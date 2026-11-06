@@ -166,23 +166,55 @@ public sealed partial class QuickGrid
         public void Refresh()
         {
             if (_editor is null) _name.Text = Item.DisplayName;
-            ToolTip = _view is "Card" or "Mini" ? Item.DisplayName + Environment.NewLine + Item.Path : Item.Path;
+            string where = Item.Url ?? Item.Path;
+            ToolTip = _view is "Card" or "Mini" ? Item.DisplayName + Environment.NewLine + where : where;
             BuildDetails();
             RefreshMeta(false);
         }
 
+        // An imported link draws its own picture; everything else the shell's icon.
+        private string IconSource => Item.Icon is { Length: > 0 } f && File.Exists(f) ? IconImages.Prefix + f : Item.Path;
+        public bool Shows(string iconFile) => string.Equals(Item.Icon, iconFile, StringComparison.OrdinalIgnoreCase);
+
+        // The picture changed on disk: drawn again at the current size.
+        public void ReloadIcon()
+        {
+            _iconPx = 0;
+            SetIconSize(_iconDip);
+        }
+
+        private double _iconDip = 42;
+
         private void SetIconSize(double dip)
         {
+            _iconDip = dip;
             double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
             int px = (int)Math.Round(dip * Math.Max(1, scale));
             if (px == _iconPx && _icon.Children.Count > 0) return;
             _iconPx = px;
-            _icon.Children.Clear();
-            if (ShellIcons.Cached(Item.Path, px) is { } cached)
+            string source = IconSource;
+            if (ShellIcons.Cached(source, px) is { } cached)
             {
+                _icon.Children.Clear();
                 _icon.Children.Add(MakeImage(cached));
                 return;
             }
+            // A picture already shown stays until the new one is ready (no flash of the placeholder).
+            if (_icon.Children.Count > 0 && _icon.Children[0] is Image)
+            {
+                ShellIcons.Request(source, px, bmp =>
+                {
+                    if (bmp is null) return;
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        if (_iconPx != px) return;
+                        _icon.Children.Clear();
+                        _icon.Children.Add(MakeImage(bmp));
+                    }));
+                });
+                return;
+            }
+            _icon.Children.Clear();
             var ph = new Shapes.Path
             {
                 Data = (Geometry)Application.Current.FindResource(Directory.Exists(Item.Path) ? "Icon.Folder" : "Icon.File"),
@@ -191,7 +223,7 @@ public sealed partial class QuickGrid
             ph.SetResourceReference(StyleProperty, "IconPath");
             ph.SetResourceReference(Shapes.Shape.StrokeProperty, "MutedBrush");
             _icon.Children.Add(ph);
-            ShellIcons.Request(Item.Path, px, bmp =>
+            ShellIcons.Request(source, px, bmp =>
             {
                 if (bmp is null) return;
                 Dispatcher.BeginInvoke(new Action(() =>
@@ -230,6 +262,8 @@ public sealed partial class QuickGrid
                     else if (Directory.Exists(path)) { mod = Directory.GetLastWriteTime(path); exists = true; }
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { }
+                // A shortcut whose program was removed, or a Start app that was uninstalled, is gone too.
+                if (exists && ItemHealth.IsGone(path)) exists = false;
                 return (DateTime.UtcNow, size, mod, exists);
             }).ContinueWith(t => Dispatcher.BeginInvoke(new Action(() =>
             {

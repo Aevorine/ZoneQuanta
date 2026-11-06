@@ -26,6 +26,7 @@ public sealed class QuickWindow : LauncherWindow
     private readonly FrameworkElement _empty;
     private readonly Controls.WindowMemory _memory;
     private readonly Controls.SizeBadge _sizeBadge = new();
+    private readonly Button _clean = new() { VerticalAlignment = VerticalAlignment.Center };
 
     public QuickWindow(QuickActions actions, Action openSettings) : base("ZoneQuanta Quick")
     {
@@ -49,9 +50,20 @@ public sealed class QuickWindow : LauncherWindow
         add.Click += (_, _) => OpenAddMenu(add);
         var settings = IconButton("Icon.Sliders", "设置");
         settings.Click += (_, _) => { Hide(); _openSettings(); };
+        // Shown only while some items point at something that is gone; one click clears them all (Ctrl+Z brings them back).
+        _clean.SetResourceReference(StyleProperty, "Pill");
+        _clean.Tag = FindResource("Icon.Trash");
+        _clean.Margin = new Thickness(4, 0, 6, 0);
+        _clean.Click += (_, _) =>
+        {
+            int n = actions.CleanGone();
+            if (n > 0) _sizeBadge.Flash($"已清理 {n}");
+        };
+        actions.GoneChanged += SyncClean;
+        SyncClean();
 
         var tools = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        foreach (var b in new UIElement[] { _groups, _tiles, _list, sort, add, settings }) tools.Children.Add(b);
+        foreach (var b in new UIElement[] { _clean, _groups, _tiles, _list, sort, add, settings }) tools.Children.Add(b);
 
         var bar = new Grid { Background = Brushes.Transparent };
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -108,6 +120,16 @@ public sealed class QuickWindow : LauncherWindow
         SyncEmpty();
         _memory = new Controls.WindowMemory(this, () => actions.Settings.QuickBounds, b => actions.Settings.QuickBounds = b, "quick");
         _sizeBadge.Attach(_memory);
+        actions.Importer.Finished += text => Dispatcher.BeginInvoke(new Action(() => { if (IsVisible) _sizeBadge.Flash(text); }));
+    }
+
+    private void SyncClean()
+    {
+        int n = _actions.Gone.Count;
+        _clean.Visibility = n > 0 ? Visibility.Visible : Visibility.Collapsed;
+        _clean.Content = n.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        _clean.ToolTip = $"清理失效项（{n}）";
+        System.Windows.Automation.AutomationProperties.SetName(_clean, "清理失效项");
     }
 
     public Action? ImportStart { get; set; }
@@ -137,6 +159,7 @@ public sealed class QuickWindow : LauncherWindow
         _search.SelectAll();
         SyncEmpty();
         _grid.ScrollHome();
+        _actions.ScheduleGoneScan();
     }
 
     protected override bool OnEscape()
@@ -218,7 +241,7 @@ public sealed class QuickWindow : LauncherWindow
         var auto = new MenuItem { Header = "自动分类", IsCheckable = true, IsChecked = _actions.Settings.QuickAutoGroup };
         auto.Click += (_, _) => _actions.Settings.QuickAutoGroup = auto.IsChecked;
         menu.Items.Add(auto);
-        if (_actions.Store.Groups.Any(g => g.Col is not null))
+        if (_actions.Store.Groups.Any(g => g.Col is not null) || _actions.Store.Items.Any(i => i.Col is not null))
         {
             var flow = new MenuItem { Header = "全部自动排列", Tag = FindResource("Icon.Groups") };
             flow.Click += (_, _) => _actions.Unpin(null);
@@ -288,7 +311,46 @@ public sealed class QuickWindow : LauncherWindow
         menu.Items.Add(f);
         menu.Items.Add(d);
         menu.Items.Add(st);
+        menu.Items.Add(ImportMenu());
         menu.IsOpen = true;
+    }
+
+    // Bookmark files (iTab backups, exported bookmarks.html, JSON backups) and the browsers' own bookmarks.
+    private MenuItem ImportMenu()
+    {
+        var sub = new MenuItem { Header = "导入书签", Tag = FindResource("Icon.Globe") };
+        var file = new MenuItem { Header = "从文件…", Tag = FindResource("Icon.File") };
+        file.Click += (_, _) => ImportFile();
+        sub.Items.Add(file);
+        foreach (var (name, path) in BrowserBookmarks())
+        {
+            var mi = new MenuItem { Header = name };
+            mi.Click += (_, _) => _ = _actions.Importer.RunAsync(path);
+            sub.Items.Add(mi);
+        }
+        return sub;
+    }
+
+    private static System.Collections.Generic.IEnumerable<(string Name, string Path)> BrowserBookmarks()
+    {
+        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        foreach (var (name, dir) in new[] { ("Edge", @"Microsoft\Edge"), ("Chrome", @"Google\Chrome"), ("Brave", @"BraveSoftware\Brave-Browser"), ("Vivaldi", "Vivaldi") })
+        {
+            string f = System.IO.Path.Combine(local, dir, "User Data", "Default", "Bookmarks");
+            if (System.IO.File.Exists(f)) yield return (name, f);
+        }
+    }
+
+    private void ImportFile()
+    {
+        var dlg = new Win32.OpenFileDialog
+        {
+            Filter = "书签文件|*.itabdata;*.html;*.htm;*.json;Bookmarks|所有文件|*.*",
+            DereferenceLinks = true,
+        };
+        KeepOpen = true;
+        try { if (dlg.ShowDialog(this) == true) _ = _actions.Importer.RunAsync(dlg.FileName); }
+        finally { KeepOpen = false; Activate(); }
     }
 
     private void AddFiles()

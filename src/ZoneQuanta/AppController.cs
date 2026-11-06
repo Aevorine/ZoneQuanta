@@ -225,6 +225,14 @@ public sealed class AppController : IPanelHost, IDisposable
                     _quick.Add(paths);
                     QuickWindow().Present();
                     break;
+                // A bookmark file (iTab backup, bookmarks.html, a browser's Bookmarks): its links into the panel, grouped.
+                case "--quick-import":
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal)) _ = _quick.Importer.RunAsync(args[++i]);
+                    break;
+                // Every item whose target is gone leaves the panel (one undo step).
+                case "--quick-clean":
+                    _ = CleanGoneAsync();
+                    break;
                 case "--quick":
                     QuickWindow().Present();
                     break;
@@ -243,6 +251,15 @@ public sealed class AppController : IPanelHost, IDisposable
                     break;
             }
         }
+    }
+
+    // The scan runs after changes; a command right after start waits for it.
+    private async Task CleanGoneAsync()
+    {
+        _quick.ScheduleGoneScan();
+        await Task.Delay(2500);
+        int n = _quick.CleanGone();
+        Core.Log.Write($"quick clean (command): {n} removed");
     }
 
     // "%1" of a drive root arrives as C:\" and argv parsing turns that into C:" .

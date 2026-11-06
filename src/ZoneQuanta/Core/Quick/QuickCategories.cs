@@ -61,14 +61,21 @@ public static class QuickCategories
     public const string Ai = "AI", Browser = "浏览器", Social = "社交通讯", Mail = "邮件", Office = "办公学习",
         Dev = "开发", Engineering = "嵌入式与工程", Design = "设计", Media = "影音", Games = "游戏", Shopping = "购物",
         News = "资讯", Network = "网络与远程", Cloud = "网盘下载", SystemTools = "系统工具", Web = "网站",
-        Folders = "文件夹", Documents = "文档", MediaFiles = "媒体文件", Files = "文件", OtherApps = "其他应用";
+        Folders = "文件夹", Documents = "文档", MediaFiles = "媒体文件", Files = "文件", OtherApps = "其他应用",
+        Jobs = "招聘", Edu = "学习";
 
     // Display order of groups created together.
     public static readonly IReadOnlyList<string> Order = new[]
     {
-        Ai, Browser, Social, Mail, Office, Dev, Engineering, Design, Media, Games, Shopping, News, Network, Cloud,
+        Ai, Browser, Social, Mail, Office, Edu, Jobs, Dev, Engineering, Design, Media, Games, Shopping, News, Network, Cloud,
         SystemTools, Web, Folders, Documents, MediaFiles, Files, OtherApps,
     };
+
+    // Catch-all kinds: what is known when nothing specific is.
+    public static bool IsCatchAll(string kind) => kind is Web or OtherApps or Files;
+
+    // A second name for a kind whose own name another kind's group already carries.
+    public static string Alternate(string kind) => kind switch { Edu => "学习考试", Jobs => "求职招聘", _ => kind };
 
     // Checked in this order, so the more specific category wins (QQ邮箱 is mail before QQ is social,
     // 夸克网盘 is cloud storage before 夸克 is a browser, Steam++ is a network tool before Steam is a game).
@@ -76,14 +83,26 @@ public static class QuickCategories
     // a leading '=' means the whole name must equal it.
     private static readonly (string Group, string[] Keys)[] Rules =
     {
-        (Mail, new[] { "邮箱", "邮件", "mail", "email", "e mail", "gmail", "outlook", "foxmail", "thunderbird", "spark mail" }),
+        (Mail, new[] { "邮箱", "邮件", "mail", "email", "e mail", "gmail", "outlook", "foxmail", "thunderbird", "spark mail", "tempmail" }),
+        // Recruitment and schooling before the tools their sites mention (a campus VPN portal is a school site).
+        (Jobs, new[] { "招聘", "求职", "就业", "实习", "校招", "job", "jobs", "career", "careers", "recruit", "recruiting", "recruitment",
+            "hiring", "hotjob", "wecruit", "zhaopin", "智联", "前程无忧", "51job", "boss直聘", "zhipin", "猎聘", "liepin", "mokahr",
+            "zhiye", "牛客", "nowcoder", "airjobs", "bysjy" }),
+        (Edu, new[] { "大学", "university", "college", "学院", "edu", "教育", "考试", "exam", "neea", "chsi", "学信", "cet", "四六级",
+            "ncre", "研究生", "graduate", "考研", "研招", "教务", "jwgl", "教学", "学工", "公考", "公务员", "考公", "真题", "刷题", "题库",
+            "课程", "course", "courses", "skilljar", "mooc", "慕课", "大纲", "专业目录", "学习通", "超星", "雨课堂", "课堂", "网课", "素养",
+            "study", "learn", "learning", "tutorial", "教程", "学堂", "xuetangx", "icourse", "coursera", "edx", "udemy", "khan academy" }),
         // Coding agents and AI editors are development tools before they are AI chats.
         (Dev, new[] { "codex", "cursor", "windsurf", "trae", "claude code", "github copilot", "copilot cli", "cline", "aider", "harness",
-            "opencode", "kiro", "antigravity", "zed", "cc switch", "ccswitch", "mcp server", "coding agent", "ai coding", "vibe coding" }),
+            "opencode", "kiro", "antigravity", "zed", "cc switch", "ccswitch", "mcp server", "coding agent", "ai coding", "vibe coding",
+            "csdn", "juejin", "掘金", "cnblogs", "博客园" }),
+        // Reading apps named after a messenger (微信读书) are reading.
+        (Office, new[] { "微信读书", "weread" }),
         (Ai, new[] { "claude", "chatgpt", "openai", "deepseek", "gemini", "grok", "kimi", "豆包", "doubao", "千问", "qwen", "通义", "tongyi",
             "qianwen", "文心", "ernie", "copilot", "perplexity", "poe", "智谱", "chatglm", "元宝", "秘塔", "metaso", "minimax", "海螺",
             "cherry studio", "lm studio", "ollama", "midjourney", "stable diffusion", "comfyui", "ai助手", "huggingface", "hugging face",
-            "openrouter", "dify", "coze", "扣子", "智能体" }),
+            "openrouter", "dify", "coze", "扣子", "智能体", "ai", "可灵", "kling", "notebooklm", "motionsites", "aigc", "人工智能", "大模型",
+            "llm", "openclaw", "anthropic" }),
         (Cloud, new[] { "网盘", "云盘", "onedrive", "dropbox", "google drive", "icloud", "坚果云", "nextcloud", "mega", "idm",
             "internet download manager", "迅雷", "qbittorrent", "bitcomet", "motrix", "aria2", "m3u8", "m3u8dl", "下载器", "downloader",
             "free download manager", "abdownloadmanager", "百度网盘", "阿里云盘", "115", "yt dlp", "youtube dl", "streamlink", "you get",
@@ -92,12 +111,16 @@ public static class QuickCategories
             "vpn", "speedtest", "speed test", "测速", "加速器", "steam++", "watt toolkit", "localsend", "wireshark", "fiddler", "charles",
             "proxifier", "远程", "remote", "todesk", "anydesk", "teamviewer", "向日葵", "sunlogin", "rustdesk", "mstsc", "parsec", "网易uu远程",
             "uu远程", "gameviewer", "moonlight", "sunshine",
-            "finalshell", "xshell", "putty", "mobaxterm", "termius", "winscp", "filezilla", "tailscale", "zerotier", "网络" }),
+            "finalshell", "xshell", "putty", "mobaxterm", "termius", "winscp", "filezilla", "tailscale", "zerotier", "网络", "network",
+            "dns leak", "leak test", "webrtc", "browserleaks", "ipleak", "ping0", "ip检测", "ip查询", "加速", "梯子", "代理",
+            "proxy", "hotspot", "x ui", "3x ui", "s ui", "xui", "路由器", "router" }),
         (Browser, new[] { "chrome", "edge", "firefox", "opera", "brave", "vivaldi", "夸克", "quark", "浏览器", "browser", "safari",
-            "chromium", "360se", "internet explorer", "maxthon", "傲游", "tor browser", "waterfox", "librewolf", "thorium" }),
+            "chromium", "360se", "internet explorer", "maxthon", "傲游", "tor browser", "waterfox", "librewolf", "thorium",
+            "=google", "google search", "=bing", "必应", "=百度", "百度一下", "搜索引擎", "search engine", "duckduckgo" }),
         (Shopping, new[] { "闲鱼", "淘宝", "taobao", "天猫", "tmall", "京东", "拼多多", "pinduoduo", "amazon", "亚马逊", "ebay", "美团",
             "饿了么", "得物", "唯品会", "苏宁", "当当", "aliexpress", "支付宝", "alipay", "paypal", "temu", "shein", "1688", "转转",
-            "purchase", "购票", "抢票", "火车票", "机票", "12306", "携程", "ctrip", "飞猪", "去哪儿", "qunar", "train ticket" }),
+            "purchase", "购票", "抢票", "火车票", "机票", "12306", "携程", "ctrip", "飞猪", "去哪儿", "qunar", "train ticket",
+            "shop", "shopping", "商城", "购物", "goofish", "pay", "payment", "wallet", "钱包", "发票", "coinepay", "stripe" }),
         (Social, new[] { "微信", "wechat", "weixin", "qq", "tim", "telegram", "discord", "钉钉", "dingtalk", "飞书", "feishu", "lark",
             "slack", "teams", "zoom", "whatsapp", "line", "skype", "signal", "企业微信", "wxwork", "腾讯会议", "wemeet", "messenger",
             "kook", "yy语音" }),
@@ -106,14 +129,15 @@ public static class QuickCategories
             "bloomberg", "the verge", "hacker news", "36氪", "虎嗅", "少数派", "stack overflow", "stackoverflow", "medium", "quora",
             "微博", "weibo", "=x", "twitter", "facebook", "instagram", "reddit", "小红书", "xiaohongshu", "豆瓣", "douban", "贴吧",
             "linkedin", "threads", "mastodon", "v2ex", "linux do", "product hunt", "producthunt", "ithome", "it之家", "cnbeta", "solidot",
-            "blog", "博客", "blogger", "wordpress", "substack", "rss", "feedly", "inoreader" }),
+            "blog", "博客", "blogger", "wordpress", "substack", "rss", "feedly", "inoreader", "npr", "财联社", "新华", "xinhua", "人民网",
+            "半月谈", "chinanews", "论坛", "forum", "bbs", "社区" }),
         (Media, new[] { "抖音", "douyin", "tiktok", "哔哩哔哩", "bilibili", "youtube", "爱奇艺", "iqiyi", "优酷", "youku", "腾讯视频",
             "芒果tv", "netflix", "twitch", "spotify", "网易云", "cloudmusic", "qq音乐", "qqmusic", "酷狗", "kugou", "酷我", "potplayer",
             "vlc", "mpv", "播放器", "player", "media player", "obs", "obs studio", "录音", "recorder", "照片", "photos", "剪映", "capcut",
             "premiere", "davinci", "audacity", "foobar2000", "aimp", "musicbee", "kmplayer", "直播", "斗鱼", "虎牙", "快手", "西瓜视频",
             "camera", "相机", "音乐", "music", "视频", "video", "movies", "电影", "itunes", "apple music", "plex", "jellyfin", "emby",
             "video editing", "视频编辑", "剪辑", "maruko", "小丸", "handbrake", "ffmpeg", "格式工厂", "format factory", "shotcut", "kdenlive",
-            "clipchamp", "media encoder" }),
+            "clipchamp", "media encoder", "videos", "movie" }),
         (Games, new[] { "steam", "epic games", "xbox", "battle net", "battle.net", "wegame", "原神", "genshin", "minecraft", "riot",
             "league of legends", "英雄联盟", "ea app", "ubisoft", "uplay", "gog galaxy", "米哈游", "mihoyo", "hoyoplay", "网易游戏",
             "mumu", "bluestacks", "雷电模拟器", "模拟器", "游戏", "game", "games" }),
@@ -129,18 +153,21 @@ public static class QuickCategories
             "mingw", "cygwin", "python", "anaconda", "jupyter", "node", "nodejs", "docker", "postman", "apifox", "insomnia", "navicat",
             "dbeaver", "mysql", "sql", "redis", "mongodb", "hbuilder", "unity", "unreal", "godot", "vmware", "virtualbox", "hyper v",
             "虚拟机", "developer", "开发", "devtools", "neovim", "hoppscotch", "heidisql", "lazygit", "repositories", "repos", "leetcode",
-            "csdn", "juejin", "掘金", "cnblogs", "博客园" }),
+            "cloudflare", "supabase", "firebase", "vercel", "netlify", "render", "heroku",
+            "aws", "azure", "google cloud", "gcp", "阿里云", "腾讯云", "华为云", "autodl", "算力", "vps", "搬瓦工", "bandwagon", "clawcloud",
+            "claw cloud", "clawhub", "jb51", "脚本之家", "beautifier", "beautify", "api", "域名", "hosting" }),
         (Design, new[] { "画图", "paint", "mspaint", "photoshop", "illustrator", "figma", "gimp", "krita", "inkscape", "blender",
             "sketchup", "canva", "coreldraw", "lightroom", "after effects", "3ds max", "maya", "c4d", "cinema 4d", "美图", "稿定",
             "affinity", "pixso", "即时设计", "xd", "procreate", "clip studio", "darktable", "rawtherapee", "draw io", "drawio", "diagrams",
-            "visio", "流程图", "excalidraw", "processon", "mermaid" }),
+            "visio", "流程图", "excalidraw", "processon", "mermaid", "pexels", "unsplash", "pixabay", "素材", "图库", "design", "堆友" }),
         (Office, new[] { "word", "excel", "powerpoint", "onenote", "office", "microsoft 365", "wps", "to do", "todo", "notion",
             "obsidian", "typora", "记事本", "notepad", "acrobat", "pdf", "xmind", "腾讯文档", "石墨", "evernote", "印象笔记", "有道",
             "翻译", "translate", "translator", "词典", "dictionary", "学习通", "mooc", "zotero", "endnote", "mendeley", "anki", "知网",
             "cnki", "日历", "calendar", "便笺", "sticky notes", "语雀", "logseq", "joplin", "marktext", "latex", "texstudio", "overleaf",
             "金山文档", "飞书文档", "幕布", "flomo", "滴答清单", "ticktick", "todoist", "trello", "思维导图", "mindmap", "teams classic",
             "学习", "课堂", "雨课堂", "超星", "钉钉文档", "kindle", "阅读", "reader", "calibre", "ebook", "知识库", "knowledge", "笔记",
-            "arxiv", "scholar", "markdown", "markdown editor", "md editor" }),
+            "arxiv", "scholar", "markdown", "markdown editor", "md editor", "读书", "weread", "library", "zlib", "z library", "古诗",
+            "诗文", "小说", "novel", "book", "books", "kdocs" }),
         (SystemTools, new[] { "设置", "settings", "immersivecontrolpanel", "控制面板", "control panel", "file explorer", "资源管理器", "explorer",
             "此电脑", "this pc", "计算器", "calculator", "resource monitor", "资源监视器", "task scheduler", "任务计划", "task manager",
             "任务管理器", "时钟", "alarms", "clock", "截图", "screensketch", "snipping", "pixpin", "snipaste", "sharex", "7 zip", "7zip",
@@ -149,11 +176,12 @@ public static class QuickCategories
             "安全中心", "memory zone", "sandisk", "回收站", "recycle bin", "regedit", "注册表", "device manager", "设备管理器", "磁盘",
             "disk", "diskgenius", "cleaner", "ccleaner", "dism++", "microsoft store", "windowsstore", "应用商店", "store", "驱动",
             "driver", "备份", "backup", "rufus", "ventoy", "cpu z", "gpu z", "hwinfo", "aida64", "crystaldiskinfo", "crystaldiskmark",
-            "ditto", "clipboard", "剪贴板", "event viewer", "事件查看器", "services", "服务", "系统信息", "system information",
+            "ditto", "clipboard", "剪贴板", "event viewer", "事件查看器", "services", "=服务", "系统信息", "system information",
             "computer management", "计算机管理", "performance monitor", "性能监视器", "windows tools", "windows 工具", "rainmeter",
             "translucenttb", "startallback", "explorerpatcher", "nilesoft", "f.lux", "monitorian", "twinkle tray", "wallpaper",
             "壁纸", "图吧工具箱", "dism", "火绒", "huorong", "联想电脑管家", "legion", "armoury", "omen", "内容检索", "文件检索", "全文检索",
-            "文件搜索", "file search", "desktop search" }),
+            "文件搜索", "file search", "desktop search", "virustotal", "ifixit", "修理", "生成器", "generator", "password", "密码",
+            "1password", "bitwarden", "keepass", "converter", "转换", "aconvert", "在线工具", "toolbox", "工具箱", "工具", "tools" }),
     };
 
     // Narrower kinds inside a group, for naming a second group of the same kind ("系统工具" -> "电脑管家").
@@ -166,7 +194,7 @@ public static class QuickCategories
             "360zip", "quicklook", "listary", "回收站", "recycle bin", "memory zone", "内容检索", "文件检索", "file search", "文件" }),
         (SystemTools, "硬件检测", new[] { "cpu z", "gpu z", "hwinfo", "aida64", "crystaldiskinfo", "crystaldiskmark", "diskgenius", "磁盘", "disk" }),
         (SystemTools, "系统设置", new[] { "设置", "settings", "控制面板", "control panel", "task manager", "任务管理器", "resource monitor",
-            "资源监视器", "task scheduler", "任务计划", "regedit", "注册表", "services", "服务", "event viewer", "device manager", "计算机管理",
+            "资源监视器", "task scheduler", "任务计划", "regedit", "注册表", "services", "=服务", "event viewer", "device manager", "计算机管理",
             "系统信息", "store", "应用商店", "计算器", "calculator", "时钟", "clock" }),
         (Dev, "终端", new[] { "terminal", "终端", "powershell", "pwsh", "command prompt", "命令提示符", "cmd", "wezterm", "alacritty", "warp",
             "wsl", "git bash", "msys", "msys2", "mingw", "cygwin", "ubuntu", "debian", "kali" }),
@@ -186,8 +214,20 @@ public static class QuickCategories
         (Office, "办公文档", new[] { "word", "excel", "powerpoint", "wps", "acrobat", "pdf", "腾讯文档", "石墨", "金山文档", "飞书文档", "latex", "texstudio", "overleaf" }),
         (Office, "笔记", new[] { "onenote", "notion", "obsidian", "typora", "记事本", "notepad", "evernote", "印象笔记", "logseq", "joplin", "marktext",
             "flomo", "幕布", "xmind", "思维导图", "mindmap", "语雀", "便笺", "sticky notes", "知识库", "笔记", "markdown", "md editor" }),
-        (Office, "学习", new[] { "学习通", "mooc", "学习", "课堂", "雨课堂", "超星", "知网", "cnki", "zotero", "endnote", "mendeley", "anki", "kindle",
-            "阅读", "reader", "calibre", "ebook", "有道", "翻译", "translate", "词典", "dictionary", "arxiv", "scholar" }),
+        (Office, "学习", new[] { "学习通", "mooc", "学习", "课堂", "雨课堂", "超星", "知网", "cnki", "zotero", "endnote", "mendeley", "anki",
+            "有道", "翻译", "translate", "词典", "dictionary", "arxiv", "scholar" }),
+        (Office, "阅读", new[] { "kindle", "阅读", "reader", "calibre", "ebook", "读书", "weread", "library", "zlib", "z library", "古诗", "诗文",
+            "小说", "novel", "book", "books" }),
+        (Edu, "考试", new[] { "考试", "exam", "neea", "cet", "四六级", "ncre", "公考", "公务员", "考公", "真题", "刷题", "题库", "考研", "研招", "大纲",
+            "专业目录", "研究生" }),
+        (Edu, "院校", new[] { "大学", "university", "college", "学院", "edu", "教务", "jwgl", "教学", "学工", "chsi", "学信" }),
+        (Edu, "课程", new[] { "课程", "course", "courses", "skilljar", "mooc", "慕课", "网课", "课堂", "学堂", "coursera", "edx", "udemy", "tutorial", "教程" }),
+        (Shopping, "支付", new[] { "paypal", "支付宝", "alipay", "pay", "payment", "wallet", "钱包", "发票", "coinepay", "stripe" }),
+        (Dev, "云服务", new[] { "cloudflare", "supabase", "firebase", "vercel", "netlify", "render", "heroku", "aws", "azure", "google cloud", "gcp",
+            "阿里云", "腾讯云", "华为云", "autodl", "算力", "vps", "搬瓦工", "bandwagon", "clawcloud", "claw cloud", "域名", "hosting" }),
+        (Network, "网络检测", new[] { "dns leak", "leak test", "webrtc", "browserleaks", "ipleak", "ping0", "ip检测", "ip查询", "speedtest", "speed test", "测速" }),
+        (SystemTools, "在线工具", new[] { "生成器", "generator", "password", "密码", "1password", "bitwarden", "keepass", "converter", "转换", "aconvert", "在线工具" }),
+        (Browser, "搜索", new[] { "=google", "google search", "=bing", "必应", "=百度", "百度一下", "搜索引擎", "search engine", "duckduckgo" }),
         (Office, "日程待办", new[] { "to do", "todo", "日历", "calendar", "滴答清单", "ticktick", "todoist", "trello" }),
         (Network, "远程", new[] { "远程", "remote", "todesk", "anydesk", "teamviewer", "向日葵", "sunlogin", "rustdesk", "mstsc", "parsec", "finalshell",
             "xshell", "putty", "mobaxterm", "termius", "winscp", "filezilla", "moonlight" }),
@@ -212,6 +252,9 @@ public static class QuickCategories
         (Engineering, "机械设计", new[] { "solidworks", "autocad", "catia", "fusion 360", "creo", "ug nx", "siemens nx" }),
         (Shopping, "出行票务", new[] { "购票", "抢票", "火车票", "机票", "12306", "携程", "ctrip", "飞猪", "去哪儿", "qunar", "train ticket", "分流抢票" }),
     };
+
+    // Every narrower kind's name (a group may be named after one).
+    public static IReadOnlyCollection<string> SubNames { get; } = SubRules.Select(r => r.Sub).Distinct().ToArray();
 
     // File types and link protocols a program opens, by what they say it is for. Weak ones (pictures, PDF,
     // web pages) are opened by many kinds of program and count only when nothing stronger is registered.
@@ -327,12 +370,16 @@ public static class QuickCategories
         if (hint?.Url is { } url)
         {
             string host = url.Host.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ? url.Host[4..] : url.Host;
-            string site = host + " " + string.Join(' ', url.AbsolutePath.Trim('/').Split('/').Take(3)) + " " + Uri.UnescapeDataString(url.Fragment.TrimStart('#', '/'));
+            string site = host + " " + string.Join(' ', url.AbsolutePath.Trim('/').Split('/').Take(3)) + " " + Section(url);
             string label = Registrable(host).Split('.')[0];
             foreach (var (h, g) in Sites)
                 if (host.Equals(h, StringComparison.OrdinalIgnoreCase) || host.EndsWith("." + h, StringComparison.OrdinalIgnoreCase))
                     return (g, "site " + host, own + " " + site, null);
-            return Match(Text.Of(site), label) is { } bySite ? (bySite, "site " + host, own + " " + site, null) : (Web, "site " + host, own + " " + site, null);
+            if (Match(Text.Of(site), label) is { } bySite) return (bySite, "site " + host, own + " " + site, null);
+            // Where the link was filed (an imported bookmark's folders, innermost first) says what it is for.
+            foreach (string folder in (hint.Comment ?? "").Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Reverse())
+                if (Match(Text.Of(folder), folder) is { } byFolder) return (byFolder, $"folder \"{folder}\", site {host}", own + " " + site + " " + folder, null);
+            return (Web, "site " + host, own + " " + site, null);
         }
         bool web = hint?.IsWebApp == true;
         if (hint is not null && !web)
@@ -353,6 +400,13 @@ public static class QuickCategories
         if (web) return (Web, "web app", own, null);
         if (app) return (OtherApps, "", own, null);
         return (Kind(path, hint), "file", own, null);
+    }
+
+    private static string Section(Uri url)
+    {
+        string f = Uri.UnescapeDataString(url.Fragment.TrimStart('#', '/'));
+        int q = f.IndexOf('?');
+        return q >= 0 ? f[..q] : f;
     }
 
     // A reader that fails counts as having nothing to say.

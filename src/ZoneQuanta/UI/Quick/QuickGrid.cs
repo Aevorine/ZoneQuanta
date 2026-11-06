@@ -64,6 +64,13 @@ public sealed partial class QuickGrid : UserControl
         InitBoard();
         actions.AttachUndoKeys(this);
         actions.Store.Changed += _ => Invalidate();
+        actions.IconsChanged += files =>
+        {
+            var set = new HashSet<string>(files, StringComparer.OrdinalIgnoreCase);
+            foreach (var t in _boardTiles.Values.Concat(_tiles.Values))
+                if (t.Item.Icon is { } f && set.Contains(f)) t.ReloadIcon();
+        };
+        actions.GoneChanged += () => { foreach (var t in OnBoard ? _boardTiles.Values : _tiles.Values) t.RefreshMeta(true); };
         actions.Settings.PropertyChanged += OnSetting;
         IsVisibleChanged += (_, _) => { if (IsVisible) Sync(); };
         ApplyView();
@@ -272,41 +279,48 @@ public sealed partial class QuickGrid : UserControl
         if (click && _singleClick) _actions.Open(tile!.Item);
     }
 
-    private bool CanReorder => _filter.Length == 0 && _actions.Settings.QuickSort == "Custom";
+    // Reordering needs the whole list in view (no search filter); under another sort the shown order is kept.
+    private bool CanReorder => _filter.Length == 0;
 
     private void OnDragOver(object sender, DragEventArgs e)
     {
         var target = TileAt(e.OriginalSource);
         if (e.Data.GetDataPresent(DragFormat))
-            e.Effects = CanReorder && target is not null ? DragDropEffects.Link : DragDropEffects.None;
+            e.Effects = CanReorder ? DragDropEffects.Link : DragDropEffects.None;
         else
             e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Link : DragDropEffects.None;
         MarkDrop(e.Effects == DragDropEffects.None ? null : target);
         e.Handled = true;
     }
 
+    // Before the tile under the pointer, or after it past its middle (right half in the grid, lower half in a list);
+    // empty space below the last tile is the end.
+    private QuickItem? InsertBefore(DragEventArgs e, Tile? target, QuickItem dragged)
+    {
+        var view = _list.Items.OfType<Tile>().Select(t => t.Item).ToList();
+        if (target is null) return null;
+        var p = e.GetPosition(target);
+        bool after = FlatView == "List" ? p.Y > target.ActualHeight / 2 : p.X > target.ActualWidth / 2;
+        int i = view.IndexOf(target.Item) + (after ? 1 : 0);
+        while (i < view.Count && view[i] == dragged) i++;
+        return i < view.Count ? view[i] : null;
+    }
+
     private void OnDrop(object sender, DragEventArgs e)
     {
         var target = TileAt(e.OriginalSource);
         MarkDrop(null);
-        int index = target is null ? -1 : IndexOf(target.Item);
         if (e.Data.GetData(DragFormat) is string path)
         {
-            if (!CanReorder || target is null) return;
-            if (_actions.Store.Find(path) is { } item && item != target.Item) _actions.Move(item, index);
+            if (!CanReorder || _actions.Store.Find(path) is not { } item || item == target?.Item) return;
+            _actions.MoveBefore(item, InsertBefore(e, target, item));
         }
         else if (e.Data.GetData(DataFormats.FileDrop) is string[] files)
         {
-            _actions.Add(files, CanReorder ? index : -1);
+            foreach (var added in _actions.Add(files))
+                if (CanReorder) _actions.MoveBefore(added, InsertBefore(e, target, added));
         }
         e.Handled = true;
-    }
-
-    private int IndexOf(QuickItem item)
-    {
-        var all = _actions.Store.Items;
-        for (int i = 0; i < all.Count; i++) if (all[i] == item) return i;
-        return -1;
     }
 
     private void MarkDrop(Tile? tile)
@@ -355,8 +369,10 @@ public sealed partial class QuickGrid : UserControl
         Add(menu, "重命名", "Icon.Edit", Chord("Rename").Display, () => tile.BeginRename(name => _actions.Rename(item, name)), true);
         Add(menu, "属性", "Icon.Info", "", () => _actions.Properties(item), exists && !PathEngine.IsShell(item.Path));
         menu.Items.Add(GroupSubmenu(item));
+        if (item.Col is not null && item.Group.Length == 0) Add(menu, "取消固定位置", "Icon.Pin", "", () => _actions.UnpinItem(item), true);
         menu.Items.Add(new Separator());
         Add(menu, "移除", "Icon.Trash", Chord("Remove").Display, () => _actions.Remove(item), true);
+        if (_actions.Gone.Count > 0) Add(menu, $"清理失效项（{_actions.Gone.Count}）", "Icon.Trash", "", () => _actions.CleanGone(), true);
     }
 
     private MenuItem GroupSubmenu(QuickItem item)

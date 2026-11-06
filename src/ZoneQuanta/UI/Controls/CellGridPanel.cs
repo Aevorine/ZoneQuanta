@@ -12,7 +12,7 @@ namespace ZoneQuanta.UI.Controls;
 // cell, highest PinRank first, pushed down only when another pinned child already holds it; the rest
 // fill the first free spot from the top in order. The column count is picked between the widest fit and
 // 80 % of it to leave the fewest empty cells, so cards of even widths do not strand a column at the
-// right edge. Children that change cell glide there.
+// right edge; it is picked once per width and kept while content changes. Children that change cell glide.
 public sealed class CellGridPanel : System.Windows.Controls.Panel
 {
     public static readonly DependencyProperty CellWidthProperty = DependencyProperty.Register(
@@ -41,7 +41,12 @@ public sealed class CellGridPanel : System.Windows.Controls.Panel
     private static readonly Duration GlideTime = TimeSpan.FromMilliseconds(180);
     private readonly List<Rect> _rects = new();
     private Dictionary<UIElement, Rect> _shown = new();
+    private readonly Dictionary<UIElement, (int Col, int Row)> _cellOf = new();
     private double _arrangedWidth = double.NaN;
+    // The column count is chosen once per width: a card growing or new items arriving never reflows the grid,
+    // so what the user placed stays in its column.
+    private double _pickedWidth = double.NaN, _pickedCell = double.NaN;
+    private int _pickedCols;
 
     // Narrowest column; the actual columns share out the width this leaves over.
     public double CellWidth
@@ -97,6 +102,19 @@ public sealed class CellGridPanel : System.Windows.Controls.Panel
         return (Math.Clamp(col, 0, Math.Max(0, Columns - Math.Min(Math.Max(1, colSpan), Columns))), Math.Clamp(row, 0, Math.Max(0, maxRow)));
     }
 
+    // Cell under a point (floor, not nearest): where a single-cell item dropped there lands. One row below
+    // the last used row is allowed.
+    public (int Col, int Row) CellUnder(Point p)
+    {
+        double step = Track + Gap;
+        int col = step > 0 ? (int)Math.Floor(Math.Max(0, p.X) / step) : 0;
+        int row = (int)Math.Floor(Math.Max(0, p.Y) / Math.Max(1, CellHeight));
+        return (Math.Clamp(col, 0, Math.Max(0, Columns - 1)), Math.Clamp(row, 0, RowsUsed));
+    }
+
+    // Top-left cell a child was laid out at (null before its first layout).
+    public (int Col, int Row)? CellOf(UIElement child) => _cellOf.TryGetValue(child, out var c) ? c : null;
+
     // Rows the other children fill at the current column count: the lowest a dragged child should go,
     // so dragging the bottom card down again does not walk it further each time.
     public int RowsWithout(UIElement child)
@@ -141,25 +159,32 @@ public sealed class CellGridPanel : System.Windows.Controls.Panel
         double gap = Gap, cellH = Math.Max(1, CellHeight);
         int widest = Math.Max(1, (int)Math.Floor((width + gap + 0.5) / (Math.Max(1, CellWidth) + gap)));
         Layout? best = null;
+        bool samePick = Math.Abs(width - _pickedWidth) < 0.5 && Math.Abs(CellWidth - _pickedCell) < 0.01 && _pickedCols <= widest;
         if (Frozen && Columns <= widest) best = Pack(kids, Columns, widest);
+        else if (samePick) best = Pack(kids, _pickedCols, widest);
         else
+        {
             for (int n = widest; n >= Math.Max(1, (int)Math.Ceiling(widest * 0.8)); n--)
             {
                 var l = Pack(kids, n, widest);
                 if (best is null || l.Cost < best.Cost) best = l; // a tie keeps the wider grid
             }
+            (_pickedWidth, _pickedCell, _pickedCols) = (width, CellWidth, best!.Columns);
+        }
         int cols = best!.Columns;
         double track = Math.Max(0, (width - gap * (cols - 1)) / cols);
         Columns = cols;
         Track = track;
         RowsUsed = best.Rows;
         _rects.Clear();
+        _cellOf.Clear();
         for (int i = 0; i < kids.Count; i++)
         {
             var (row, col, c, r) = best.Cells[i];
             var rect = new Rect(col * (track + gap), row * cellH, c * track + (c - 1) * gap, r * cellH);
             kids[i].Measure(rect.Size);
             _rects.Add(rect);
+            _cellOf[kids[i]] = (col, row);
         }
         return best.Rows * cellH;
     }

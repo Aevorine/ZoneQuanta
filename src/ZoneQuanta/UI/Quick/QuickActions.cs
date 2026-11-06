@@ -24,19 +24,122 @@ public sealed class QuickActions
     {
         Store = store;
         Settings = settings;
+        Importer = new QuickImport(this);
         _autoTimer.Tick += (_, _) =>
         {
             _autoTimer.Stop();
             _ = AutoGroupAsync();
         };
-        store.Changed += _ => ScheduleAutoGroup();
+        _goneTimer.Tick += (_, _) =>
+        {
+            _goneTimer.Stop();
+            _ = ScanGoneAsync();
+        };
+        store.Changed += _ => { ScheduleAutoGroup(); ScheduleGoneScan(); };
         WarmFacts();
+        ScheduleGoneScan();
         settings.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(AppSettings.QuickAutoGroup)) ScheduleAutoGroup(); };
     }
 
     public QuickStore Store { get; }
     public AppSettings Settings { get; }
+    public QuickImport Importer { get; }
     public QuickItem? Highlight { get; private set; }
+
+    // Items whose target is gone for good (see ItemHealth), rescanned after changes and when the panel opens.
+    private readonly DispatcherTimer _goneTimer = new() { Interval = TimeSpan.FromMilliseconds(600) };
+    private HashSet<QuickItem> _gone = new();
+    private int _goneScan;
+    public IReadOnlyCollection<QuickItem> Gone => _gone;
+    public bool IsGone(QuickItem item) => _gone.Contains(item);
+    public event Action? GoneChanged;
+    // Image files of items whose picture was replaced (imported links' real icons).
+    public event Action<IReadOnlyCollection<string>>? IconsChanged;
+
+    public void ScheduleGoneScan()
+    {
+        _goneTimer.Stop();
+        _goneTimer.Start();
+    }
+
+    private async Task ScanGoneAsync()
+    {
+        int pass = ++_goneScan;
+        var items = Store.Items.Select(i => (Item: i, i.Path)).ToList();
+        var sw = Stopwatch.StartNew();
+        var gone = await Task.Run(() => items.Where(x => ItemHealth.IsGone(x.Path)).Select(x => x.Item).ToHashSet());
+        if (pass != _goneScan) return;
+        gone.IntersectWith(Store.Items);
+        bool changed = !gone.SetEquals(_gone);
+        _gone = gone;
+        if (changed)
+        {
+            Log.Write($"quick gone {gone.Count}/{items.Count} {sw.ElapsedMilliseconds}ms{(gone.Count > 0 ? ": " + string.Join(", ", gone.Take(12).Select(i => i.DisplayName)) : "")}");
+            GoneChanged?.Invoke();
+        }
+    }
+
+    // One click: every item whose target is gone leaves the panel, in one undo step.
+    public int CleanGone()
+    {
+        var gone = _gone.Where(i => Store.Items.Contains(i) && ItemHealth.IsGone(i.Path)).ToList();
+        int n = Store.RemoveMany(gone, "target gone");
+        _gone = new HashSet<QuickItem>();
+        GoneChanged?.Invoke();
+        if (n > 0) RefreshAutoNames();
+        return n;
+    }
+
+    // After an import: the first new link pops, groups that received links are named for their members again.
+    public void Imported(IReadOnlyList<QuickItem> added)
+    {
+        if (added.Count == 0) return;
+        Highlight = added[0];
+        Store.Save(added[0]);
+        RefreshAutoNames();
+    }
+
+    public void RefreshIcons(IReadOnlyCollection<string> files)
+    {
+        var app = Application.Current;
+        if (app is null) return;
+        app.Dispatcher.BeginInvoke(new Action(() =>
+        {
+            foreach (var f in files) ShellIcons.Forget(IconImages.Prefix + f);
+            IconsChanged?.Invoke(files);
+        }));
+    }
+
+    // Reordering while another sort is shown keeps what the user sees as the custom order first.
+    private void EnsureCustomOrder()
+    {
+        if (Settings.QuickSort == "Custom") return;
+        Store.Reorder(View("").ToList());
+        Log.Write($"quick sort {Settings.QuickSort} -> Custom (kept the shown order)");
+        Settings.QuickSort = "Custom";
+    }
+
+    public void PlaceItem(QuickItem item, int col, int row)
+    {
+        Store.PlaceLoose(item, col, row);
+        RefreshAutoNames();
+    }
+
+    public void PlaceInGroup(QuickItem item, string group, QuickItem? before)
+    {
+        EnsureCustomOrder();
+        bool moved = !string.Equals(item.Group, group, StringComparison.OrdinalIgnoreCase);
+        Store.PlaceInGroup(item, group, before);
+        if (moved) RefreshAutoNames();
+    }
+
+    public void MoveBefore(QuickItem item, QuickItem? before)
+    {
+        EnsureCustomOrder();
+        Store.MoveBefore(item, before);
+    }
+
+    public void UnpinItem(QuickItem item) => Store.UnpinItem(item);
 
     // A group just made from two items; the view starts renaming it once it is on screen.
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Kind, string Sub, string Maker)> _facts = new(StringComparer.OrdinalIgnoreCase);
@@ -131,6 +234,12 @@ public sealed class QuickActions
         {
             string p = PathEngine.Clean(raw);
             if (p.Length == 0 || !(Exists(p) || PathEngine.IsShell(p))) continue;
+            // A bookmark file brings its links, not itself.
+            if (File.Exists(p) && BookmarkReader.LooksLikeBookmarks(p))
+            {
+                _ = Importer.RunAsync(p);
+                continue;
+            }
             if (!PathEngine.IsShell(p) && !Path.IsPathFullyQualified(p)) p = Path.GetFullPath(p);
             var (item, isNew) = Store.Add(p, index < 0 ? -1 : index + added.Count);
             if (isNew) added.Add(item);
@@ -202,7 +311,7 @@ public sealed class QuickActions
     }
     public void RenameGroup(QuickGroup group, string name) => Store.RenameGroup(group, name);
     public void Dissolve(QuickGroup group) => Store.Dissolve(group);
-    public void SetExpanded(QuickGroup group, bool expanded) => Store.SetExpanded(group, expanded);
+    public void SetExpanded(QuickGroup group, bool expanded, (int Col, int Row)? at = null) => Store.SetExpanded(group, expanded, at);
     public void SetSize(QuickGroup group, int cols, int rows) => Store.SetSize(group, cols, rows);
 
     public void SetDefaultSize(int cols, int rows)
@@ -335,7 +444,7 @@ public sealed class QuickActions
     private static string Describe(IEnumerable<(QuickItem Item, string Kind, string? Group, string Why)> picks) =>
         string.Join(", ", picks.Take(40).Select(p => $"{Mail.Replace(p.Item.DisplayName, "…")} -> {p.Group ?? p.Kind}{(p.Why.Length > 0 ? $" ({p.Why})" : "")}"));
 
-    public const int ClassifierVersion = 3;
+    public const int ClassifierVersion = 4;
     public event Action<int>? Regrouped;
 
     // Once per version of the rules: items this app placed in a kind's group move to the group the rules (or what
@@ -367,7 +476,7 @@ public sealed class QuickActions
             var learned = Learn(manual, kinds);
             return todo.Select(t => (t.Item, t.Group, t.Kind, Pick: Pick(t.Path, t.Name, learned)))
                 .Where(t => t.Pick.Group is { } g ? !string.Equals(g, t.Group, StringComparison.OrdinalIgnoreCase)
-                    : t.Pick.Kind != t.Kind && t.Pick.Kind is not (QuickCategories.OtherApps or QuickCategories.Files) && t.Pick.Kind.Length > 0)
+                    : t.Pick.Kind != t.Kind && !QuickCategories.IsCatchAll(t.Pick.Kind) && t.Pick.Kind.Length > 0)
                 .Select(t => (Placement: new Placement(t.Item, t.Pick.Kind, t.Pick.Group), Why: $"{t.Group} -> {t.Pick.Group ?? t.Pick.Kind} ({t.Pick.Why})"))
                 .ToList();
         });
@@ -506,7 +615,7 @@ public sealed class QuickActions
         var items = Store.Items;
         string f = filter.Trim();
         if (f.Length > 0)
-            return items.Select(i => (i, s: Math.Max(Fuzzy.Score(f, i.DisplayName), Fuzzy.Score(f, i.Path))))
+            return items.Select(i => (i, s: Math.Max(Math.Max(Fuzzy.Score(f, i.DisplayName), Fuzzy.Score(f, i.Path)), i.Url is { } u ? Fuzzy.Score(f, u) : -1)))
                 .Where(x => x.s >= 0).OrderByDescending(x => x.s).Select(x => x.i);
         long now = QuickStore.Now;
         return Settings.QuickSort switch

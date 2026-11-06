@@ -58,6 +58,8 @@
                     <ToggleButton x:Name="ListMode" Style="{StaticResource IconToggle}" Tag="{StaticResource Icon.List}" ToolTip="列表" Margin="0,0,10,0"/>
                     <Button x:Name="AddFiles" Style="{StaticResource Action}" Content="添加文件" Margin="0,0,6,0"/>
                     <Button x:Name="AddFolder" Style="{StaticResource Action}" Content="添加文件夹" Margin="0,0,6,0"/>
+                    <Button x:Name="ImportLinks" Style="{StaticResource Action}" Content="导入书签" Margin="0,0,6,0"/>
+                    <Button x:Name="CleanGone" Style="{StaticResource Action}" Margin="0,0,6,0" Visibility="Collapsed"/>
                     <Button x:Name="OpenQuick" Style="{StaticResource Primary}" Content="快捷面板"/>
                 </StackPanel>
                 <ContentPresenter x:Name="GridHost" c:Arrange.Ignore="True" Grid.Row="1" Grid.ColumnSpan="2" Margin="-2,10,-2,0"/>

@@ -53,13 +53,28 @@ internal static class WebIcons
                    && (!Unreached.TryGetValue(web.Key, out var off) || DateTime.UtcNow - off > RetryOffline);
     }
 
+    // One picture from an address (an imported bookmark's own icon), under the same rules as site icons:
+    // https, public hosts on every hop, a size limit, decoded and checked before use.
+    public static (byte[] Pix, int W, int H)? Picture(Uri uri, CancellationToken ct)
+    {
+        try { return GetBytes(uri, MaxImage, new Attempt(), ct) is { } data ? Usable(data) : null; }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { return null; }
+    }
+
+    // A decoded picture from bytes already in hand (a data: address in a bookmark file).
+    public static (byte[] Pix, int W, int H)? Picture(byte[] data) => data.Length is > 0 and <= MaxImage ? Usable(data) : null;
+
+    public static void SavePng(string file, byte[] pix, int w, int h) => Save(file, pix, w, h);
+
     // Fetches the sources that are not cached and not recently tried, four at a time; the keys now cached.
-    // Returns at once when another fetch is under way.
-    public static HashSet<string> Fetch(IEnumerable<AppBrands.Web> sources)
+    // Returns at once when another fetch is under way, unless wait is set.
+    public static HashSet<string> Fetch(IEnumerable<AppBrands.Web> sources, bool wait = false)
     {
         var done = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var todo = sources.DistinctBy(s => s.Key, StringComparer.OrdinalIgnoreCase).Where(s => Cached(s) is null && Due(s)).Take(16).ToList();
-        if (todo.Count == 0 || !Monitor.TryEnter(FetchGate)) return done;
+        if (todo.Count == 0) return done;
+        if (wait) Monitor.Enter(FetchGate);
+        else if (!Monitor.TryEnter(FetchGate)) return done;
         try
         {
             Directory.CreateDirectory(Dir);
@@ -280,7 +295,10 @@ internal static class WebIcons
         if (!host.Contains('.') || Regex.IsMatch(host, @"(^|\.)(localhost|local|lan|home|internal|intranet|corp|home\.arpa)$", RegexOptions.IgnoreCase)) return false;
         try
         {
-            var addresses = System.Net.Dns.GetHostAddressesAsync(host, ct).WaitAsync(TimeSpan.FromSeconds(3), ct).GetAwaiter().GetResult();
+            // A lookup abandoned after 3 s may still fail later: that failure is observed here, not reported as a crash.
+            var lookup = System.Net.Dns.GetHostAddressesAsync(host, ct);
+            _ = lookup.ContinueWith(t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            var addresses = lookup.WaitAsync(TimeSpan.FromSeconds(3), ct).GetAwaiter().GetResult();
             return addresses.All(a => !IsLocal(a));
         }
         catch (Exception ex) when (ex is System.Net.Sockets.SocketException or TimeoutException or ArgumentException) { return true; }

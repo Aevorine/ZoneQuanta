@@ -30,6 +30,10 @@
 | Display speed | A dedicated high-resolution timer thread wakes about 12 ms before each second, so the new second is presented in the frame that contains the boundary; sampling runs on a background thread and the taskbar numbers refresh every 0.5 s by default (0.25 / 0.5 / 1 / 2 s selectable); the hover card opens in about 10 ms; the monitor follows an auto-hidden taskbar within a few milliseconds of it appearing |
 | Low footprint | Redraws only what changes; sampling drops to once a second while the band is tucked away and the panel is closed; about 75 MB RAM and normally under 1% of one core when idle |
 
+## v1.5.0
+
+Quick panel: a folded group shows all its cells (1×4 shows 4 icons) with "+N" on a pill beside the name; dragging an icon shows where it lands (a slot bar in a card, a ring on an icon to make a group, a dashed placeholder cell it is pinned to while the icons around make room) under any sort; unfolding or folding a group never moves it; the panel really reopens at its last size, also when it fills the screen; one click clears items whose target is gone; group names follow their members for hand-made groups too (typed names stay); new bookmark import from iTab backups, browser bookmarks and bookmarks.html — every link opens on click, has an icon at once (replaced by its real icon in the background) and is grouped by site, name and its original folder.
+
 ## v1.4.9
 
 The traffic page fills in its remaining icons by several methods in turn: the same vendor's main application, a Store app of the same name, an editor extension's icon, the same company's application installed elsewhere, Windows' own logo for Windows components, and finally the brand icon fetched safely from the product's website (https, size-limited, decoded and checked, cached locally; can be switched off at the bottom of the traffic page); image icons are trimmed, rounded, evenly padded and exactly scaled, and black marks turn light on a dark theme. Fixed per-app traffic counting stopping after a self-update. Dragging the navigation bar sideways moves the window and up or down reorders, both without a hold. The quick panel remembers and shows its last size (an old oversized size is fitted into the screen), has a corner resize grip, and its bar's right-click menu maximizes, resets the size and picks where it opens. Quick-panel auto groups are truer in both kind and name: the evidence is tried from nearest to farthest (name, site and #section, program description and shortcut comment, what the product says about itself, the file types Windows opens with it, its folders, its read-me), what you placed by hand and the narrower kinds you keep together are learned, group names follow the members (all terminals: 终端; 办公学习 holding only office apps: 办公), and an automatic group you renamed still receives its kind. The update page shows the GitHub release page of the latest version (click to open, copy) and the signature-verified SHA-256, with the address protected against tampering.
@@ -108,6 +112,8 @@ With a local proxy or TUN adapter, traffic is attributed to the proxy process.
 - Update page: the GitHub release page of the latest version (click to open, the button copies it) and, after a check, the SHA-256 of that version's program file from the signature-verified manifest, to check a manual download against
 - Grouping: a group is named after what its members are (a narrower kind they share such as 电脑管家, 终端 or 社区, one side of a two-part kind such as 办公 or 网盘, else the kind) and the name follows them until you type one; an automatic group keeps receiving its kind after a rename
 - History: settings and the quick panel are saved on start, exit, before updates and restores, and after each change (identical content skipped; newest 60 plus one a day for 30 days); System → 历史版本 shows time, reason and changes, ↺ then 确认恢复 goes back (the current state is saved first and the app restarts); + saves one now, the folder button opens the history folder
+- Placing icons: while dragging, a bar in a card marks the slot, a ring on a loose icon means "make a group", a dashed cell means "pin here" (right-click 取消固定位置 to let it flow); "+N" beside a group's name unfolds it in place
+- Bookmarks: + → 导入书签 imports an iTab backup, a bookmarks.html, a browser's Bookmarks file or Edge / Chrome directly (or drop the file on the panel); the counted bin button in the toolbar clears items whose target is gone
 - Undo / redo on the quick panel: `Ctrl + Z` / `Ctrl + Y` (or `Ctrl + Shift + Z`), 50 steps
 - Settings, logs and statistics live in `%APPDATA%\ZoneQuanta` (quick items in `quick.json`, history in `history\`)
 
@@ -124,6 +130,8 @@ Command line (usable from scripts and Claude Code; a second launch hands the com
 | Command | Action |
 |---|---|
 | `ZoneQuanta.exe --quick-add <path> [<path> …]` | Add files / folders to the quick panel (relative paths use the current directory) |
+| `ZoneQuanta.exe --quick-import <file>` | Import a bookmark file (iTab backup, bookmarks.html, browser bookmark JSON) into grouped quick items |
+| `ZoneQuanta.exe --quick-clean` | Remove quick items whose target is gone (one undo step) |
 | `ZoneQuanta.exe --quick` | Show the quick panel |
 | `ZoneQuanta.exe --path-bar` | Show the open-a-path input |
 | `ZoneQuanta.exe --open <path or URL>` | Open a location with the same rules as the input |

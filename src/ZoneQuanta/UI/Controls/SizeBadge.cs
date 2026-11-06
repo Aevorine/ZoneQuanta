@@ -26,6 +26,15 @@ public sealed class SizeBadge : Border
         SetResourceReference(BorderBrushProperty, "LineBrush");
     }
 
+    // A short result shown the same way ("导入 148"), fading out after a moment.
+    public void Flash(string text)
+    {
+        _text.Text = text;
+        BeginAnimation(OpacityProperty, null);
+        Opacity = 1;
+        BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(420)) { BeginTime = TimeSpan.FromMilliseconds(1600) });
+    }
+
     public void Attach(WindowMemory memory)
     {
         memory.Resizing += px =>

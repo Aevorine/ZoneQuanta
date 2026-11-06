@@ -89,6 +89,20 @@ public partial class QuickPage : UserControl
             var dlg = new Win32.OpenFolderDialog { Multiselect = true };
             if (dlg.ShowDialog(Window.GetWindow(this)) == true) actions.Add(dlg.FolderNames);
         };
+        ImportLinks.Click += (_, _) =>
+        {
+            var dlg = new Win32.OpenFileDialog { Filter = "书签文件|*.itabdata;*.html;*.htm;*.json;Bookmarks|所有文件|*.*" };
+            if (dlg.ShowDialog(Window.GetWindow(this)) == true) _ = actions.Importer.RunAsync(dlg.FileName);
+        };
+        CleanGone.Click += (_, _) => actions.CleanGone();
+        void SyncGone()
+        {
+            int n = actions.Gone.Count;
+            CleanGone.Content = $"清理失效项 {n}";
+            CleanGone.Visibility = n > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+        actions.GoneChanged += SyncGone;
+        SyncGone();
         OpenQuick.Click += (_, _) => host.ToggleQuick();
     }
 

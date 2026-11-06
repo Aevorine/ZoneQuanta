@@ -60,19 +60,27 @@ public sealed class WindowMemory
         var work = Usable(screen, k);
         double w = b?.Width ?? size.Width, h = b?.Height ?? size.Height;
         string how = b is null ? "default" : "remembered";
-        // A size bigger than the screen (kept from another scale or resolution, or the pre-1.4.4 size, which
-        // filled the screen) leaves no edge to grab: shrink it, keeping its proportions, to leave a margin.
-        // Judged in the target screen's own scale; kept as the new size only on the screen it was remembered
-        // on (or for the pre-1.4.4 size), so one visit to a smaller screen does not lose the big-screen size.
+        // A size the user dragged past the screen edge (a few pixels when they fill the screen by hand) is the
+        // screen size: clamped to the work area, never scaled down, so the panel reopens exactly as left. Only
+        // the pre-1.4.4 size (it filled the screen by default, not by choice) shrinks to leave a margin. Judged
+        // in the target screen's own scale; kept as the new size only on the screen it was remembered on, so
+        // one visit to a smaller screen does not lose the big-screen size.
         var mid = screen.Bounds;
         var target = Usable(screen, Platform.Native.MonitorScale(mid.Left + mid.Width / 2, mid.Top + mid.Height / 2) ?? k);
-        bool fitted = b is { Maximized: false } && (w > target.Width + 1 || h > target.Height + 1 || (!b.HasPlace && w >= target.Width * 0.98 && h >= target.Height * 0.98));
+        bool legacy = b is { Maximized: false, HasPlace: false } && w >= target.Width * 0.98 && h >= target.Height * 0.98;
+        bool over = b is { Maximized: false } && (w > target.Width + 0.5 || h > target.Height + 0.5);
+        bool fitted = legacy || over;
         bool keep = fitted && (!b!.HasPlace || b.Screen == screen.DeviceName);
-        if (fitted)
+        if (legacy)
         {
             double f = Math.Min(target.Width * 0.92 / w, target.Height * 0.92 / h);
             (w, h) = (Math.Round(w * f), Math.Round(h * f));
-            how = $"fitted from {b!.Width}x{b.Height}{(keep ? "" : " (this screen only)")}";
+            how = $"fitted from {b!.Width}x{b.Height}";
+        }
+        else if (over)
+        {
+            (w, h) = (Math.Min(w, Math.Floor(target.Width)), Math.Min(h, Math.Floor(target.Height)));
+            how = $"clamped from {b!.Width}x{b.Height} to the screen{(keep ? "" : " (this screen only)")}";
         }
         w = Math.Min(w, work.Width);
         h = Math.Min(h, work.Height);
@@ -176,6 +184,7 @@ public sealed class WindowMemory
         var b = Bounds(r, Usable(screen, PixelScale), max, screen.DeviceName);
         if (Same(b, _last)) return;
         _last = b;
+        if (_name.Length > 0) Core.Log.Write($"{_name} save {b.Width}x{b.Height}{(max ? " maximized" : "")} at {b.CenterX:0.###},{b.CenterY:0.###}");
         _save(b);
     }
 

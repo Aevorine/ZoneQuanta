@@ -19,7 +19,7 @@ public static class GroupNamer
     // Kinds whose name joins two narrower ones, and which narrower kinds belong to each side.
     private static readonly (string Kind, string A, string[] ASubs, string B, string[] BSubs)[] Halves =
     {
-        (QuickCategories.Office, "办公", new[] { "办公文档", "笔记", "日程待办" }, "学习", new[] { "学习" }),
+        (QuickCategories.Office, "办公", new[] { "办公文档", "笔记", "日程待办" }, "学习", new[] { "学习", "阅读" }),
         (QuickCategories.Network, "网络工具", new[] { "代理加速", "测速传输" }, "远程", new[] { "远程" }),
         (QuickCategories.Cloud, "网盘", new[] { "网盘" }, "下载", new[] { "下载" }),
         (QuickCategories.Engineering, "嵌入式", new[] { "嵌入式", "电路设计" }, "工程", new[] { "仿真计算", "机械设计" }),
@@ -32,7 +32,7 @@ public static class GroupNamer
         (QuickCategories.SystemTools, QuickCategories.Network, "工具"), (QuickCategories.SystemTools, QuickCategories.Cloud, "工具"),
         (QuickCategories.Network, QuickCategories.Cloud, "网络"), (QuickCategories.News, QuickCategories.Social, "社交"),
         (QuickCategories.Dev, QuickCategories.Engineering, "开发"), (QuickCategories.Design, QuickCategories.Engineering, "设计"),
-        (QuickCategories.Office, QuickCategories.News, "阅读"),
+        (QuickCategories.Office, QuickCategories.News, "阅读"), (QuickCategories.Office, QuickCategories.Edu, "办公学习"),
     };
 
     // The name for members of one kind, from their narrower kinds ("" where unknown).
@@ -76,7 +76,7 @@ public static class GroupNamer
             var mine = Enumerable.Range(0, kinds.Count).Where(i => kinds[i] == kind).Select(i => subs is not null && i < subs.Count ? subs[i] : "").ToList();
             string name = ForKind(kind, mine);
             if (!taken(name)) return name;
-            return SetApart(kind, kinds, subs, names, makers, taken) ?? (!taken(kind) ? kind : name);
+            return SetApart(kind, kinds, subs, names, makers, taken) ?? (!taken(kind) ? kind : Pair(names) is { } both && !taken(both) ? both : name);
         }
         if (specific.Count >= 2 && (specific[0].N + specific[1].N) * 3 >= voters * 2 && Join(specific[0].Kind, specific[1].Kind) is { } joined && !taken(joined))
             return joined;
@@ -123,6 +123,29 @@ public static class GroupNamer
                 if (w.All(c => c >= 0x4E00 && c <= 0x9FFF) && names.All(n => n.Contains(w, StringComparison.Ordinal))) return w;
             }
         return null;
+    }
+
+    // Two members whose kind name is taken: named after both ("Chrome与Edge"), when short enough to read.
+    private static string? Pair(IReadOnlyList<string> names)
+    {
+        if (names.Count != 2) return null;
+        string Short(string n) => Regex.Replace(Regex.Replace(n, @"[\(（\[【][^\)）\]】]*[\)）\]】]", " "), @"\s+", " ").Trim();
+        string a = Short(names[0]), b = Short(names[1]);
+        if (a.Length == 0 || b.Length == 0 || string.Equals(a, b, StringComparison.OrdinalIgnoreCase) || a.Length + b.Length > 14) return null;
+        return $"{a}与{b}";
+    }
+
+    // Names this program gives (a kind, a narrower kind, either side of a two-part kind, a word for two kinds,
+    // "A与B" of two kinds, the fallback), with or without the number that kept one unique.
+    public static bool IsGenerated(string name)
+    {
+        string n = Regex.Replace(name.Trim(), @"\s+\d+$", "");
+        if (n.Length == 0) return false;
+        bool Known(string s) => s == Fallback || QuickCategories.Order.Contains(s) || QuickCategories.SubNames.Contains(s)
+                                || Halves.Any(h => h.A == s || h.B == s) || Pairs.Any(p => p.Name == s);
+        if (Known(n)) return true;
+        int and = n.IndexOf('与');
+        return and > 0 && and < n.Length - 1 && Known(n[..and]) && Known(n[(and + 1)..]);
     }
 
     // The group already has this name, or this name plus the number that kept it unique ("浏览器 2");

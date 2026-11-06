@@ -22,6 +22,20 @@ public sealed class QuickItem
     public string Group { get; set; } = "";
     public bool GroupManual { get; set; }
 
+    // Grid cell an ungrouped icon was dropped on (null: flows in order); the latest drop wins an overlap.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? Col { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? Row { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public long PinnedAt { get; set; }
+
+    // Imported links: the address they open and the picture drawn for them (an image file).
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Url { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Icon { get; set; }
+
     public string DisplayName => Name.Length > 0 ? Name : QuickStore.DefaultName(Path);
 
     [JsonExtensionData]
@@ -59,6 +73,10 @@ public sealed class QuickGroup
     // The kind automatic grouping files into this group (QuickCategories), kept when the user renames it.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Kind { get; set; }
+
+    // The user typed this name: it is never renamed after the members.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Typed { get; set; }
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? Extra { get; set; }
@@ -173,6 +191,42 @@ public sealed class QuickStore
         Save(null);
     }
 
+    // Several items in one undo step (clearing the ones whose target is gone).
+    public int RemoveMany(IReadOnlyCollection<QuickItem> items, string why)
+    {
+        var set = items.Where(Data.Items.Contains).ToHashSet();
+        if (set.Count == 0) return 0;
+        Checkpoint($"remove {set.Count} item(s) ({why}): " + string.Join(", ", set.Take(20).Select(i => i.DisplayName)));
+        Data.Items.RemoveAll(set.Contains);
+        Prune(Data);
+        Save(null);
+        return set.Count;
+    }
+
+    // Items no rule explains stay loose icons: automatic grouping leaves them alone (part of the current step).
+    public void KeepLoose(IReadOnlyCollection<QuickItem> items)
+    {
+        foreach (var i in items) if (i.Group.Length == 0) i.GroupManual = true;
+        if (items.Count > 0) Save(null, notify: false);
+    }
+
+    // Imported links in one undo step, each with its name, address and picture.
+    public List<QuickItem> Import(IReadOnlyList<(string Path, string Name, string Url, string? Icon)> entries, string source)
+    {
+        var fresh = entries.Where(e => Find(e.Path) is null).GroupBy(e => Normalize(e.Path), StringComparer.OrdinalIgnoreCase).Select(g => g.First()).ToList();
+        if (fresh.Count == 0) return new();
+        Checkpoint($"import {fresh.Count} link(s) from {source}");
+        var added = new List<QuickItem>();
+        foreach (var e in fresh)
+        {
+            var item = new QuickItem { Path = Normalize(e.Path), Name = e.Name, Url = e.Url, Icon = e.Icon, AddedUtc = Now };
+            Data.Items.Add(item);
+            added.Add(item);
+        }
+        Save(added[0], notify: false);
+        return added;
+    }
+
     public static bool NeedsGroup(QuickItem item) => item.Group.Length == 0 && !item.GroupManual;
 
     public QuickGroup? FindGroup(string name)
@@ -225,10 +279,86 @@ public sealed class QuickStore
         {
             i.Group = target?.Name ?? "";
             i.GroupManual = true;
+            Unpinned(i);
         }
         Prune(Data);
         Save(items.Count > 0 ? items.First() : null);
         return target;
+    }
+
+    private static void Unpinned(QuickItem i)
+    {
+        i.Col = i.Row = null;
+        i.PinnedAt = 0;
+    }
+
+    // An icon dropped on an empty cell of the board: out of its group, pinned at that cell.
+    public void PlaceLoose(QuickItem item, int col, int row)
+    {
+        if (!Data.Items.Contains(item)) return;
+        Checkpoint($"place \"{item.DisplayName}\" at {col},{row}{(item.Group.Length > 0 ? $" (out of \"{item.Group}\")" : "")}");
+        item.Group = "";
+        item.GroupManual = true;
+        item.Col = Math.Max(0, col);
+        item.Row = Math.Max(0, row);
+        item.PinnedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        Prune(Data);
+        Save(item);
+    }
+
+    // An icon dropped into a card at a slot: in that group, just before `before` (null: after its last member).
+    public void PlaceInGroup(QuickItem item, string group, QuickItem? before)
+    {
+        if (!Data.Items.Contains(item) || before == item) return;
+        string name = group.Trim();
+        var existing = FindGroup(name);
+        string final = existing?.Name ?? name;
+        int from = Data.Items.IndexOf(item);
+        var without = Data.Items.Where(i => i != item).ToList();
+        int at = before is not null ? without.IndexOf(before) : -1;
+        if (at < 0)
+        {
+            int last = without.FindLastIndex(i => string.Equals(i.Group, final, StringComparison.OrdinalIgnoreCase));
+            at = last < 0 ? without.Count : last + 1;
+        }
+        bool sameGroup = string.Equals(item.Group, final, StringComparison.OrdinalIgnoreCase);
+        if (sameGroup && at == from && item.Col is null) return;
+        Checkpoint($"place \"{item.DisplayName}\" in \"{final}\" before {(before is null ? "end" : $"\"{before.DisplayName}\"")}");
+        if (existing is null) Data.Groups.Add(new QuickGroup { Name = final });
+        item.Group = final;
+        if (!sameGroup) item.GroupManual = true;
+        Unpinned(item);
+        Data.Items.RemoveAt(from);
+        Data.Items.Insert(at, item);
+        Prune(Data);
+        Save(item);
+    }
+
+    // Reordering in a flat view or among loose icons: just before `before` (null: to the end).
+    public void MoveBefore(QuickItem item, QuickItem? before)
+    {
+        int from = Data.Items.IndexOf(item);
+        if (from < 0 || before == item) return;
+        var without = Data.Items.Where(i => i != item).ToList();
+        int at = before is null ? without.Count : without.IndexOf(before);
+        if (at < 0) at = without.Count;
+        if (at == from) return;
+        Checkpoint($"move \"{item.DisplayName}\" before {(before is null ? "end" : $"\"{before.DisplayName}\"")}");
+        Data.Items.RemoveAt(from);
+        Data.Items.Insert(at, item);
+        Save(item);
+    }
+
+    // The shown order becomes the stored one (a drop that reorders while a sort is active).
+    public void Reorder(IReadOnlyList<QuickItem> order)
+    {
+        var rest = Data.Items.Except(order).ToList();
+        var list = order.Where(Data.Items.Contains).Distinct().Concat(rest).ToList();
+        if (list.SequenceEqual(Data.Items)) return;
+        Checkpoint("keep the sorted order");
+        Data.Items.Clear();
+        Data.Items.AddRange(list);
+        Save(null, notify: false);
     }
 
     // Automatic grouping: applied only to items that are still ungrouped and were never placed by hand,
@@ -265,7 +395,9 @@ public sealed class QuickStore
             var g = (p.Group is { Length: > 0 } learned ? FindGroup(learned) : null) ?? KindGroup(p.Kind);
             if (g is null)
             {
-                g = new QuickGroup { Name = UniqueGroupName(p.Kind), Kind = p.Kind, AutoNamed = true };
+                // The kind's own name may already be another kind's group (an office group named 学习).
+                string name = FindGroup(p.Kind) is { } clash && clash.Kind != p.Kind ? QuickCategories.Alternate(p.Kind) : p.Kind;
+                g = new QuickGroup { Name = UniqueGroupName(name), Kind = p.Kind, AutoNamed = true };
                 created.Add(g);
                 Data.Groups.Add(g);
             }
@@ -287,6 +419,7 @@ public sealed class QuickStore
         if (n.Length == 0 || n == group.Name || !Data.Groups.Contains(group)) return;
         Checkpoint($"rename-group \"{group.Name}\" -> \"{n}\"{(auto ? " (auto)" : "")}");
         group.AutoNamed = auto;
+        group.Typed = !auto;
         var other = FindGroup(n);
         string old = group.Name;
         if (other is not null && other != group)
@@ -325,20 +458,28 @@ public sealed class QuickStore
         Save(null);
     }
 
-    // One card (or all with null) back to flowing in order.
+    // One card (or every card and icon with null) back to flowing in order.
     public void Unpin(QuickGroup? group)
     {
-        if (!Data.Groups.Any(g => g.Col is not null && (group is null || g == group))) return;
+        bool items = group is null && Data.Items.Any(i => i.Col is not null);
+        if (!items && !Data.Groups.Any(g => g.Col is not null && (group is null || g == group))) return;
         Checkpoint(group is null ? "unpin all" : $"unpin \"{group.Name}\"");
-        bool any = false;
         foreach (var g in Data.Groups)
         {
             if ((group is not null && g != group) || g.Col is null) continue;
             g.Col = g.Row = null;
             g.PinnedAt = 0;
-            any = true;
         }
-        if (any) Save(null);
+        if (group is null) foreach (var i in Data.Items) Unpinned(i);
+        Save(null);
+    }
+
+    public void UnpinItem(QuickItem item)
+    {
+        if (item.Col is null || !Data.Items.Contains(item)) return;
+        Checkpoint($"unpin \"{item.DisplayName}\"");
+        Unpinned(item);
+        Save(item);
     }
 
     public void MarkAutoNamed(QuickGroup group)
@@ -348,10 +489,18 @@ public sealed class QuickStore
         Save(null, notify: false);
     }
 
-    public void SetExpanded(QuickGroup group, bool expanded)
+    // Unfolding a card keeps it where it is shown: it is pinned at that cell (a pinned card pushed down by others
+    // too, rather than jumping back to the cell it was dropped on) as the newest pin, so the cards around make room.
+    public void SetExpanded(QuickGroup group, bool expanded, (int Col, int Row)? at = null)
     {
         if (group.Expanded == expanded) return;
         group.Expanded = expanded;
+        if (expanded && at is { } cell)
+        {
+            (group.Col, group.Row) = (cell.Col, cell.Row);
+            group.PinnedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        }
+        Log.Write($"quick {(expanded ? "expand" : "fold")} \"{group.Name}\"{(group.Col is int c ? $" at {c},{group.Row}" : "")}");
         Save(null, notify: false);
     }
 
@@ -511,6 +660,12 @@ public sealed class QuickStore
                 g.Kind = g.Name;
                 if (!d.Items.Any(i => i.GroupManual && string.Equals(i.Group, g.Name, StringComparison.OrdinalIgnoreCase))) g.AutoNamed = true;
             }
+        // A name this program would give (a kind, a narrower kind, "A与B", "浏览器 2") that nobody typed follows the
+        // members, hand-made groups included; a typed name never changes.
+        foreach (var g in d.Groups)
+            if (!g.AutoNamed && !g.Typed && GroupNamer.IsGenerated(g.Name)) g.AutoNamed = true;
+        foreach (var i in d.Items)
+            if (i.Group.Length > 0 && i.Col is not null) Unpinned(i);
         return d;
     }
 }

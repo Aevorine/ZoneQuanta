@@ -20,9 +20,13 @@ internal static class ShellLinks
             string target = path, args = "", comment = "";
             if (path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase) && File.Exists(path))
                 (target, args, comment) = Resolve(path);
-            // An Internet shortcut: its address is the target.
+            // An Internet shortcut: its address is the target; an imported one also says which folders it was filed in.
             else if (path.EndsWith(".url", StringComparison.OrdinalIgnoreCase) && File.Exists(path) && new FileInfo(path).Length < 64 * 1024)
-                target = File.ReadLines(path).Select(l => l.Trim()).FirstOrDefault(l => l.StartsWith("URL=", StringComparison.OrdinalIgnoreCase))?[4..] ?? "";
+            {
+                var lines = File.ReadLines(path).Select(l => l.Trim()).ToList();
+                target = lines.FirstOrDefault(l => l.StartsWith("URL=", StringComparison.OrdinalIgnoreCase))?[4..] ?? "";
+                comment = lines.FirstOrDefault(l => l.StartsWith("Folder=", StringComparison.OrdinalIgnoreCase))?[7..] ?? "";
+            }
             if (target.Length == 0) return null;
             string desc = "", product = "", company = "";
             if (target.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(target))
