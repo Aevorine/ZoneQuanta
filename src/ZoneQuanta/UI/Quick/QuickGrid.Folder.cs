@@ -31,6 +31,7 @@ public sealed partial class QuickGrid
     private Folder? _folder;
     private Folder? _fading;
     private static bool _adoptLogged;
+    private bool _eatRightUp;
 
     // A cached tile is shown in one place at a time. One still held by a panel it no longer belongs to (a view
     // that did not hand it back, a card the last build dropped) leaves that panel first, instead of WPF refusing
@@ -48,8 +49,27 @@ public sealed partial class QuickGrid
     public bool CloseFolderIfOpen()
     {
         if (_folder is not { } f) return false;
-        if (!f.ClearSearch()) CloseFolder(animate: true);
+        if (!f.ClearSearch()) CloseFolder(animate: true, "esc");
         return true;
+    }
+
+    // Back (a three-finger swipe down): the folder view closes at once, its search with it.
+    public bool CloseFolderNow()
+    {
+        if (_folder is null) return false;
+        CloseFolder(animate: true, "swipe");
+        return true;
+    }
+
+    // A press anywhere in the window outside the folder view closes it; what was pressed still gets the press
+    // (the search field, a toolbar button, the window's move). Menus and other pop-ups are not the window.
+    public void CloseFolderOnPressOutside(MouseButtonEventArgs e)
+    {
+        if (_folder is not { } f || e.OriginalSource is not DependencyObject src) return;
+        var visual = src as Visual ?? WindowDrag.Ancestor<Visual>(src);
+        if (visual is null || PresentationSource.FromVisual(visual) != PresentationSource.FromVisual(this)) return;
+        if (f.IsAncestorOf(visual)) return;
+        CloseFolder(animate: true, "outside press");
     }
 
     private void OpenFolder(GroupCard card)
@@ -80,11 +100,13 @@ public sealed partial class QuickGrid
     }
 
     // Also finishes a view still fading out, so any caller that closes (a layout switch too) frees every tile.
-    private void CloseFolder(bool animate)
+    // why: logged for closes the user asked for (the log then tells which way a view was left).
+    private void CloseFolder(bool animate, string? why = null)
     {
         FinishFading();
         if (_folder is not { } f) return;
         _folder = null;
+        if (why is not null) Core.Log.Write($"quick folder \"{f.Group.Name}\" closed: {why}");
         if (animate) _fading = f;
         f.Close(animate, () =>
         {
@@ -178,6 +200,7 @@ public sealed partial class QuickGrid
         private List<QuickItem> _all = new(), _items = new();
         private Tile? _down;
         private Point _downAt;
+        private Point? _blankAt;
         private int _slot = -1;
         private bool _closing, _quiet, _hadFocus;
         private Action? _done;
@@ -194,7 +217,13 @@ public sealed partial class QuickGrid
 
             _scrim.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
             _scrim.AllowDrop = true;
-            _scrim.MouseLeftButtonDown += (_, e) => { _owner.CloseFolder(animate: true); e.Handled = true; };
+            _scrim.MouseDown += (_, e) =>
+            {
+                // A right press only dismisses: the card under it must not open its menu on the release.
+                if (e.ChangedButton == MouseButton.Right) _owner._eatRightUp = true;
+                _owner.CloseFolder(animate: true, "dimmed board");
+                e.Handled = true;
+            };
             _scrim.DragOver += OnScrimDrag;
             _scrim.DragLeave += (_, _) => _outside.Stop();
             _scrim.Drop += (_, e) => e.Handled = true;
@@ -206,6 +235,16 @@ public sealed partial class QuickGrid
             _panel.RenderTransformOrigin = new Point(0.5, 0.5);
             _panel.RenderTransform = new TransformGroup { Children = { _zoom, _shift } };
             _panel.MouseLeftButtonDown += (_, e) => e.Handled = true;
+            // A click (not a drag) on the view's own empty space closes it too.
+            _panel.PreviewMouseLeftButtonDown += (_, e) => _blankAt = e.ClickCount == 1 && Blank(e) ? e.GetPosition(this) : null;
+            _panel.PreviewMouseLeftButtonUp += (_, e) =>
+            {
+                if (_blankAt is not { } at) return;
+                _blankAt = null;
+                var d = e.GetPosition(this) - at;
+                if (Math.Abs(d.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(d.Y) < SystemParameters.MinimumVerticalDragDistance && Blank(e))
+                    _owner.CloseFolder(animate: true, "empty space");
+            };
             // Right-click on the header or between the icons: the group's own menu (a tile keeps its item menu).
             _panel.ContextMenu = new ContextMenu();
             _panel.ContextMenuOpening += (_, e) =>
@@ -244,7 +283,7 @@ public sealed partial class QuickGrid
                 _owner.CloseFolder(animate: false);
                 if (!c.Group.Expanded) c.Toggle();
             });
-            foreach (var b in new[] { _prev, _next, add, _unfold, HeaderButton("Icon.Close", "关闭", () => _owner.CloseFolder(animate: true)) })
+            foreach (var b in new[] { _prev, _next, add, _unfold, HeaderButton("Icon.Close", "关闭", () => _owner.CloseFolder(animate: true, "close button")) })
                 _buttons.Children.Add(b);
 
             var header = _header;
@@ -299,7 +338,7 @@ public sealed partial class QuickGrid
             PreviewMouseDown += (_, e) =>
             {
                 if (e.ChangedButton != MouseButton.XButton1) return;
-                _owner.CloseFolder(animate: true);
+                _owner.CloseFolder(animate: true, "back button");
                 e.Handled = true;
             };
             SizeChanged += (_, _) => Relayout();
@@ -324,6 +363,26 @@ public sealed partial class QuickGrid
             for (var d = source as DependencyObject; d is not null; d = d is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
                 if (d is T) return true;
             return false;
+        }
+
+        // Empty space of the view: not an icon, field, button, scroll bar, edge handle or the title, and not the
+        // icons' block either (the gaps between icons belong to them, so a near miss never closes the view).
+        private bool Blank(MouseEventArgs e)
+        {
+            for (var d = e.OriginalSource as DependencyObject; d is not null && d != _panel; d = d is Visual ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
+                if (d is Tile or System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.Primitives.ButtonBase or Thumb or System.Windows.Controls.Primitives.ScrollBar || d == _titleHost)
+                    return false;
+            var tiles = _cells.Children.OfType<Tile>().Where(t => t.IsVisible).ToList();
+            if (tiles.Count == 0) return true;
+            var p = e.GetPosition(_cells);
+            double slot = _cells.ActualWidth / Math.Max(1, _cells.Columns), row = _cells.ActualHeight / Math.Max(1, _cells.Rows);
+            foreach (var t in tiles)
+            {
+                var r = new Rect(t.TranslatePoint(new Point(0, 0), _cells), new Size(t.ActualWidth, t.ActualHeight));
+                r.Inflate(Math.Max(2, (slot - r.Width) / 2 + 2), Math.Max(2, (row - r.Height) / 2 + 2));
+                if (r.Contains(p)) return false;
+            }
+            return true;
         }
 
         public void Fill(GroupCard card)
@@ -694,7 +753,7 @@ public sealed partial class QuickGrid
             var mods = Keyboard.Modifiers;
             if (e.Key == Key.Escape)
             {
-                if (!ClearSearch()) _owner.CloseFolder(animate: true);
+                if (!ClearSearch()) _owner.CloseFolder(animate: true, "esc");
                 e.Handled = true;
                 return;
             }
@@ -760,7 +819,7 @@ public sealed partial class QuickGrid
                     FocusFirst();
                     break;
                 case Key.Escape:
-                    if (!ClearSearch()) _owner.CloseFolder(animate: true);
+                    if (!ClearSearch()) _owner.CloseFolder(animate: true, "esc");
                     break;
                 default:
                     return;
@@ -797,6 +856,7 @@ public sealed partial class QuickGrid
             {
                 tile.ClearValue(OpacityProperty);
                 _owner._board.Frozen = false;
+                _owner.EndArrange();
                 ShowSlot(-1);
                 _outside.Stop();
             }

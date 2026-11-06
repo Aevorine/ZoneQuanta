@@ -64,6 +64,13 @@ public sealed partial class QuickGrid : UserControl
         _list.Drop += OnDrop;
 
         InitBoard();
+        PreviewMouseRightButtonDown += (_, _) => _eatRightUp = false;
+        PreviewMouseRightButtonUp += (_, e) =>
+        {
+            if (!_eatRightUp) return;
+            _eatRightUp = false;
+            e.Handled = true;
+        };
         actions.AttachUndoKeys(this);
         actions.Store.Changed += _ => Invalidate();
         actions.IconsChanged += files =>

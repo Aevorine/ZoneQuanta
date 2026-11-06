@@ -86,6 +86,40 @@ internal static class Native
     public static extern bool SetForegroundWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
+    private static extern bool AttachThreadInput(uint attach, uint to, bool on);
+
+    [DllImport("user32.dll")]
+    private static extern bool BringWindowToTop(IntPtr hWnd);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    // Takes the foreground back after the system gave it away mid-gesture: a plain request first, then with this thread
+    // briefly sharing input state with the foreground one (the only route the foreground lock leaves).
+    public static bool ForceForeground(IntPtr hwnd)
+    {
+        if (GetForegroundWindow() == hwnd || SetForegroundWindow(hwnd)) return true;
+        uint fg = GetWindowThreadProcessId(GetForegroundWindow(), out _), me = GetCurrentThreadId();
+        if (fg == 0 || fg == me || !AttachThreadInput(me, fg, true)) return false;
+        try
+        {
+            BringWindowToTop(hwnd);
+            return SetForegroundWindow(hwnd);
+        }
+        finally { AttachThreadInput(me, fg, false); }
+    }
+
+    // A pop-up that hides instead of minimizing: without the minimize box, show desktop (Win+D, three fingers down)
+    // and Win+M leave it alone instead of turning it into a stray title bar.
+    public static void RemoveMinimizeBox(IntPtr hwnd)
+    {
+        const int GWL_STYLE = -16;
+        const long WS_MINIMIZEBOX = 0x20000;
+        long style = GetWindowLongPtr(hwnd, GWL_STYLE).ToInt64();
+        if ((style & WS_MINIMIZEBOX) != 0) SetWindowLongPtr(hwnd, GWL_STYLE, new IntPtr(style & ~WS_MINIMIZEBOX));
+    }
+
+    [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
 
     [DllImport("user32.dll")]

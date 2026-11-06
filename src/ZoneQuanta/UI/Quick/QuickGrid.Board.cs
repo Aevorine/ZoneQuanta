@@ -43,13 +43,12 @@ public sealed partial class QuickGrid
     private readonly Grid _boardHost = new();
     private readonly Canvas _overlay = new() { IsHitTestVisible = false };
     private readonly Border _slotBar = new() { Width = 3, CornerRadius = new CornerRadius(1.5), Visibility = Visibility.Collapsed, IsHitTestVisible = false };
-    private readonly Grid _ghost = new() { IsHitTestVisible = false };
+    private readonly Grid _ghost = DropFrame(14, new Thickness(6, 4, 6, 10));
     private readonly Dictionary<QuickItem, Tile> _boardTiles = new();
     private readonly List<GroupCard> _cards = new();
     private readonly Dictionary<string, (int Col, int Row)> _lastCells = new(StringComparer.OrdinalIgnoreCase);
     private GroupCard? _downCard, _dropCard, _lifted;
     private Point _grab;
-    private (int Col, int Row)? _liftTarget;
     private int _liftRows;
     private Tile? _focused;
 
@@ -57,7 +56,6 @@ public sealed partial class QuickGrid
     private enum DropKind { None, IntoCard, Merge, Cell }
     private readonly record struct DropPlan(DropKind Kind, GroupCard? Card = null, int Slot = -1, Tile? With = null, int Col = -1, int Row = -1);
     private DropPlan _plan;
-    private (int Col, int Row)? _ghostAt;
     private Tile? _carried;
     private readonly DispatcherTimer _leaveTimer = new() { Interval = TimeSpan.FromMilliseconds(120) };
 
@@ -94,12 +92,8 @@ public sealed partial class QuickGrid
         _overlay.Children.Add(_slotBar);
         _boardHost.Children.Add(_overlay);
         _slotBar.SetResourceReference(Border.BackgroundProperty, "Accent1Brush");
-        var outline = new Shapes.Rectangle { RadiusX = 14, RadiusY = 14, StrokeThickness = 1.5, StrokeDashArray = new DoubleCollection { 4, 3 }, Margin = new Thickness(6, 4, 6, 10) };
-        outline.SetResourceReference(Shapes.Shape.StrokeProperty, "Accent1Brush");
-        var fill = new Border { CornerRadius = new CornerRadius(14), Margin = new Thickness(6, 4, 6, 10), Opacity = 0.14 };
-        fill.SetResourceReference(Border.BackgroundProperty, "Accent1Brush");
-        _ghost.Children.Add(fill);
-        _ghost.Children.Add(outline);
+        _cardFrame.VerticalAlignment = VerticalAlignment.Top;
+        _dwell.Tick += (_, _) => OnDwell();
         _boardScroll.Content = _boardHost;
         _boardRoot.Children.Add(_boardScroll);
         _boardScroll.PreviewMouseLeftButtonDown += OnBoardDown;
@@ -113,6 +107,8 @@ public sealed partial class QuickGrid
         {
             _leaveTimer.Stop();
             ShowPlan(default);
+            // A drag that is not ours (another program, the folder view) has no end of its own here.
+            if (_carried is null && _lifted is null) EndArrange();
         };
         _boardScroll.DragLeave += (_, _) => _leaveTimer.Start();
         _boardScroll.Drop += OnBoardDrop;
@@ -182,6 +178,8 @@ public sealed partial class QuickGrid
 
     private void ClearBoard()
     {
+        // The store changed mid-drag: its layout wins over the snapshot.
+        EndArrange();
         foreach (var c in _cards)
         {
             if (_board.CellOf(c) is { } at) _lastCells[c.Group.Name] = at;
@@ -191,7 +189,6 @@ public sealed partial class QuickGrid
         _board.Children.Clear();
         _dropCard = null;
         _dropTile = null;
-        _ghostAt = null;
         _plan = default;
         _slotBar.Visibility = Visibility.Collapsed;
     }
@@ -264,6 +261,7 @@ public sealed partial class QuickGrid
                 _board.Frozen = true;
                 // A loose icon leaves its cell while carried (the placeholder shows where it goes); one in a card dims.
                 bool loose = tile.Parent == _board;
+                BeginArrange(loose ? tile : null);
                 _carried = tile;
                 if (loose) tile.Visibility = Visibility.Collapsed;
                 else tile.Opacity = 0.35;
@@ -351,6 +349,7 @@ public sealed partial class QuickGrid
         }
         else if (e.Data.GetDataPresent(DragFormat) || e.Data.GetDataPresent(DataFormats.FileDrop))
         {
+            if (!Arranging) BeginArrange(null);
             var dragged = e.Data.GetData(DragFormat) is string p ? _actions.Store.Find(p) : null;
             ShowPlan(PlanAt(e, dragged));
             e.Effects = _plan.Kind == DropKind.None ? DragDropEffects.None : DragDropEffects.Link;
@@ -364,7 +363,8 @@ public sealed partial class QuickGrid
     }
 
     // What a drop at the pointer would do. Over a card: the slot nearest the pointer. Over the middle of a loose
-    // icon: a group of the two. Anywhere else: the cell under the pointer (the placeholder, once shown, holds it).
+    // icon: a group of the two. Anywhere else: the cell under the pointer, with the board's hysteresis; a cell a card
+    // covers (its name strip, the room under a short card) joins that card: one icon never pushes a whole card away.
     private DropPlan PlanAt(DragEventArgs e, QuickItem? dragged)
     {
         var tile = TileAt(e.OriginalSource);
@@ -375,11 +375,12 @@ public sealed partial class QuickGrid
             double mx = tile.ActualWidth * (1 - MergeZone) / 2, my = tile.ActualHeight * (1 - MergeZone) / 2;
             bool middle = at.X > mx && at.X < tile.ActualWidth - mx && at.Y > my && at.Y < tile.ActualHeight - my;
             if (middle) return new DropPlan(DropKind.Merge, With: tile);
-            var cell = _board.CellOf(tile);
-            if (cell is { } c) return new DropPlan(DropKind.Cell, Col: c.Col, Row: c.Row);
         }
-        var (col, row) = _board.CellUnder(e.GetPosition(_board));
-        return new DropPlan(DropKind.Cell, Col: col, Row: row);
+        var (fx, fy) = _board.CellCoords(e.GetPosition(_board));
+        var spot = Spot(fx - 0.5, fy - 0.5, 1, 1, BaseRows);
+        if (_base?.FirstOrDefault(s => s.Child is GroupCard && s.Box.Overlaps(spot)).Child is GroupCard owner)
+            return new DropPlan(DropKind.IntoCard, owner, owner.SlotAt(e.GetPosition(owner)));
+        return new DropPlan(DropKind.Cell, Col: spot.Col, Row: spot.Row);
     }
 
     private void ShowPlan(DropPlan plan)
@@ -394,26 +395,8 @@ public sealed partial class QuickGrid
             _slotBar.Visibility = Visibility.Visible;
         }
         else _slotBar.Visibility = Visibility.Collapsed;
-        if (plan.Kind == DropKind.Cell) ShowGhost(plan.Col, plan.Row);
-        // Over a card or an icon the placeholder keeps its cell (moving it would shift what is under the pointer)
-        // but is not drawn.
-        _ghost.Opacity = plan.Kind == DropKind.Cell ? 1 : 0;
-        if (plan.Kind == DropKind.None) HideGhost();
-    }
-
-    // The placeholder is a cell of the grid pinned above everything, so the icons around make room for it live.
-    private void ShowGhost(int col, int row)
-    {
-        if (_ghostAt == (col, row) && _ghost.Parent == _board) return;
-        _ghostAt = (col, row);
-        if (_ghost.Parent is null) _board.Children.Add(_ghost);
-        CellGridPanel.SetPin(_ghost, col, row, long.MaxValue);
-    }
-
-    private void HideGhost()
-    {
-        _ghostAt = null;
-        if (_ghost.Parent == _board) _board.Children.Remove(_ghost);
+        // The placeholder is a held cell: the icon it lands on makes room once the pointer rests (the rest stay put).
+        if (_lifted is null) Aim(plan.Kind == DropKind.Cell ? new CellBox(plan.Col, plan.Row, 1, 1) : null, _ghost);
     }
 
     private void OnBoardDrop(object sender, DragEventArgs e)
@@ -424,30 +407,34 @@ public sealed partial class QuickGrid
 
         if (e.Data.GetData(GroupDragFormat) is string)
         {
-            if (_lifted is { } lifted && _liftTarget is { } at)
+            if (_lifted is { } lifted) CommitArrange(lifted.Group, null, lifted.Group.Name);
+            return;
+        }
+        try
+        {
+            var dragged = e.Data.GetData(DragFormat) is string path ? _actions.Store.Find(path) : null;
+            if (dragged is null && e.Data.GetDataPresent(DragFormat)) return;
+            if (plan.Kind == DropKind.None) ShowPlan(plan = PlanAt(e, dragged));
+            if (dragged is not null)
             {
-                _liftTarget = null;
-                _actions.PlaceGroup(lifted.Group, at.Col, at.Row);
+                DropAt(dragged, plan);
+                return;
             }
-            return;
+            if (e.Data.GetData(DataFormats.FileDrop) is string[] files)
+            {
+                // Files from outside join the card they were dropped on; they take the exact slot only in the custom
+                // order (another sort the user chose stays as it is). On a cell the first takes it, the rest flow.
+                var added = _actions.Add(files, -1, plan.Kind == DropKind.IntoCard ? plan.Card!.Group.Name : null);
+                bool custom = _actions.Settings.QuickSort == "Custom";
+                if (plan.Kind == DropKind.Cell) { if (added.Count > 0) DropAt(added[0], plan); }
+                else foreach (var item in added)
+                    if (plan.Kind != DropKind.IntoCard || custom) DropAt(item, plan);
+            }
         }
-        var dragged = e.Data.GetData(DragFormat) is string path ? _actions.Store.Find(path) : null;
-        if (dragged is null && e.Data.GetDataPresent(DragFormat)) return;
-        if (plan.Kind == DropKind.None) plan = PlanAt(e, dragged);
-        ShowPlan(default);
-        if (dragged is not null)
+        finally
         {
-            DropAt(dragged, plan);
-            return;
-        }
-        if (e.Data.GetData(DataFormats.FileDrop) is string[] files)
-        {
-            // Files from outside join the card they were dropped on; they take the exact slot only in the custom
-            // order (another sort the user chose stays as it is).
-            var added = _actions.Add(files, -1, plan.Kind == DropKind.IntoCard ? plan.Card!.Group.Name : null);
-            bool custom = _actions.Settings.QuickSort == "Custom";
-            foreach (var item in added)
-                if (plan.Kind != DropKind.IntoCard || custom) DropAt(item, plan);
+            ShowPlan(default);
+            if (_carried is null) EndArrange();
         }
     }
 
@@ -462,32 +449,36 @@ public sealed partial class QuickGrid
                 _actions.NewGroup(new[] { with.Item, item });
                 break;
             case DropKind.Cell:
-                _actions.PlaceItem(item, plan.Col, plan.Row);
+                if (!CommitArrange(null, item, item.DisplayName) && item.Col != plan.Col | item.Row != plan.Row | item.Group.Length > 0)
+                    _actions.PlaceItem(item, plan.Col, plan.Row);
                 break;
         }
     }
 
-    // The card being dragged is laid out first, at the cell under the pointer; the column count holds still.
+    // The card leaves the layout and floats under the pointer above the rest, which hold their cells.
     private void Lift(GroupCard card)
     {
         _lifted = card;
-        _liftTarget = null;
-        _liftRows = _board.RowsWithout(card); // lowest drop: just under all the other cards
         _board.Frozen = true;
-        card.Opacity = 0.8;
-        System.Windows.Controls.Panel.SetZIndex(card, 1);
+        BeginArrange(card);
+        _liftRows = BaseRows; // lowest drop: just under all the other cards
+        card.Opacity = 0.94;
+        card.SetLifted(true);
+        System.Windows.Controls.Panel.SetZIndex(card, 2);
+        _cardFrame.Height = card.FaceHeight;
+        _board.Float(card, card.TranslatePoint(new Point(0, 0), _board));
+        if (_from is { } from) Aim(from, _cardFrame);
     }
 
     private void Follow(DragEventArgs e)
     {
         var card = _lifted!;
         var p = e.GetPosition(_board);
-        var at = _board.CellAt(new Point(p.X - _grab.X, p.Y - _grab.Y), CellGridPanel.GetColSpan(card), _liftRows);
-        if (_liftTarget != at)
-        {
-            _liftTarget = at;
-            CellGridPanel.SetPin(card, at.Col, at.Row, long.MaxValue);
-        }
+        var corner = new Point(p.X - _grab.X, p.Y - _grab.Y);
+        _board.Float(card, corner);
+        if (_from is not { } from) return;
+        var (fx, fy) = _board.CellCoords(corner);
+        Aim(Spot(fx, fy, from.C, from.R, _liftRows), _cardFrame);
     }
 
     // Any drag near the top or bottom edge scrolls the board, faster the closer it gets; DragOver keeps
@@ -499,7 +490,7 @@ public sealed partial class QuickGrid
         else if (y > _boardScroll.ActualHeight - edge) _boardScroll.ScrollToVerticalOffset(_boardScroll.VerticalOffset + (y - _boardScroll.ActualHeight + edge) / 2);
     }
 
-    // Back to where the store says the card belongs: its new cell after a drop, the old one after Esc
+    // Back to where the store says everything belongs: the layout just shown after a drop, the old one after Esc
     // or a release outside the board.
     private void Settle()
     {
@@ -512,13 +503,14 @@ public sealed partial class QuickGrid
             carried.ClearValue(OpacityProperty);
             carried.RefreshMeta(true);
         }
-        if (_lifted is not { } card) return;
-        _lifted = null;
-        _liftTarget = null;
-        card.Opacity = 1;
-        System.Windows.Controls.Panel.SetZIndex(card, 0);
-        var g = card.Group;
-        CellGridPanel.SetPin(card, g.Col ?? -1, g.Row ?? -1, g.PinnedAt);
+        if (_lifted is { } card)
+        {
+            _lifted = null;
+            card.Opacity = 1;
+            card.SetLifted(false);
+            System.Windows.Controls.Panel.SetZIndex(card, 0);
+        }
+        EndArrange();
     }
 
     private void MarkBoardDrop(GroupCard? card, Tile? tile)
@@ -707,6 +699,11 @@ public sealed partial class QuickGrid
         public bool CanExpand => _items.Count > _shape.Cols * _shape.Rows;
         public bool Folded => CanExpand && !Group.Expanded && !_peek;
         public int Columns => _shape.Mini ? Math.Max(2, _wantCols) : _shape.Cols;
+        public double FaceHeight => _face.ActualHeight > 0 ? _face.ActualHeight : _face.Height;
+
+        // Picked up: a soft shadow under the face, as if it rose off the board.
+        public void SetLifted(bool on) =>
+            _card.Effect = on ? new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 22, ShadowDepth = 5, Opacity = 0.3, Direction = 270, Color = Colors.Black } : null;
         // The card face in the given element's coordinates (where the folder view grows from).
         public Rect FaceIn(Visual to) => _face.TransformToVisual(to).TransformBounds(new Rect(0, 0, _face.ActualWidth, _face.ActualHeight));
 

@@ -320,6 +320,14 @@ public sealed class QuickActions
     }
 
     public void PlaceGroup(QuickGroup group, int col, int row) => Store.PlaceGroup(group, col, row);
+
+    // Writes the board as it is shown (see QuickStore.Arrange); an icon that left its group renames the groups after it.
+    public void ArrangeBoard(string what, IReadOnlyList<(QuickGroup? Group, QuickItem? Item, int Col, int Row)> cells)
+    {
+        bool loosens = cells.Any(c => c.Item is { Group.Length: > 0 });
+        Store.Arrange(what, cells);
+        if (loosens) RefreshAutoNames();
+    }
     public void Unpin(QuickGroup? group) => Store.Unpin(group);
 
     // Right-click "按内容命名": named from the members again, and follows them from now on.

@@ -85,6 +85,40 @@ public sealed class CellGridPanel : System.Windows.Controls.Panel
     // Keeps the current column count (while a child is dragged, so the grid under the pointer holds still).
     public bool Frozen { get; set; }
 
+    // While a drag arranges the grid: each held child sits exactly at its cell (no packing, column count kept), any other
+    // takes the first free cell, and the floating child is drawn at its point on top without taking a cell.
+    private IReadOnlyDictionary<UIElement, (int Col, int Row)>? _hold;
+    private UIElement? _floating;
+    private Point _floatAt;
+
+    public void Hold(IReadOnlyDictionary<UIElement, (int Col, int Row)>? cells)
+    {
+        _hold = cells;
+        InvalidateMeasure();
+    }
+
+    public void Float(UIElement? child, Point at)
+    {
+        bool same = _floating == child;
+        _floating = child;
+        _floatAt = at;
+        if (same) InvalidateArrange();
+        else InvalidateMeasure();
+    }
+
+    // Every visible child with the cells it covered at the last layout.
+    public List<(UIElement Child, CellBox Box)> Snapshot()
+    {
+        var list = new List<(UIElement, CellBox)>();
+        foreach (var kid in Visible())
+            if (_cellOf.TryGetValue(kid, out var c))
+                list.Add((kid, new CellBox(c.Col, c.Row, Math.Clamp(GetColSpan(kid), 1, Math.Max(1, Columns)), Math.Max(1, GetRowSpan(kid)))));
+        return list;
+    }
+
+    // A point in cell units: (0, 0) is the top-left corner of the first cell, (1, 1) that of the next one diagonally.
+    public (double Col, double Row) CellCoords(Point p) => ((p.X - _offset) / Math.Max(1, Track + Gap), p.Y / Math.Max(1, CellHeight));
+
     // Columns, their width (a column step is Track + Gap) and rows in use at the last layout.
     public int Columns { get; private set; } = 1;
     public double Track { get; private set; }
@@ -106,37 +140,8 @@ public sealed class CellGridPanel : System.Windows.Controls.Panel
         e.SetValue(PinRankProperty, rank);
     }
 
-    // Top-left cell for a child of the given width whose top-left corner is at p (nearest cell), at most
-    // maxRow down (a fixed bound: one that grew with the dragged child would let it run away downwards).
-    public (int Col, int Row) CellAt(Point p, int colSpan, int maxRow)
-    {
-        double step = Track + Gap;
-        int col = step > 0 ? (int)Math.Round((p.X - _offset) / step) : 0;
-        int row = (int)Math.Round(p.Y / Math.Max(1, CellHeight));
-        return (Math.Clamp(col, 0, Math.Max(0, Columns - Math.Min(Math.Max(1, colSpan), Columns))), Math.Clamp(row, 0, Math.Max(0, maxRow)));
-    }
-
-    // Cell under a point (floor, not nearest): where a single-cell item dropped there lands. One row below
-    // the last used row is allowed.
-    public (int Col, int Row) CellUnder(Point p)
-    {
-        double step = Track + Gap;
-        int col = step > 0 ? (int)Math.Floor(Math.Max(0, p.X - _offset) / step) : 0;
-        int row = (int)Math.Floor(Math.Max(0, p.Y) / Math.Max(1, CellHeight));
-        return (Math.Clamp(col, 0, Math.Max(0, Columns - 1)), Math.Clamp(row, 0, RowsUsed));
-    }
-
     // Top-left cell a child was laid out at (null before its first layout).
     public (int Col, int Row)? CellOf(UIElement child) => _cellOf.TryGetValue(child, out var c) ? c : null;
-
-    // Rows the other children fill at the current column count: the lowest a dragged child should go,
-    // so dragging the bottom card down again does not walk it further each time.
-    public int RowsWithout(UIElement child)
-    {
-        var kids = Visible();
-        kids.Remove(child);
-        return Pack(kids, Columns, Columns).Rows;
-    }
 
     protected override Size MeasureOverride(Size available)
     {
@@ -156,7 +161,17 @@ public sealed class CellGridPanel : System.Windows.Controls.Panel
         for (int i = 0; i < kids.Count && i < _rects.Count; i++)
         {
             var rect = _rects[i];
-            if (glide && _shown.TryGetValue(kids[i], out var was) && (Math.Abs(was.X - rect.X) > 0.5 || Math.Abs(was.Y - rect.Y) > 0.5))
+            if (kids[i] == _floating)
+            {
+                // Follows the pointer as is; a glide still running would lag behind it.
+                rect = new Rect(_floatAt, rect.Size);
+                if (kids[i].GetValue(OffsetProperty) is TranslateTransform t)
+                {
+                    t.BeginAnimation(TranslateTransform.XProperty, null);
+                    t.BeginAnimation(TranslateTransform.YProperty, null);
+                }
+            }
+            else if (glide && _shown.TryGetValue(kids[i], out var was) && (Math.Abs(was.X - rect.X) > 0.5 || Math.Abs(was.Y - rect.Y) > 0.5))
                 Glide(kids[i], was.X - rect.X, was.Y - rect.Y);
             kids[i].Arrange(rect);
             shown[kids[i]] = rect;
@@ -174,7 +189,8 @@ public sealed class CellGridPanel : System.Windows.Controls.Panel
         int widest = Math.Max(1, (int)Math.Floor((width + gap + 0.5) / (Math.Max(1, CellWidth) + gap)));
         Layout? best = null;
         bool samePick = Math.Abs(width - _pickedWidth) < 0.5 && Math.Abs(CellWidth - _pickedCell) < 0.01 && _pickedCols <= widest;
-        if (Frozen && Columns <= widest) best = Pack(kids, Columns, widest);
+        if (_hold is not null && Columns <= widest) best = Held(kids, Columns);
+        else if (Frozen && Columns <= widest) best = Pack(kids, Columns, widest);
         else if (samePick) best = Pack(kids, _pickedCols, widest);
         else
         {
@@ -244,6 +260,37 @@ public sealed class CellGridPanel : System.Windows.Controls.Panel
             foreach (bool b in used[y])
                 if (!b) holes++;
         return new Layout(n, cells, used.Count, holes + 4 * moved + 0.5 * (widest - n));
+    }
+
+    // Held children at their cells, the floating one measured at its own cell, the rest in the first free spots.
+    private Layout Held(List<UIElement> kids, int n)
+    {
+        var used = new List<bool[]>();
+        var cells = new (int, int, int, int)[kids.Count];
+        var rest = new List<int>();
+        int rows = 0;
+        for (int i = 0; i < kids.Count; i++)
+        {
+            int c = Math.Clamp(GetColSpan(kids[i]), 1, n), r = Math.Max(1, GetRowSpan(kids[i]));
+            if (_hold!.TryGetValue(kids[i], out var at))
+            {
+                int col = Math.Clamp(at.Col, 0, n - c), row = Math.Max(0, at.Row);
+                Mark(used, n, row, col, c, r);
+                cells[i] = (row, col, c, r);
+                rows = Math.Max(rows, row + r);
+            }
+            else if (kids[i] == _floating) cells[i] = _cellOf.TryGetValue(kids[i], out var was) ? (was.Row, Math.Min(was.Col, n - c), c, r) : (0, 0, c, r);
+            else rest.Add(i);
+        }
+        foreach (int i in rest)
+        {
+            int c = Math.Clamp(GetColSpan(kids[i]), 1, n), r = Math.Max(1, GetRowSpan(kids[i]));
+            var (row, col) = FirstFree(used, n, c, r);
+            Mark(used, n, row, col, c, r);
+            cells[i] = (row, col, c, r);
+            rows = Math.Max(rows, row + r);
+        }
+        return new Layout(n, cells, rows, 0);
     }
 
     private static bool Free(List<bool[]> used, int n, int row, int col, int c, int r)

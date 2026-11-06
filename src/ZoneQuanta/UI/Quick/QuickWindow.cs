@@ -103,6 +103,9 @@ public sealed class QuickWindow : LauncherWindow
             OpenWindowMenu();
             e.Handled = true;
         };
+        // An open folder view closes on any press outside it, before that press moves the window or reaches a control.
+        PreviewMouseLeftButtonDown += (_, e) => _grid.CloseFolderOnPressOutside(e);
+        PreviewMouseRightButtonDown += (_, e) => _grid.CloseFolderOnPressOutside(e);
         // Margins and bar gaps move at once; buttons and the empty part of the field once the pointer travels.
         Controls.WindowDrag.Attach(this, this, e =>
         {
@@ -168,6 +171,8 @@ public sealed class QuickWindow : LauncherWindow
         _grid.ScrollHome();
         _actions.ScheduleGoneScan();
     }
+
+    protected override bool OnBack() => _grid.CloseFolderNow();
 
     protected override bool OnEscape()
     {

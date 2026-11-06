@@ -463,6 +463,36 @@ public sealed class QuickStore
         Save(null);
     }
 
+    // The board as shown becomes the stored layout, one undo step: every listed card and loose icon pinned at its cell,
+    // earlier in the list = higher rank (callers list them in reading order, so a squeeze later pushes the lower ones).
+    // An icon listed from inside a group leaves it: it was dropped on a cell.
+    public void Arrange(string what, IReadOnlyList<(QuickGroup? Group, QuickItem? Item, int Col, int Row)> cells)
+    {
+        if (cells.Count == 0) return;
+        Checkpoint(what);
+        long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        QuickItem? loosened = null;
+        for (int i = 0; i < cells.Count; i++)
+        {
+            var (g, item, col, row) = cells[i];
+            long rank = now + cells.Count - i;
+            if (g is not null && Data.Groups.Contains(g))
+                (g.Col, g.Row, g.PinnedAt) = (Math.Max(0, col), Math.Max(0, row), rank);
+            else if (item is not null && Data.Items.Contains(item))
+            {
+                if (item.Group.Length > 0)
+                {
+                    item.Group = "";
+                    item.GroupManual = true;
+                    loosened = item;
+                }
+                (item.Col, item.Row, item.PinnedAt) = (Math.Max(0, col), Math.Max(0, row), rank);
+            }
+        }
+        Prune(Data);
+        Save(loosened);
+    }
+
     // One card (or every card and icon with null) back to flowing in order.
     public void Unpin(QuickGroup? group)
     {

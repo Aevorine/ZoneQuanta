@@ -10,13 +10,18 @@ using Forms = System.Windows.Forms;
 
 namespace ZoneQuanta.UI.Quick;
 
-// Borderless topmost pop-up shown on the monitor under the cursor; hides on Esc or when it loses focus.
+// Borderless topmost pop-up shown on the monitor under the cursor; hides on Esc, when it loses focus, or on a
+// three-finger swipe down (which first closes whatever it shows on top: a menu, then OnBack).
 public abstract class LauncherWindow : Window
 {
     private readonly ScaleTransform _zoom = new(1, 1);
     private readonly TranslateTransform _shift = new();
+    private readonly Controls.TouchSwipe _swipe;
+    // Focus lost while three fingers are down: the system's own gesture (show desktop) took it; decided once it ends.
+    private readonly System.Windows.Threading.DispatcherTimer _lostFocus = new() { Interval = TimeSpan.FromMilliseconds(750) };
     private FrameworkElement? _root;
     private bool _placed;
+    private WindowState _shownState = WindowState.Normal;
 
     protected LauncherWindow(string title)
     {
@@ -42,14 +47,42 @@ public abstract class LauncherWindow : Window
         {
             var hwnd = new WindowInteropHelper(this).Handle;
             Native.RoundCorners(hwnd);
+            Native.RemoveMinimizeBox(hwnd);
             MaximizeFit.Attach(HwndSource.FromHwnd(hwnd));
         };
-        Deactivated += (_, _) => { if (!KeepOpen && IsVisible) Hide(); };
+        _swipe = Controls.TouchSwipe.Attach(this, OnSwipe);
+        _lostFocus.Tick += (_, _) =>
+        {
+            _lostFocus.Stop();
+            if (IsVisible && !IsActive && !KeepOpen) Dismiss("focus lost during a swipe");
+        };
+        Deactivated += (_, _) =>
+        {
+            if (KeepOpen || !IsVisible) return;
+            if (_swipe.Busy)
+            {
+                _lostFocus.Stop();
+                _lostFocus.Start();
+                return;
+            }
+            Dismiss("focus lost");
+        };
+        // Never minimized: if the system does it anyway, back to how it was shown (and hidden, unless a swipe decides).
+        StateChanged += (_, _) =>
+        {
+            if (WindowState != WindowState.Minimized)
+            {
+                _shownState = WindowState;
+                return;
+            }
+            WindowState = _shownState;
+            if (!_swipe.Busy && !KeepOpen) Dismiss("minimized by the system");
+        };
         PreviewKeyDown += (_, e) =>
         {
             if (e.Key != Key.Escape || e.Handled) return;
             if (Keyboard.FocusedElement is System.Windows.Controls.TextBox box && box != MainInput) return;
-            if (!OnEscape()) Hide();
+            if (!OnEscape()) Dismiss("esc");
             e.Handled = true;
         };
         Closing += (s, e) => { if (!App.Exiting) { e.Cancel = true; Hide(); } };
@@ -82,9 +115,47 @@ public abstract class LauncherWindow : Window
         if (!double.IsNaN(r.Height)) Height = r.Height;
     }
 
+    // Hides, saying why in the log (with the class of the window that took the focus, when it was taken).
+    private void Dismiss(string why)
+    {
+        if (why.StartsWith("focus", StringComparison.Ordinal))
+        {
+            var cls = new System.Text.StringBuilder(64);
+            Native.GetClassName(Native.GetForegroundWindow(), cls, cls.Capacity);
+            why += $" to {cls}";
+        }
+        Core.Log.Write($"{Title} hidden: {why}");
+        Hide();
+    }
+
     protected virtual void OnPresented() { }
 
     protected virtual bool OnEscape() => false;
+
+    // One level back (a three-finger swipe down): true when something inside closed and the pop-up stays.
+    protected virtual bool OnBack() => false;
+
+    private void OnSwipe(Core.Input.SwipeDirection d)
+    {
+        if (d != Core.Input.SwipeDirection.Down || !IsVisible) return;
+        // A menu or flyout of this window holds the mouse capture; releasing it closes it.
+        bool popup = Mouse.Captured is Visual v && PresentationSource.FromVisual(v) is { } src && src != PresentationSource.FromVisual(this);
+        if (popup) Mouse.Capture(null);
+        if (popup || OnBack())
+        {
+            if (!IsActive && !Native.ForceForeground(new WindowInteropHelper(this).Handle))
+            {
+                // The focus did not come back: rather hidden than left open without it (it would never close).
+                _lostFocus.Stop();
+                Dismiss("swipe (focus did not return)");
+                return;
+            }
+            Activate();
+            return;
+        }
+        _lostFocus.Stop();
+        Dismiss("swipe");
+    }
 
     public void Prewarm()
     {
@@ -94,7 +165,7 @@ public abstract class LauncherWindow : Window
 
     public void Toggle()
     {
-        if (IsVisible && IsActive) Hide();
+        if (IsVisible && IsActive) Dismiss("toggle");
         else Present();
     }
 
