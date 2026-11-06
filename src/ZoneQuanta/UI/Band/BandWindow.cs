@@ -51,6 +51,7 @@ public sealed class BandWindow : IDisposable
     private readonly TextBlock _probe = new() { FontWeight = FontWeights.SemiBold, Style = null };
     private IntPtr _hwnd;
     private HwndSource? _source;
+    private Border? _root; // the host's root; the pill sits inside it
     private IntPtr _parent;
     private bool _visible, _disposed;
     private bool IsVisible => _visible;
@@ -328,7 +329,7 @@ public sealed class BandWindow : IDisposable
     {
         if (_disposed || tray == IntPtr.Zero || !Native.IsWindow(tray)) return false;
         if (_parent == tray && _hwnd != IntPtr.Zero && Native.IsWindow(_hwnd)) return true;
-        _source?.Dispose();
+        ReleaseHost();
         _hwnd = IntPtr.Zero;
         _shownValid = false;
         _parent = tray;
@@ -339,7 +340,22 @@ public sealed class BandWindow : IDisposable
             ExtendedWindowStyle = (int)(Native.WS_EX_NOACTIVATE | Native.WS_EX_TOOLWINDOW | 0x8),
             PositionX = 0, PositionY = 2, Width = 1, Height = 1,
         };
-        _source = new HwndSource(parameters) { RootVisual = _pill, SizeToContent = SizeToContent.Manual };
+        var source = new HwndSource(parameters) { SizeToContent = SizeToContent.Manual };
+        try
+        {
+            _root = new Border { Child = _pill };
+            source.RootVisual = _root;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            Core.Log.Error("band-host", ex);
+            if (_root is not null) _root.Child = null;
+            _root = null;
+            source.Dispose();
+            _parent = IntPtr.Zero;
+            return false;
+        }
+        _source = source;
         // Explorer's composition bridge can cover foreign child surfaces even
         // when UI Automation reports their text. Use an independent target.
         _source.CompositionTarget.RenderMode = RenderMode.SoftwareOnly;
@@ -365,9 +381,24 @@ public sealed class BandWindow : IDisposable
         _layoutTimer.Stop();
         _retry.Stop();
         _settings.PropertyChanged -= OnSettingChanged;
-        _source?.Dispose();
-        _source = null;
+        ReleaseHost();
         _hwnd = IntPtr.Zero;
+    }
+
+    // A host window destroyed together with the taskbar (Explorer restart, sign-in, display change) can leave
+    // its root marked as a root; the pill then could never join a new host ("The root Visual of a VisualTarget
+    // cannot have a parent", which ended the app). Each host gets its own root and the pill leaves it first.
+    private void ReleaseHost()
+    {
+        if (_source is { IsDisposed: false } s)
+        {
+            try { s.RootVisual = null; }
+            catch (InvalidOperationException) { }
+            s.Dispose();
+        }
+        _source = null;
+        if (_root is not null) _root.Child = null;
+        _root = null;
     }
 
     private void SetFontSize(double value)

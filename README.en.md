@@ -30,6 +30,10 @@
 | Display speed | A dedicated high-resolution timer thread wakes about 12 ms before each second, so the new second is presented in the frame that contains the boundary; sampling runs on a background thread and the taskbar numbers refresh every 0.5 s by default (0.25 / 0.5 / 1 / 2 s selectable); the hover card opens in about 10 ms; the monitor follows an auto-hidden taskbar within a few milliseconds of it appearing |
 | Low footprint | Redraws only what changes; sampling drops to once a second while the band is tucked away and the panel is closed; about 75 MB RAM and normally under 1% of one core when idle |
 
+## v1.4.7
+
+Fixed the app ending when the taskbar is rebuilt (sign-in, Explorer restart): the taskbar band now leaves its old host completely before joining a new one, and a failure is logged and retried.
+
 ## v1.4.6
 
 Groups, card places and the navigation order no longer "go back": tests run only on an isolated instance (`--data-dir`), the app keeps a history of versions (on start, exit, before updates and after every change) that the System page restores in one step, the quick panel has Ctrl+Z undo and Ctrl+Y redo, and fields from newer or older versions are kept. Every app on the Traffic page shows its own icon: full paths are recorded when processes start, engines without an icon of their own (xray, sing-box) show the icon of the app that ships them, and a Process / App switch merges an app's processes into one row; right-click opens the file location. Cards and switch rows on every page can be dragged: a plain drag moves the panel, a 0.3 s hold then drag rearranges and is remembered, and right-click restores the default layout. The navigation collapses to icons (‹ button or Ctrl+B, remembered), and hovering an icon shows the page's name and contents.
