@@ -19,7 +19,9 @@ namespace ZoneQuanta.UI.Quick;
 // Folder view: every member of a group in a panel over the board, grown out of the card. The board underneath
 // never moves. Search inside it, step to the previous / next group, right-click for the group's menu, add files
 // or folders to the group; open, rename, reorder by dragging inside, drag out over the dimmed board to drop
-// anywhere on it (the view gets out of the way), drop files on it to add them to the group.
+// anywhere on it (the view gets out of the way), drop files on it to add them to the group. Its size and spacing are
+// its own (FolderMetrics), not the board's: drag an edge or corner to resize it (remembered), double-click one for
+// the automatic size again, or pick a size / spacing from its menu.
 // Its tiles are cached across openings (icons stay loaded), so every way a view closes ends in Release, which
 // hands them back; a view still fading out finishes at once when another one needs them.
 public sealed partial class QuickGrid
@@ -148,13 +150,24 @@ public sealed partial class QuickGrid
         private readonly QuickGrid _owner;
         private readonly Border _scrim = new() { Opacity = 0 };
         private readonly Border _panel = new() { CornerRadius = new CornerRadius(20), BorderThickness = new Thickness(1), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        private readonly UniformWrapPanel _cells = new();
+        private readonly UniformWrapPanel _cells = new() { VerticalAlignment = VerticalAlignment.Top };
         private readonly ScrollViewer _scroll = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Focusable = false, AllowDrop = true };
         private readonly TextBlock _title = new() { FontSize = 15, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         private readonly TextBlock _count = new() { FontSize = 13, Margin = new Thickness(8, 1, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         private readonly Grid _titleHost = new() { Background = Brushes.Transparent, Cursor = Cursors.IBeam, MinWidth = TitleMin };
         private readonly TextBox _search = new() { FontSize = 13, Width = SearchMax, Margin = new Thickness(10, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
         private readonly StackPanel _buttons = new() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        private readonly Grid _header = new() { Margin = new Thickness(18, 10, 8, 4) };
+        private readonly Border _sizeBadge = new()
+        {
+            CornerRadius = new CornerRadius(8), Padding = new Thickness(10, 4, 10, 4), BorderThickness = new Thickness(1), Margin = new Thickness(0, 0, 0, 14),
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Visibility = Visibility.Collapsed, IsHitTestVisible = false,
+        };
+        private readonly TextBlock _sizeText = new() { FontSize = 12 };
+        private bool _resizing;
+        private Point _resizeFrom;
+        private Size _resizeStart;
+        private static ControlTemplate? _bare;
         private readonly Button _prev, _next, _unfold;
         private readonly Border _slotBar = new() { Width = 3, CornerRadius = new CornerRadius(1.5), Visibility = Visibility.Collapsed, IsHitTestVisible = false, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
         private readonly ScaleTransform _zoom = new(1, 1);
@@ -199,6 +212,7 @@ public sealed partial class QuickGrid
             {
                 if (TileAt(e.OriginalSource) is not null || Within<TextBox>(e.OriginalSource)) return;
                 _owner.FillGroupMenu(_panel.ContextMenu, _card, BeginRename, inFolder: true);
+                AddViewMenu(_panel.ContextMenu);
             };
 
             _title.SetResourceReference(TextBlock.ForegroundProperty, "TextBrush");
@@ -233,7 +247,7 @@ public sealed partial class QuickGrid
             foreach (var b in new[] { _prev, _next, add, _unfold, HeaderButton("Icon.Close", "关闭", () => _owner.CloseFolder(animate: true)) })
                 _buttons.Children.Add(b);
 
-            var header = new Grid { Margin = new Thickness(18, 10, 8, 4) };
+            var header = _header;
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -243,6 +257,7 @@ public sealed partial class QuickGrid
             Grid.SetColumn(_buttons, 2);
             header.Children.Add(_buttons);
             DockPanel.SetDock(header, Dock.Top);
+            _scroll.Margin = new Thickness(0, 0, FolderMetrics.ScrollRight, FolderMetrics.ScrollBottom);
 
             var body = new Grid();
             body.Children.Add(_cells);
@@ -260,7 +275,16 @@ public sealed partial class QuickGrid
             var dock = new DockPanel { ClipToBounds = true };
             dock.Children.Add(header);
             dock.Children.Add(_scroll);
-            _panel.Child = dock;
+            var frame = new Grid();
+            frame.Children.Add(dock);
+            _sizeBadge.SetResourceReference(Border.BackgroundProperty, "RaisedBrush");
+            _sizeBadge.SetResourceReference(Border.BorderBrushProperty, "LineBrush");
+            _sizeText.SetResourceReference(TextBlock.ForegroundProperty, "Accent1Brush");
+            System.Windows.Documents.Typography.SetNumeralAlignment(_sizeText, FontNumeralAlignment.Tabular);
+            _sizeBadge.Child = _sizeText;
+            frame.Children.Add(_sizeBadge);
+            AddResizeHandles(frame);
+            _panel.Child = frame;
             Children.Add(_panel);
 
             _outside.Tick += (_, _) =>
@@ -278,7 +302,7 @@ public sealed partial class QuickGrid
                 _owner.CloseFolder(animate: true);
                 e.Handled = true;
             };
-            SizeChanged += (_, _) => Reflow();
+            SizeChanged += (_, _) => Relayout();
             Fill(card);
             Loaded += (_, _) => Dispatcher.BeginInvoke(new Action(Grow), DispatcherPriority.Loaded);
         }
@@ -337,7 +361,7 @@ public sealed partial class QuickGrid
             var keep = Keyboard.FocusedElement as Tile;
             _cells.Children.Clear();
             foreach (var item in _items) _cells.Children.Add(_owner.FolderTile(item));
-            Reflow();
+            Relayout();
             if (keep is not null && _cells.Children.Contains(keep)) keep.Focus();
         }
 
@@ -368,35 +392,187 @@ public sealed partial class QuickGrid
             }
         }
 
-        // Columns close to a 3:2 block, at least the card's own, at most what the board area holds; rows beyond the
-        // height scroll. Sized by every member, not the search's matches, so the panel holds still while typing.
-        private void Reflow()
+        private FolderMetrics Metrics => FolderMetrics.From(_owner._actions.Settings, _owner._m.Icon);
+
+        // The size mode's size (Auto: by every member, not the search's matches, so the panel holds still while
+        // typing) inside the board area; rows beyond the height scroll. Not while an edge is being dragged.
+        public void Relayout()
         {
-            var m = _owner._m;
+            if (_resizing) return;
+            var room = Room();
+            if (room.Width <= 0 || room.Height <= 0) return;
+            var size = Metrics.PanelSize(_owner._actions.Settings, _all.Count, _card.Columns, room, HeaderHeight(), Chrome() + TitleMin + SearchMin);
+            ApplySize(size.Width, size.Height);
+        }
+
+        private Size Room()
+        {
             double w = ActualWidth > 0 ? ActualWidth : _owner._boardRoot.ActualWidth;
             double h = ActualHeight > 0 ? ActualHeight : _owner._boardRoot.ActualHeight;
-            if (w <= 0 || h <= 0) return;
-            double padX = Math.Max(10, m.InsetX), padY = Math.Max(6, m.InsetY);
-            int fit = Math.Max(1, (int)Math.Floor((w - 40 - 2 * padX) / m.PitchX));
-            int n = Math.Max(1, _all.Count);
-            int want = Math.Max(Math.Min(n, Math.Max(4, _card.Columns)), (int)Math.Ceiling(Math.Sqrt(n * 1.5)));
-            int cols = Math.Clamp(want, 1, fit);
-            int rows = (int)Math.Ceiling(n / (double)cols);
+            return new Size(Math.Max(0, w - 2 * FolderMetrics.Margin), Math.Max(0, h - 2 * FolderMetrics.Margin));
+        }
+
+        private double HeaderHeight()
+        {
+            _header.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            return _header.DesiredSize.Height;
+        }
+
+        // Header room besides the title and search: margins and the buttons.
+        private double Chrome()
+        {
+            _buttons.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            return 18 + 8 + 16 + _buttons.DesiredSize.Width;
+        }
+
+        // Columns fill the width (slots share it evenly), rows keep the density's pitch.
+        private void ApplySize(double width, double height)
+        {
+            var fm = Metrics;
+            var (cols, rows, scroll) = fm.Grid(_all.Count, width, FolderMetrics.ViewHeight(height, HeaderHeight()));
             _cells.Columns = cols;
             _cells.Rows = rows;
-            _cells.Width = cols * m.PitchX;
-            _cells.Height = rows * m.PitchY;
-            _cells.Margin = new Thickness(padX, padY, padX, padY);
-            double tileW = Math.Min(m.TileWidth, m.PitchX);
-            foreach (var t in _cells.Children.OfType<Tile>()) t.FitCard(tileW, m.PitchY);
-            _scroll.MaxHeight = Math.Max(m.PitchY + 2 * padY, h - 40 - 58);
-            // The header always fits: title, search and buttons get their room even for a small group.
-            _buttons.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            double chrome = 18 + 8 + 16 + _buttons.DesiredSize.Width;
-            double content = cols * m.PitchX + 2 * padX + 2 + (rows * m.PitchY + 2 * padY > _scroll.MaxHeight ? 12 : 0);
-            double width = Math.Min(Math.Max(content, chrome + TitleMin + SearchMin), Math.Max(content, w - 40));
+            _cells.ClearValue(WidthProperty);
+            _cells.Height = rows * fm.Pitch;
+            _cells.Margin = new Thickness(fm.PadX, fm.BlockPad, fm.PadX, 0);
+            double tileW = fm.TileWidth(fm.Inner(width, scroll) / cols);
+            foreach (var t in _cells.Children.OfType<Tile>()) t.FitCard(tileW, fm.Pitch);
             _panel.Width = width;
-            _search.Width = Math.Clamp(width - chrome - TitleMin - 40, SearchMin, SearchMax);
+            _panel.Height = height;
+            _search.Width = Math.Clamp(width - Chrome() - TitleMin - 40, SearchMin, SearchMax);
+        }
+
+        // A thumb that draws nothing: the panel's edges and corners.
+        private static ControlTemplate Bare()
+        {
+            if (_bare is not null) return _bare;
+            var fill = new FrameworkElementFactory(typeof(Border));
+            fill.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+            return _bare = new ControlTemplate(typeof(Thumb)) { VisualTree = fill };
+        }
+
+        // Edges and corners resize the view about its centre, so the dragged edge follows the pointer; the
+        // bottom-right corner shows a grip. Double-click any of them for the automatic size.
+        private void AddResizeHandles(Grid frame)
+        {
+            var handles = new (HorizontalAlignment H, VerticalAlignment V, int X, int Y)[]
+            {
+                (HorizontalAlignment.Left, VerticalAlignment.Stretch, -1, 0), (HorizontalAlignment.Right, VerticalAlignment.Stretch, 1, 0),
+                (HorizontalAlignment.Stretch, VerticalAlignment.Top, 0, -1), (HorizontalAlignment.Stretch, VerticalAlignment.Bottom, 0, 1),
+                (HorizontalAlignment.Left, VerticalAlignment.Top, -1, -1), (HorizontalAlignment.Right, VerticalAlignment.Top, 1, -1),
+                (HorizontalAlignment.Left, VerticalAlignment.Bottom, -1, 1), (HorizontalAlignment.Right, VerticalAlignment.Bottom, 1, 1),
+            };
+            foreach (var (h, v, x, y) in handles)
+            {
+                var t = new Thumb { HorizontalAlignment = h, VerticalAlignment = v, Focusable = false };
+                if (x == 1 && y == 1)
+                {
+                    t.SetResourceReference(StyleProperty, "CornerGrip");
+                    t.Margin = new Thickness(0, 0, 4, 4);
+                    t.Opacity = 0.6;
+                    t.ToolTip = "调整大小";
+                    t.MouseEnter += (_, _) => t.Opacity = 1;
+                    t.MouseLeave += (_, _) => { if (!_resizing) t.Opacity = 0.6; };
+                }
+                else
+                {
+                    bool corner = x != 0 && y != 0;
+                    t.Template = Bare();
+                    t.Cursor = corner ? (x == y ? Cursors.SizeNWSE : Cursors.SizeNESW) : x != 0 ? Cursors.SizeWE : Cursors.SizeNS;
+                    if (x != 0) t.Width = corner ? 18 : 8;
+                    if (y != 0) t.Height = corner ? 18 : 8;
+                    // Straddles the border, mostly outside the panel.
+                    t.Margin = new Thickness(x < 0 ? -5 : 0, y < 0 ? -5 : 0, x > 0 ? -5 : 0, y > 0 ? -5 : 0);
+                }
+                System.Windows.Automation.AutomationProperties.SetName(t, "调整视图大小");
+                t.PreviewMouseLeftButtonDown += (_, e) =>
+                {
+                    if (e.ClickCount != 2) return;
+                    SetSize("Auto", 0, 0);
+                    e.Handled = true;
+                };
+                t.DragStarted += (_, _) => BeginResize();
+                t.DragDelta += (_, _) => TrackResize(x, y);
+                t.DragCompleted += (_, e) => EndResize(!e.Canceled);
+                frame.Children.Add(t);
+            }
+        }
+
+        private void BeginResize()
+        {
+            if (_closing) return;
+            _resizing = true;
+            _resizeFrom = Mouse.GetPosition(this);
+            _resizeStart = new Size(_panel.ActualWidth, _panel.ActualHeight);
+            _panel.BeginAnimation(WidthProperty, null);
+            _panel.BeginAnimation(HeightProperty, null);
+            ShowSize(_resizeStart);
+            _sizeBadge.Visibility = Visibility.Visible;
+        }
+
+        // Pointer position against the fixed view (the panel moves as it grows about its centre).
+        private void TrackResize(int x, int y)
+        {
+            if (!_resizing) return;
+            var d = Mouse.GetPosition(this) - _resizeFrom;
+            var room = Room();
+            double minW = Math.Min(Math.Max(FolderMetrics.MinWidth, Chrome() + TitleMin + SearchMin), room.Width);
+            double minH = Math.Min(FolderMetrics.MinHeight, room.Height);
+            double w = x == 0 ? _resizeStart.Width : Math.Clamp(_resizeStart.Width + 2 * x * d.X, minW, Math.Max(minW, room.Width));
+            double h = y == 0 ? _resizeStart.Height : Math.Clamp(_resizeStart.Height + 2 * y * d.Y, minH, Math.Max(minH, room.Height));
+            ApplySize(Math.Round(w), Math.Round(h));
+            ShowSize(new Size(w, h));
+        }
+
+        private void ShowSize(Size s) =>
+            _sizeText.Text = string.Create(CultureInfo.InvariantCulture, $"{Math.Round(s.Width)} × {Math.Round(s.Height)}");
+
+        private void EndResize(bool commit)
+        {
+            if (!_resizing) return;
+            _resizing = false;
+            _sizeBadge.Visibility = Visibility.Collapsed;
+            double w = Math.Round(_panel.Width), h = Math.Round(_panel.Height);
+            bool changed = Math.Abs(w - _resizeStart.Width) >= 1 || Math.Abs(h - _resizeStart.Height) >= 1;
+            if (commit && changed) SetSize("Custom", w, h);
+            else Relayout();
+        }
+
+        private void SetSize(string mode, double w, double h)
+        {
+            var s = _owner._actions.Settings;
+            if (s.QuickFolderSize == mode && Math.Abs(s.QuickFolderWidth - w) < 1 && Math.Abs(s.QuickFolderHeight - h) < 1)
+            {
+                Relayout();
+                return;
+            }
+            s.SetQuickFolderSize(mode, w, h);
+            Core.Log.Write(string.Create(CultureInfo.InvariantCulture, $"quick folder size: {mode}{(mode == "Custom" ? $" {w:0} x {h:0}" : "")}"));
+        }
+
+        // The view's own entries under the group's: its size and its spacing.
+        private void AddViewMenu(ContextMenu menu)
+        {
+            var s = _owner._actions.Settings;
+            menu.Items.Add(new Separator());
+            var size = new MenuItem { Header = "视图大小", Tag = Application.Current.TryFindResource("Icon.Fullscreen") };
+            bool custom = s.QuickFolderSize == "Custom";
+            Add(size.Items, "自动", "", "", () => SetSize("Auto", 0, 0), true).IsChecked = s.QuickFolderSize == "Auto";
+            bool preset = false;
+            foreach (var (name, w, h) in FolderMetrics.Presets)
+            {
+                bool on = custom && Math.Abs(s.QuickFolderWidth - w) < 1 && Math.Abs(s.QuickFolderHeight - h) < 1;
+                preset |= on;
+                Add(size.Items, name, "", string.Create(CultureInfo.InvariantCulture, $"{w} × {h}"), () => SetSize("Custom", w, h), true).IsChecked = on;
+            }
+            Add(size.Items, "铺满", "", "", () => SetSize("Fill", 0, 0), true).IsChecked = s.QuickFolderSize == "Fill";
+            if (custom && !preset)
+                Add(size.Items, "自定义", "", string.Create(CultureInfo.InvariantCulture, $"{s.QuickFolderWidth:0} × {s.QuickFolderHeight:0}"), () => { }, true).IsChecked = true;
+            menu.Items.Add(size);
+            var spacing = new MenuItem { Header = "图标间距", Tag = Application.Current.TryFindResource("Icon.Spacing") };
+            foreach (var (key, name) in FolderMetrics.Densities)
+                Add(spacing.Items, name, "", "", () => s.QuickFolderDensity = key, true).IsChecked = s.QuickFolderDensity == key;
+            menu.Items.Add(spacing);
         }
 
         // Grows out of the card face: scaled and moved onto it, then eased to the middle.
@@ -484,7 +660,7 @@ public sealed partial class QuickGrid
         {
             if (_closing || _owner.Neighbour(Group, delta) is not { } next || next.Group == Group) return;
             _finishRename?.Invoke(true);
-            double was = _panel.ActualWidth;
+            double was = _panel.ActualWidth, wasH = _panel.ActualHeight;
             try
             {
                 _quiet = true;
@@ -505,6 +681,8 @@ public sealed partial class QuickGrid
             _title.BeginAnimation(OpacityProperty, new DoubleAnimation(0.3, 1, SlideTime));
             if (was > 0 && Math.Abs(was - _panel.Width) > 1)
                 _panel.BeginAnimation(WidthProperty, new DoubleAnimation(was, _panel.Width, SlideTime) { EasingFunction = ease, FillBehavior = FillBehavior.Stop });
+            if (wasH > 0 && Math.Abs(wasH - _panel.Height) > 1)
+                _panel.BeginAnimation(HeightProperty, new DoubleAnimation(wasH, _panel.Height, SlideTime) { EasingFunction = ease, FillBehavior = FillBehavior.Stop });
             _scroll.ScrollToHome();
             Dispatcher.BeginInvoke(new Action(FocusFirst), DispatcherPriority.Loaded);
             Core.Log.Write($"quick folder \"{Group.Name}\" opened (step {(delta > 0 ? "next" : "previous")}): {_all.Count} items");

@@ -172,9 +172,10 @@ public sealed partial class QuickGrid
         public void FitCard(double width, double height)
         {
             if (_view is not ("Card" or "")) return;
-            double content = _cardIcon + (_s.QuickShowName ? 22 : 0);
+            double content = _cardIcon + (_s.QuickShowName ? BoardMetrics.NameBlock : 0);
+            // Even above and below: the icon sits exactly half the row's spare room below the row's top.
             double room = Math.Max(0, height - content);
-            double top = Math.Min(8, room * 0.57), bottom = Math.Min(6, room - top);
+            double top = Math.Min(7, room / 2), bottom = top;
             double side = Math.Clamp((width - _cardIcon) / 2, 0, 4);
             Width = width;
             Padding = new Thickness(side, top, side, bottom);

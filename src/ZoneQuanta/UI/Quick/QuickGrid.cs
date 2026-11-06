@@ -169,6 +169,7 @@ public sealed partial class QuickGrid : UserControl
             _spacingTimer.Stop();
             _spacingTimer.Start();
         }
+        else if (n.StartsWith("QuickFolder", StringComparison.Ordinal)) _folder?.Relayout();
         else if (n.StartsWith("QuickShow", StringComparison.Ordinal))
         {
             ApplyView();

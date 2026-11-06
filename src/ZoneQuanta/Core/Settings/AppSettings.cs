@@ -184,6 +184,26 @@ public sealed class AppSettings : Observable
     // Change marker for the spacing group (raised once by SetQuickSpacing); not saved.
     [JsonIgnore]
     public int QuickSpacing => 0;
+
+    // Folder view (all members of a group): its own size and spacing, independent of the board's.
+    // Size: Auto (fits the group), Fill (the whole board) or Custom (width × height in DIP, kept across openings).
+    private string _quickFolderSize = "Auto", _quickFolderDensity = "Standard";
+    private double _quickFolderWidth, _quickFolderHeight;
+
+    public string QuickFolderSize { get => _quickFolderSize; set => Set(ref _quickFolderSize, value is "Fill" or "Custom" ? value : "Auto"); }
+    public double QuickFolderWidth { get => _quickFolderWidth; set => Set(ref _quickFolderWidth, Math.Clamp(value, 0, 10000)); }
+    public double QuickFolderHeight { get => _quickFolderHeight; set => Set(ref _quickFolderHeight, Math.Clamp(value, 0, 10000)); }
+    // Compact, Standard or Loose: cell width and row gap of the folder view (the icon size never changes).
+    public string QuickFolderDensity { get => _quickFolderDensity; set => Set(ref _quickFolderDensity, value is "Compact" or "Loose" ? value : "Standard"); }
+
+    // Size mode and size at once (one relayout).
+    public void SetQuickFolderSize(string mode, double width, double height)
+    {
+        _quickFolderSize = mode is "Fill" or "Custom" ? mode : "Auto";
+        _quickFolderWidth = Math.Clamp(Math.Round(width), 0, 10000);
+        _quickFolderHeight = Math.Clamp(Math.Round(height), 0, 10000);
+        Raise(nameof(QuickFolderSize));
+    }
     private Dictionary<string, string> _localKeys = new();
 
     public bool QuickStartSync { get => _quickStartSync; set => Set(ref _quickStartSync, value); }

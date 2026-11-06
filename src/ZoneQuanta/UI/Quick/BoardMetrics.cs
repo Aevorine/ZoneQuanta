@@ -15,6 +15,8 @@ public readonly record struct BoardMetrics(
     public const double IconSize = 42;
     // Room for the name line under an icon (6 margin + one 11.5 px line, rounded up).
     public const double NameLine = 24;
+    // What a tile actually draws under its icon: 6 margin + one 16 px text line.
+    public const double NameBlock = 22;
     public const double LabelStrip = 34;
     // A card may squeeze its icons by up to this much in total before it shows one column fewer
     // (keeps a 2-column card at two columns in the 1.5.0 grid).
@@ -46,6 +48,28 @@ public readonly record struct BoardMetrics(
     public double InsetY => PadY - GapY / 2;
     public double PitchX => Icon + GapX;
     public double PitchY => Icon + Name + GapY;
+    // Height a tile draws: icon plus its name.
+    public double Content => Icon + (Name > 0 ? NameBlock : 0);
+
+    // Icon rows of a card laid out exactly: the border sits PadY above the first icon and below the last name,
+    // rows GapY apart, and the card is just that tall (its cells keep the rest). Cells too short for it: the row
+    // gaps give way first, down to MinGap; Fits is false when even that is too tall (the caller gives the card
+    // another grid row, so the border distance is always the one set). Returns the row height, the icon block's
+    // top / bottom margin inside the border (negative pulls it outwards), the card height with its 1 px border.
+    public (double RowH, double Inset, double Face, bool Fits) CardRows(int drawn, double room)
+    {
+        drawn = Math.Max(1, drawn);
+        double c = Content, avail = Math.Max(0, room - 2), gap = GapY, pad = PadY;
+        double minGap = Math.Min(GapY, 8);
+        bool fits = true;
+        if (drawn * c + (drawn - 1) * gap + 2 * pad > avail + 0.01)
+        {
+            if (drawn > 1) gap = Math.Max(minGap, (avail - 2 * pad - drawn * c) / (drawn - 1));
+            fits = drawn * c + (drawn - 1) * gap + 2 * pad <= avail + 0.01;
+        }
+        double rowH = Math.Floor((c + gap) * 100) / 100, inset = pad - gap / 2;
+        return (rowH, inset, drawn * rowH + 2 * inset + 2, fits);
+    }
     // Widest a loose or card tile is drawn (its hover box).
     public double TileWidth => CellWidth - 4;
     public double MiniCell => 40;

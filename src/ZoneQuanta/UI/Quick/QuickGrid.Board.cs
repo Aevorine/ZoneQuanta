@@ -121,7 +121,14 @@ public sealed partial class QuickGrid
     private void BuildBoard()
     {
         ClearBoard();
+        var before = _m;
         _m = BoardMetrics.From(_actions.Settings);
+        if (_m != before)
+        {
+            double room = 2 * _m.CellHeight - LabelStrip;
+            Core.Log.Write(string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"quick board spacing: icon gap {_m.GapX:0}x{_m.GapY:0}, border {_m.PadX:0}x{_m.PadY:0}, card gap {_m.Group:0}; one-row card {_m.CardRows(1, room).Face:0.#} of {room:0.#}"));
+        }
         _board.CellWidth = _m.CellWidth;
         _board.CellHeight = _m.CellHeight;
         _board.Gap = _m.Group;
@@ -582,9 +589,9 @@ public sealed partial class QuickGrid
     }
 
     // One group: a rounded card in its columns × rows of grid cells, with the name underneath. Icons sit at the
-    // pitch the spacing settings give (small icons in a one-column card, as many as fit); the card is as large
-    // as its icons and the border distance, centred in its cells. The pill beside the name ("+N") opens the
-    // folder view with every member; Ctrl+click or the menu unfolds them in place, remembered per group.
+    // pitch the spacing settings give (small icons in a one-column card, as many as fit); the card is as tall
+    // as its icon rows plus the border distance above and below (BoardMetrics.CardRows), the name right under it.
+    // The pill beside the name ("+N") opens the folder view with every member; Ctrl+click or the menu unfolds them in place, remembered per group.
     private sealed class GroupCard : DockPanel
     {
         private readonly QuickGrid _owner;
@@ -609,7 +616,7 @@ public sealed partial class QuickGrid
 
         // How the card draws at its current width: small icons or full tiles, icon columns, icon rows
         // while folded, icon rows drawn now, and the grid rows it covers; then the icon slot and row height.
-        private readonly record struct Shape(bool Mini, int Cols, int Rows, int DrawnRows, int Span, double Slot = 0, double RowH = 0)
+        private readonly record struct Shape(bool Mini, int Cols, int Rows, int DrawnRows, int Span, double Slot = 0, double RowH = 0, double Inset = 0, double Face = 0)
         {
             public bool SameCells(Shape o) => Mini == o.Mini && Cols == o.Cols && Rows == o.Rows && DrawnRows == o.DrawnRows && Span == o.Span;
         }
@@ -620,7 +627,8 @@ public sealed partial class QuickGrid
             _items = items;
             _peek = peek;
             Group = group;
-            Background = Brushes.Transparent;
+            // No background: the cells below a card shorter than them belong to the board, not the card.
+            Background = null;
             LastChildFill = false;
             (_wantCols, _wantRows) = owner.CardSize(group, items.Count);
             CellGridPanel.SetColSpan(this, _wantCols);
@@ -840,13 +848,15 @@ public sealed partial class QuickGrid
             int cols = cells >= 2 ? Math.Min(m.ColsFor(cells), (int)Math.Floor((inner + 0.5) / (m.Icon + 4))) : 1;
             if (_wantCols >= 2 && cols >= 2)
             {
-                // Icon rows the chosen rows hold; unfolded, the card grows by whole grid rows. The icons share out
-                // the card evenly (rows + 1 grid rows: the extra one holds the border and the name).
+                // Icon rows the chosen rows hold; unfolded, the card grows by whole grid rows (rows + 1 grid rows:
+                // the extra one holds the border and the name). Rows keep the exact spacing, not the cells' height.
                 int rows = m.RowsFor(_wantRows), drawn = rows, span = _wantRows + 1;
                 if (Unfolded(cols * rows))
                     while (drawn * cols < _items.Count) drawn = m.RowsFor(++span - 1);
-                double rowH = (span * m.CellHeight - LabelStrip - 2 * m.InsetY - 2) / drawn;
-                return new Shape(false, cols, rows, drawn, span, Math.Floor(inner / cols * 100) / 100, Math.Floor(rowH * 100) / 100);
+                var fit = m.CardRows(drawn, span * m.CellHeight - LabelStrip);
+                // A border distance the cells cannot hold: one more grid row, rather than a distance other than the one set.
+                while (!fit.Fits && span < _wantRows + 1 + drawn + 4) fit = m.CardRows(drawn, ++span * m.CellHeight - LabelStrip);
+                return new Shape(false, cols, rows, drawn, span, Math.Floor(inner / cols * 100) / 100, fit.RowH, fit.Inset, fit.Face);
             }
             double miniInner = Math.Max(0, width - CardChrome);
             int miniCols = Math.Max(1, (int)Math.Floor((miniInner + 0.5) / m.MiniCell));
@@ -864,10 +874,10 @@ public sealed partial class QuickGrid
             _cells.Columns = shape.Cols;
             _cells.Rows = shape.DrawnRows;
             var m = _owner._m;
-            _face.Height = Math.Max(0, shape.Span * m.CellHeight - LabelStrip);
+            _face.Height = shape.Mini ? Math.Max(0, shape.Span * m.CellHeight - LabelStrip) : shape.Face;
             // A border closer than half a gap pulls the icons outwards (negative margin).
             _card.Padding = new Thickness(shape.Mini ? 8 : 0);
-            _cells.Margin = shape.Mini ? new Thickness(0) : new Thickness(m.InsetX, m.InsetY, m.InsetX, m.InsetY);
+            _cells.Margin = shape.Mini ? new Thickness(0) : new Thickness(m.InsetX, shape.Inset, m.InsetX, shape.Inset);
             if (refill) Fill();
             else if (shape.Slot != _slot || shape.RowH != _rowH) FitTiles();
         }
