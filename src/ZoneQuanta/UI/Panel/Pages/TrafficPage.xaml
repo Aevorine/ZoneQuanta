@@ -93,7 +93,10 @@
                 <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Focusable="False">
                     <StackPanel x:Name="Apps"/>
                 </ScrollViewer>
-                <ToggleButton x:Name="TrackToggle" Grid.Row="3" Style="{StaticResource SwitchRow}" Content="应用流量统计" ToolTip="需要管理员授权一次" Margin="-12,6,-12,-6"/>
+                <UniformGrid Grid.Row="3" Rows="1" Margin="-12,6,-12,-6">
+                    <ToggleButton x:Name="TrackToggle" Style="{StaticResource SwitchRow}" Content="应用流量统计" ToolTip="需要管理员授权一次" Margin="0,0,20,0"/>
+                    <ToggleButton x:Name="OnlineIconToggle" Style="{StaticResource SwitchRow}" Content="联网补全图标" ToolTip="从程序官网获取图标" IsChecked="{Binding OnlineIcons, Mode=TwoWay}"/>
+                </UniformGrid>
             </Grid>
         </Border>
 

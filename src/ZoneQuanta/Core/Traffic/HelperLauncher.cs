@@ -57,6 +57,7 @@ public static class HelperLauncher
         // Windows records its crash), so confirm the helper came up and ask again a few times.
         for (int attempt = 1; ; attempt++)
         {
+            EndStaleInstance();
             if (!await RunHiddenAsync("schtasks.exe", $"/Run /TN {TaskName}")) return HelperState.Failed;
             for (int i = 0; i < 12 && !IsRunning(); i++) await Task.Delay(250);
             bool up = IsRunning();
@@ -73,10 +74,38 @@ public static class HelperLauncher
     // mid-write and Task Scheduler ignores a new start while it lives, so stop it cleanly first.
     public static async Task StopRunningAsync()
     {
-        if (!IsRunning()) return;
-        RequestStop();
-        for (int i = 0; i < 40 && IsRunning(); i++) await Task.Delay(250);
-        Log.Write($"helper stop for update -> {(IsRunning() ? "still running" : "stopped")}");
+        if (IsRunning())
+        {
+            RequestStop();
+            for (int i = 0; i < 40 && IsRunning(); i++) await Task.Delay(250);
+            Log.Write($"helper stop for update -> {(IsRunning() ? "still running" : "stopped")}");
+        }
+        // A helper of an older version may outlive its work (its exit failed on the replaced image), still
+        // holding the old executable open: end it before the leftovers are cleaned up.
+        EndStaleInstance();
+    }
+
+    // Task Scheduler ignores every start while an instance of the task runs. An instance without the helper's
+    // mutex counts nothing: its work has ended (the totals are saved before the mutex is released) or has not
+    // begun. One that has been around for a while is stuck, so end it and let the next start go through.
+    private static void EndStaleInstance()
+    {
+        if (IsRunning()) return;
+        var pids = Platform.ScheduledTask.RunningPids(TaskName);
+        if (!pids.Exists(StartedAWhileAgo) || IsRunning()) return;
+        bool ended = Platform.ScheduledTask.Stop(TaskName);
+        Log.Write($"helper stale instance pid {string.Join(",", pids)} -> {(ended ? "ended" : "could not be ended")}");
+    }
+
+    private static bool StartedAWhileAgo(int pid)
+    {
+        try
+        {
+            using var p = Process.GetProcessById(pid);
+            return DateTime.Now - p.StartTime > TimeSpan.FromSeconds(10);
+        }
+        catch (ArgumentException) { return false; } // already gone
+        catch (Exception ex) when (ex is InvalidOperationException or Win32Exception) { return true; } // age unknown
     }
 
     private static bool IsRunning()

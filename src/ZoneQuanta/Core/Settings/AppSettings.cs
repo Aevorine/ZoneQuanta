@@ -154,6 +154,10 @@ public sealed class AppSettings : Observable
 
     public bool QuickStartSync { get => _quickStartSync; set => Set(ref _quickStartSync, value); }
     public bool QuickAutoGroup { get => _quickAutoGroup; set => Set(ref _quickAutoGroup, value); }
+
+    private int _quickClassifier;
+    // Version of the grouping rules the automatically placed items were last sorted with.
+    public int QuickClassifier { get => _quickClassifier; set => Set(ref _quickClassifier, value); }
     // Pre-1.4.4 quick panel size; read once into QuickBounds, then no longer written.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public double QuickWidth { get => _quickWidth; set => Set(ref _quickWidth, Math.Max(0, value)); }
@@ -194,7 +198,7 @@ public sealed class AppSettings : Observable
     public string PanelPage { get => _panelPage; set => Set(ref _panelPage, value ?? ""); }
     public List<string> NavOrder { get => _navOrder; set => Set(ref _navOrder, value ?? new()); }
 
-    private bool _navCollapsed;
+    private bool _navCollapsed, _onlineIcons = true;
     private Dictionary<string, List<string>> _layouts = new();
     private string _appGroupBy = "Process";
 
@@ -203,6 +207,9 @@ public sealed class AppSettings : Observable
 
     // Order of rearranged page content, by container key; a missing key keeps the built-in order.
     public Dictionary<string, List<string>> Layouts { get => _layouts; set => Set(ref _layouts, value ?? new()); }
+
+    // Programs without an icon of their own may show their brand's icon from the product's website.
+    public bool OnlineIcons { get => _onlineIcons; set => Set(ref _onlineIcons, value); }
 
     // Traffic list rows: one per process, or processes merged into the application they belong to.
     public string AppGroupBy { get => _appGroupBy; set => Set(ref _appGroupBy, value == "App" ? "App" : "Process"); }

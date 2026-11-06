@@ -29,26 +29,28 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        WatchUnhandled();
-        if (Array.IndexOf(e.Args, "--traffic-helper") < 0)
-        {
-            try { DataPaths.Init(e.Args); }
-            catch (ArgumentException ex)
-            {
-                Log.Write($"start refused: {ex.Message}");
-                Shutdown(2);
-                return;
-            }
-        }
-
+        // The elevated traffic helper has no window and ends with its work. It leaves through Environment.Exit, not
+        // a WPF shutdown: after an update has replaced the executable that shutdown fails to load an assembly, and
+        // a process left alive by it makes Task Scheduler ignore every later start of the helper.
         if (Array.IndexOf(e.Args, "--traffic-helper") >= 0)
         {
+            AppDomain.CurrentDomain.UnhandledException += (_, a) => { if (a.ExceptionObject is Exception ex) Log.Crash("helper", ex); };
             Task.Run(() =>
             {
-                try { TrafficHelper.Run(); }
+                int code = 1;
+                try { code = TrafficHelper.Run(); }
                 catch (Exception ex) { Log.Error("traffic-helper", ex); }
-                Dispatcher.BeginInvoke(new Action(Shutdown));
+                Environment.Exit(code);
             });
+            return;
+        }
+
+        WatchUnhandled();
+        try { DataPaths.Init(e.Args); }
+        catch (ArgumentException ex)
+        {
+            Log.Write($"start refused: {ex.Message}");
+            Quit(2);
             return;
         }
 
@@ -72,16 +74,16 @@ public partial class App : Application
             // --exit never falls back to showing the panel, even when the pipe could not be reached.
             if ((command && CommandPipe.Send(Absolutize(e.Args))) || Array.IndexOf(e.Args, "--exit") >= 0)
             {
-                Shutdown();
+                Quit();
                 return;
             }
             _showEvent.Set();
-            Shutdown();
+            Quit();
             return;
         }
         if (Array.IndexOf(e.Args, "--exit") >= 0)
         {
-            Shutdown(); // nothing running to stop
+            Quit(); // nothing running to stop
             return;
         }
 
@@ -150,6 +152,12 @@ public partial class App : Application
         DispatcherUnhandledException += (_, e) =>
         {
             Log.Crash("ui", e.Exception);
+            if (Exiting)
+            {
+                // Everything was saved before closing began: carrying on would only leave a process without windows.
+                e.Handled = true;
+                Environment.Exit(0);
+            }
             long now = Environment.TickCount64;
             recent.Enqueue(now);
             while (recent.Count > 0 && now - recent.Peek() > 60_000) recent.Dequeue();
@@ -166,6 +174,12 @@ public partial class App : Application
             Log.Crash("task", e.Exception);
             e.SetObserved();
         };
+    }
+
+    private void Quit(int code = 0)
+    {
+        Exiting = true;
+        Shutdown(code);
     }
 
     public void PrepareExit()
@@ -260,7 +274,7 @@ public partial class App : Application
             if (window.CreateDesktopShortcut) CreateShortcut(exe);
             Process.Start(new ProcessStartInfo(exe, "--installed") { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(exe)! });
         }
-        Shutdown();
+        Quit();
     }
 
     private static void CreateShortcut(string exe)

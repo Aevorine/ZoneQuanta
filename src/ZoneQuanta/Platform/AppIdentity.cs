@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using ZoneQuanta.Core;
 
@@ -17,7 +18,8 @@ internal static class AppIdentity
     public const string WindowsGlyph = "glyph:windows";
     public const string ExitedGlyph = "glyph:exited";
 
-    public sealed record Identity(string Icon, string Friendly, string Owner, string OwnerKey);
+    // Web: where a brand icon can be fetched when nothing installed has a fitting one (AppBrands.Web.Spec).
+    public sealed record Identity(string Icon, string Friendly, string Owner, string OwnerKey, string Web = "");
 
     public static Identity Describe(string path, string aumid, string name, string description)
     {
@@ -29,7 +31,7 @@ internal static class AppIdentity
         }
 
         var index = StartMenuIndex.Current;
-        bool own = HasOwnIcon(path);
+        bool own = HasOwnIcon(path) && !AppBrands.RuntimeBuilt(path, name);
         if (index.ByTarget(path) is { } exact)
             return new Identity(exact.Lnk, exact.Name, "", exact.Target);
         var owner = index.OwnerOf(path);
@@ -37,8 +39,48 @@ internal static class AppIdentity
         // No Start menu entry around it: the installed program it belongs to (Apps & features), if that has an icon.
         if (!own && !IsWindows(path) && InstalledPrograms.OwnerOf(path) is { } product)
             return new Identity(product.Icon, Pick(description, name), product.Name, product.Key);
-        // Otherwise the icon Windows itself shows for the file (the generic program icon when it carries none).
-        return new Identity(File.Exists(path) ? path : "", Pick(description, name), "", path);
+        if (own || !File.Exists(path)) return new Identity(File.Exists(path) ? path : "", Pick(description, name), "", path);
+        // No icon in the file and no product around it: a related one, else the generic program icon until the
+        // brand icon has been fetched.
+        var (icon, web) = Borrowed(path, name, description);
+        return new Identity(icon ?? path, Pick(description, name), "", path, web?.Spec ?? "");
+    }
+
+    // For a program that carries no icon, nearest relation first: Windows' artwork for its components (where a
+    // brand is known, curl in System32 say, that brand's icon replaces it once fetched); the main application of
+    // the same vendor installed beside it; the editor extension it came with; a Store app or shortcut of the same
+    // name; an installed product of its family; the application of the same company anywhere. Otherwise only
+    // where its brand icon can be fetched. path is "" for a program whose file is gone.
+    public static (string? Icon, AppBrands.Web? Web) Borrowed(string path, string name, string description)
+    {
+        var index = StartMenuIndex.Current;
+        var web = (path.Length > 0 ? AppBrands.NpmHome(path) : null) ?? AppBrands.Known(name, path);
+        if (path.Length > 0 && IsWindows(path))
+        {
+            // Another company's service installed into the Windows folder (VMware's vmnat) is not part of Windows.
+            string company = index.Company(path);
+            if (company.Length == 0 || company.StartsWith("Microsoft", StringComparison.OrdinalIgnoreCase)) return (AppBrands.WindowsArt(name), web);
+            return index.CompanyApp(path) is { } app ? (app.Lnk, null) : (null, web);
+        }
+        string? local = (path.Length > 0 ? index.SameVendor(path)?.Lnk ?? AppBrands.ExtensionIcon(path) : null)
+                        ?? SameName(name, path, description)
+                        ?? AppBrands.ProductIcon(name, path)
+                        ?? (path.Length > 0 ? index.CompanyApp(path)?.Lnk : null);
+        return (local, local is null ? web : null);
+    }
+
+    // Exactly the same name: "codex" -> the Codex Store app, "GitHub CLI" -> a shortcut called that.
+    private static string? SameName(string name, string path, string description)
+    {
+        string product = "";
+        try { if (path.Length > 0 && File.Exists(path)) product = FileVersionInfo.GetVersionInfo(path).ProductName?.Trim() ?? ""; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        foreach (string n in new[] { name, product, description }.Where(n => n.Length > 1).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (ExecutableIndex.PackageNamed(n) is { } aumid) return @"shell:AppsFolder\" + aumid;
+            if (StartMenuIndex.Current.Named(n) is { } link) return link.Lnk;
+        }
+        return null;
     }
 
     private static string Pick(string description, string name) =>
@@ -113,7 +155,11 @@ internal sealed class StartMenuIndex
     private readonly Dictionary<string, Link> _byTarget = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, List<Link>> _byDir = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Link> _byName = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Link> _byLinkName = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _containers = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _generic = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _company = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _shortcuts = new(StringComparer.OrdinalIgnoreCase); // per target, all shortcuts
 
     public static StartMenuIndex Current
     {
@@ -135,11 +181,11 @@ internal sealed class StartMenuIndex
 
     public Link? ByTarget(string path) => _byTarget.GetValueOrDefault(path);
 
-    // A program file by its name ("Weixin" -> D:\APPS\Weixin\Weixin.exe), for traffic recorded before paths were kept.
+    // A program file by its name ("Weixin" -> X:\Apps\Weixin\Weixin.exe), for traffic recorded before paths were kept.
     public string? PathOf(string name) => _byName.GetValueOrDefault(name)?.Target;
 
     // Nearest shortcut program installed around path: first one sitting directly in the closest enclosing folder,
-    // never past a folder that holds several applications (Program Files, D:\APPS, the user profile).
+    // never past a folder that holds several applications (Program Files, a shared apps folder, the user profile).
     public Link? OwnerOf(string path)
     {
         // Windows' own programs belong to no Start menu entry (System32 holds dozens of unrelated tools).
@@ -161,7 +207,80 @@ internal sealed class StartMenuIndex
         return product.Length > 0 && inside.Where(l => Product(l.Target) == product).ToList() is { Count: 1 } same ? same[0] : null;
     }
 
-    // Folders that hold several installed applications (e.g. D:\APPS), found from where shortcuts point.
+    // A shortcut with exactly this name.
+    public Link? Named(string text) => _byLinkName.GetValueOrDefault(text);
+
+    // The main application of the same vendor (company name in the version information) installed in the same
+    // vendor folder: C:\Program Files\Huawei\BasicService -> Huawei PC Manager. Never across a folder holding
+    // several vendors' programs (Program Files, a shared apps folder).
+    public Link? SameVendor(string path)
+    {
+        if (AppIdentity.IsWindows(path)) return null;
+        string company = CompanyOf(path), vendor = Vendor(company);
+        if (vendor.Length == 0) return null;
+        for (string? a = Path.GetDirectoryName(path); a is not null && !_generic.Contains(a); a = Path.GetDirectoryName(a))
+        {
+            var inside = _byTarget.Values.Where(l => l.Target.StartsWith(a + "\\", StringComparison.OrdinalIgnoreCase)).ToList();
+            if (inside.Count == 0) continue;
+            if (inside.Exists(l => Vendor(CompanyOf(l.Target)) != vendor)) return null;
+            // Same full company name first, then the program folder most shortcuts point into, and in it the
+            // program most shortcuts start (the vendor's main application rather than one of its tools).
+            return inside
+                .GroupBy(l => l.Target[(a.Length + 1)..].Split('\\')[0], StringComparer.OrdinalIgnoreCase)
+                .OrderByDescending(g => g.Any(l => CompanyOf(l.Target) == company))
+                .ThenByDescending(g => g.Sum(l => _shortcuts.GetValueOrDefault(l.Target)))
+                .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.OrderByDescending(l => _shortcuts.GetValueOrDefault(l.Target))
+                    .ThenBy(l => l.Target.Count(c => c == '\\'))
+                    .ThenBy(l => l.Name.Length)
+                    .ThenBy(l => l.Target, StringComparer.OrdinalIgnoreCase)
+                    .First())
+                .FirstOrDefault();
+        }
+        return null;
+    }
+
+    public string Company(string exe) => CompanyOf(exe);
+
+    // The application of exactly the same company, wherever it is installed, that most shortcuts start
+    // (vmnat in System32 -> VMware Workstation). Not for Microsoft, whose name is on too many unrelated products.
+    public Link? CompanyApp(string path)
+    {
+        string company = CompanyOf(path);
+        if (company.Length < 3 || company.StartsWith("Microsoft", StringComparison.OrdinalIgnoreCase)) return null;
+        string product = Product(path);
+        return _byTarget.Values
+            .Where(l => !string.Equals(l.Target, path, StringComparison.OrdinalIgnoreCase) && string.Equals(CompanyOf(l.Target), company, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(l => _shortcuts.GetValueOrDefault(l.Target))
+            .ThenByDescending(l => product.Length > 2 && l.Name.StartsWith(product, StringComparison.OrdinalIgnoreCase))
+            .ThenBy(l => l.Target.Count(c => c == '\\'))
+            .ThenBy(l => l.Name.Length)
+            .ThenBy(l => l.Target, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+    }
+
+    private string CompanyOf(string exe)
+    {
+        lock (_company)
+            if (_company.TryGetValue(exe, out var c)) return c;
+        string company = "";
+        try { if (File.Exists(exe)) company = FileVersionInfo.GetVersionInfo(exe).CompanyName?.Trim() ?? ""; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        lock (_company) _company[exe] = company;
+        return company;
+    }
+
+    private static readonly HashSet<string> NotNames = new(StringComparer.Ordinal) { "the", "inc", "ltd", "llc", "co", "corp", "corporation", "company", "gmbh", "limited" };
+
+    // "Huawei Device Co., Ltd." and "Huawei Technologies Co., Ltd." are one vendor: its first proper word.
+    private static string Vendor(string company)
+    {
+        foreach (string w in Regex.Split(company.ToLowerInvariant(), @"[^\p{L}\p{N}]+"))
+            if (w.Length >= 2 && !NotNames.Contains(w)) return w;
+        return "";
+    }
+
+    // Folders that hold several installed applications (e.g. X:\Apps), found from where shortcuts point.
     public IEnumerable<string> AppFolders => _appFolders;
     private readonly List<string> _appFolders = new();
 
@@ -218,10 +337,16 @@ internal sealed class StartMenuIndex
                 // User shortcuts are read last and win: they are the ones people renamed.
                 index._byTarget[target] = link;
                 index._byName[ProcessImages.NameOf(target)] = link;
+                index._byLinkName[name] = link;
+                index._shortcuts[target] = index._shortcuts.GetValueOrDefault(target) + 1;
             }
         }
 
-        foreach (string g in GenericRoots()) index._containers.Add(g);
+        foreach (string g in GenericRoots())
+        {
+            index._containers.Add(g);
+            index._generic.Add(g);
+        }
         var children = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
         foreach (var link in index._byTarget.Values)
         {

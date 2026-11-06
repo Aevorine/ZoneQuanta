@@ -16,7 +16,7 @@ namespace ZoneQuanta.Platform;
 internal static class AppDirectory
 {
     // Bumped when the way an entry is worked out changes: older entries are worked out again.
-    private const int Revision = 3;
+    private const int Revision = 4;
 
     public sealed record Entry
     {
@@ -27,6 +27,7 @@ internal static class AppDirectory
         public string Friendly { get; init; } = "";  // the name people know the program by
         public string Owner { get; init; } = "";     // application a helper belongs to
         public string OwnerKey { get; init; } = "";  // the same for every process of one application
+        public string Web { get; init; } = "";       // brand icon still to fetch (AppBrands.Web.Spec)
         public int Rev { get; init; }
     }
 
@@ -66,7 +67,6 @@ internal static class AppDirectory
                 todo.Add(n);
             }
         }
-        if (todo.Count == 0) return false;
         var sw = Stopwatch.StartNew();
         bool found = false;
         var via = new Dictionary<string, int>();
@@ -100,18 +100,78 @@ internal static class AppDirectory
                 missing.Remove(n);
                 late = true;
             }
+            // Whose file is gone: an older copy's name, an app or product of the same name, or the brand.
+            foreach (string n in missing.ToList())
+            {
+                if (Fallback(n, out string how) is not { } e) continue;
+                via[how] = via.GetValueOrDefault(how) + 1;
+                lock (Gate) Cache()[n] = e;
+                missing.Remove(n);
+                late = true;
+            }
             if (late) Save();
         }
+        long searched = sw.ElapsedMilliseconds;
+        int web = FetchBrandIcons(names);
+        if (web > 0) late = true;
         // Which source answered how often, and what is still unknown: enough to improve resolution from the log alone.
-        Log.Write($"app-identity {todo.Count} name(s) {quick}ms (+search {sw.ElapsedMilliseconds - quick}ms) via {string.Join(", ", via.Select(kv => $"{kv.Key} {kv.Value}"))}"
-                  + (missing.Count > 0 ? $"; unknown: {string.Join(", ", missing.Take(20))}" : ""));
+        if (todo.Count > 0 || web > 0)
+            Log.Write($"app-identity {todo.Count} name(s) {quick}ms (+search {searched - quick}ms, +web {web} {sw.ElapsedMilliseconds - searched}ms) via {string.Join(", ", via.Select(kv => $"{kv.Key} {kv.Value}"))}"
+                      + (missing.Count > 0 ? $"; unknown: {string.Join(", ", missing.Take(20))}" : ""));
         return late || (found && progress is null);
     }
+
+    // Brand icons for the programs still waiting for one: those fetched meanwhile are used at once, the rest
+    // fetched (when allowed). Number of programs that got one.
+    private static int FetchBrandIcons(IEnumerable<string> names)
+    {
+        var pending = new List<(string Name, AppBrands.Web Web)>();
+        lock (Gate)
+            foreach (string n in names.Distinct(StringComparer.OrdinalIgnoreCase))
+                if (Cache().TryGetValue(n, out var e) && e.Rev == Revision && e.Web.Length > 0 && AppBrands.Web.Parse(e.Web) is { } w)
+                    pending.Add((n, w));
+        if (pending.Count == 0) return 0;
+        if (WebIcons.Enabled) WebIcons.Fetch(pending.Select(p => p.Web));
+        int got = 0;
+        foreach (var (n, w) in pending)
+        {
+            if (WebIcons.Cached(w) is not { } file) continue;
+            lock (Gate)
+                if (Cache().TryGetValue(n, out var e) && e.Web.Length > 0)
+                {
+                    Cache()[n] = e with { Icon = IconImages.Prefix + file, Web = "" };
+                    got++;
+                }
+        }
+        if (got > 0) Save();
+        return got;
+    }
+
+    private static Entry? Fallback(string name, out string how)
+    {
+        how = "alias";
+        foreach (string b in AppBrands.BaseNames(name))
+            lock (Gate)
+                if (Cache().TryGetValue(b, out var e) && e.Rev == Revision && e.Icon.Length > 0)
+                    return e with
+                    {
+                        Path = "", Aumid = "", Description = "", Friendly = name,
+                        Owner = e.Owner.Length > 0 ? e.Owner : e.Friendly.Length > 0 ? e.Friendly : b,
+                        OwnerKey = e.OwnerKey.Length > 0 ? e.OwnerKey : b,
+                    };
+        how = "brand";
+        var (icon, web) = AppIdentity.Borrowed("", name, "");
+        if (icon is null && web is null) return null;
+        return WithBrandIcon(new Entry { Icon = icon ?? "", Friendly = name, OwnerKey = name, Web = icon is null ? web!.Spec : "", Rev = Revision });
+    }
+
+    private static Entry WithBrandIcon(Entry e) =>
+        e.Web.Length > 0 && AppBrands.Web.Parse(e.Web) is { } w && WebIcons.Cached(w) is { } file ? e with { Icon = IconImages.Prefix + file, Web = "" } : e;
 
     private static Entry? Work(string name, out string source, string? searched = null)
     {
         source = "fixed";
-        if (name == "System") return new Entry { Icon = AppIdentity.WindowsGlyph, Friendly = "System", OwnerKey = "System", Rev = Revision };
+        if (name == "System") return new Entry { Icon = AppBrands.WindowsArt(name) ?? AppIdentity.WindowsGlyph, Friendly = "System", OwnerKey = "System", Rev = Revision };
         if (name == TrafficHelper.ExitedName) return new Entry { Icon = AppIdentity.ExitedGlyph, Friendly = name, OwnerKey = name, Rev = Revision };
 
         // Most trusted first: what the helper saw the process run from, the running process itself, then
@@ -131,6 +191,7 @@ internal static class AppDirectory
         if (path.Length == 0 && (Matching(Registered(name), name) ?? Matching(StartMenuIndex.Current.PathOf(name), name)) is { } reg) (path, source) = (reg, "registry");
         if (path.Length == 0 && ExecutableIndex.Known(name) is { } known) (path, aumid, source) = (known.Path, known.Aumid, known.Source);
         if (path.Length == 0 && OnPath(name) is { } onPath) (path, source) = (onPath, "path");
+        if (path.Length == 0 && AppBrands.ShimTarget(name) is { } shim) (path, source) = (shim, "shim");
         if (path.Length == 0)
         {
             source = "";
@@ -140,12 +201,13 @@ internal static class AppDirectory
         string desc = "";
         try { if (File.Exists(path)) desc = FileVersionInfo.GetVersionInfo(path).FileDescription?.Trim() ?? ""; }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        if (AppBrands.RuntimeBuilt(path, name)) desc = ""; // the runtime's name, not the program's
         var id = AppIdentity.Describe(path, aumid, name, desc);
-        return new Entry
+        return WithBrandIcon(new Entry
         {
             Path = path, Description = desc, Aumid = aumid, Icon = id.Icon, Friendly = id.Friendly,
-            Owner = id.Owner, OwnerKey = id.OwnerKey, Rev = Revision,
-        };
+            Owner = id.Owner, OwnerKey = id.OwnerKey, Web = id.Web, Rev = Revision,
+        });
     }
 
     private static bool RefreshHelperPaths()

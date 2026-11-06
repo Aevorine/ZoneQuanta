@@ -132,7 +132,8 @@ public sealed class AppController : IPanelHost, IDisposable
             bulk ? $"已从「开始」导入 {names.Count} 个应用" : "已加入快捷面板",
             bulk ? $"按 {UI.Panel.Pages.SystemPage.Format(s.QuickHotkeyModifiers, s.QuickHotkeyKey)} 打开快捷面板" : string.Join("、", names.Take(6)));
         _startSync.Apply(s.QuickStartSync);
-        _quick.ScheduleAutoGroup();
+        _quick.Regrouped += n => _tray.Notify("快捷面板分类已更新", $"{n} 项移到了更合适的分组，在快捷面板按 Ctrl+Z 可撤销");
+        _ = _quick.RegroupAsync().ContinueWith(_ => _quick.ScheduleAutoGroup(), TaskScheduler.FromCurrentSynchronizationContext());
         _pipe.Received += args => _dispatcher.BeginInvoke(new Action(() => Execute(args)));
         _pipe.Start();
 

@@ -26,6 +26,9 @@ public sealed class UpdateCoordinator : Observable
     public bool Busy { get => _busy; private set => Set(ref _busy, value); }
     public UpdateInfo? Available { get => _available; private set => Set(ref _available, value); }
 
+    // The newest release a verified manifest named (shown with its page address and checksum).
+    public UpdateInfo? Latest => _service.Latest;
+
     public async Task CheckAsync()
     {
         if (Busy) return;
@@ -37,6 +40,7 @@ public sealed class UpdateCoordinator : Observable
         {
             var info = await _service.CheckAsync(_settings.UseMirrors, CancellationToken.None);
             Available = info;
+            Raise(nameof(Latest));
             if (info is null)
             {
                 Status = $"已是最新版本 v{UpdateService.CurrentVersion}";

@@ -18,6 +18,7 @@ public sealed class WindowMemory
 
     private const int WM_SIZING = 0x0214, WM_EXITSIZEMOVE = 0x0232, WM_DPICHANGED = 0x02E0;
     private readonly Window _w;
+    private readonly string _name;
     private readonly Func<WindowBounds?> _load;
     private readonly Action<WindowBounds?> _save;
     private readonly DispatcherTimer _settle = new() { Interval = TimeSpan.FromMilliseconds(500) };
@@ -29,9 +30,10 @@ public sealed class WindowMemory
     public event Action<Size>? Resizing;
     public event Action? ResizeEnded;
 
-    public WindowMemory(Window window, Func<WindowBounds?> load, Action<WindowBounds?> save)
+    public WindowMemory(Window window, Func<WindowBounds?> load, Action<WindowBounds?> save, string name = "")
     {
         _w = window;
+        _name = name;
         _load = load;
         _save = save;
         _settle.Tick += (_, _) => Commit();
@@ -56,7 +58,24 @@ public sealed class WindowMemory
             : Forms.Screen.AllScreens.FirstOrDefault(s => s.DeviceName == b?.Screen) ?? Forms.Screen.PrimaryScreen!;
         double k = PixelScale;
         var work = Usable(screen, k);
-        double w = Math.Min(b?.Width ?? size.Width, work.Width), h = Math.Min(b?.Height ?? size.Height, work.Height);
+        double w = b?.Width ?? size.Width, h = b?.Height ?? size.Height;
+        string how = b is null ? "default" : "remembered";
+        // A size bigger than the screen (kept from another scale or resolution, or the pre-1.4.4 size, which
+        // filled the screen) leaves no edge to grab: shrink it, keeping its proportions, to leave a margin.
+        // Judged in the target screen's own scale; kept as the new size only on the screen it was remembered
+        // on (or for the pre-1.4.4 size), so one visit to a smaller screen does not lose the big-screen size.
+        var mid = screen.Bounds;
+        var target = Usable(screen, Platform.Native.MonitorScale(mid.Left + mid.Width / 2, mid.Top + mid.Height / 2) ?? k);
+        bool fitted = b is { Maximized: false } && (w > target.Width + 1 || h > target.Height + 1 || (!b.HasPlace && w >= target.Width * 0.98 && h >= target.Height * 0.98));
+        bool keep = fitted && (!b!.HasPlace || b.Screen == screen.DeviceName);
+        if (fitted)
+        {
+            double f = Math.Min(target.Width * 0.92 / w, target.Height * 0.92 / h);
+            (w, h) = (Math.Round(w * f), Math.Round(h * f));
+            how = $"fitted from {b!.Width}x{b.Height}{(keep ? "" : " (this screen only)")}";
+        }
+        w = Math.Min(w, work.Width);
+        h = Math.Min(h, work.Height);
         if (_w.MinWidth > w) _w.MinWidth = w;
         if (_w.MinHeight > h) _w.MinHeight = h;
 
@@ -82,6 +101,34 @@ public sealed class WindowMemory
         _settle.Stop();
         _placedAt = Environment.TickCount64;
         _last = Bounds(new Rect(left, top, w, h), work, b?.Maximized == true, screen.DeviceName);
+        if (_name.Length > 0) Core.Log.Write($"{_name} place {w}x{h} {(b?.Maximized == true ? "maximized " : "")}{how}");
+        // The size shown from now on is the one remembered.
+        if (keep) _save(_last);
+    }
+
+    // Back to the given size at the centre of the window's current screen, remembered as the new size.
+    public void Reset(Size size, double rise = 0.5)
+    {
+        var hwnd = new WindowInteropHelper(_w).Handle;
+        if (hwnd == IntPtr.Zero) return;
+        var screen = Forms.Screen.FromHandle(hwnd);
+        var work = Usable(screen, PixelScale);
+        double w = Math.Min(size.Width, work.Width), h = Math.Min(size.Height, work.Height);
+        double left = work.Left + (work.Width - w) / 2, top = work.Top + (work.Height - h) * rise;
+        _applying = true;
+        try
+        {
+            if (_w.WindowState != WindowState.Normal) _w.WindowState = WindowState.Normal;
+            _w.Left = left;
+            _w.Top = top;
+            _w.Width = w;
+            _w.Height = h;
+        }
+        finally { _applying = false; }
+        _settle.Stop();
+        _last = Bounds(new Rect(left, top, w, h), work, false, screen.DeviceName);
+        if (_name.Length > 0) Core.Log.Write($"{_name} reset {w}x{h}");
+        _save(_last);
     }
 
     // Shown on a monitor whose DPI differs from the one it was placed with: fit again in that monitor's

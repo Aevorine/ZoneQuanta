@@ -24,6 +24,28 @@
                 <TextBlock x:Name="FlavorText" Grid.Row="2" Style="{StaticResource Muted}"/>
                 <TextBlock x:Name="StatusText" Grid.Row="3" Margin="0,18,0,10" TextWrapping="Wrap"/>
                 <ProgressBar x:Name="Bar" Grid.Row="4"/>
+                <StackPanel Grid.Row="5" VerticalAlignment="Bottom" Margin="0,14,0,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Path Style="{StaticResource IconPath}" Data="{StaticResource Icon.Download}" Stroke="{DynamicResource Accent1Brush}" Width="15" Height="15" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <Button x:Name="LinkButton" Grid.Column="1" Style="{StaticResource LinkButton}" HorizontalAlignment="Left"/>
+                        <Button x:Name="CopyLinkButton" Grid.Column="2" Style="{StaticResource IconButton}" Tag="{StaticResource Icon.Copy}" ToolTip="复制网址" Margin="6,0,0,0"/>
+                    </Grid>
+                    <Grid x:Name="HashRow" Margin="0,4,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Path Style="{StaticResource IconPath}" Data="{StaticResource Icon.Shield}" Stroke="{DynamicResource MutedBrush}" Width="15" Height="15" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="HashText" Grid.Column="1" Style="{StaticResource Muted}" FontFamily="Consolas" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                        <Button x:Name="CopyHashButton" Grid.Column="2" Style="{StaticResource IconButton}" Tag="{StaticResource Icon.Copy}" ToolTip="复制 SHA-256" Margin="6,0,0,0"/>
+                    </Grid>
+                </StackPanel>
                 <UniformGrid Grid.Row="6" Rows="1">
                     <Button x:Name="CheckButton" Style="{StaticResource Action}" Content="检查更新" Margin="0,0,4,0"/>
                     <Button x:Name="InstallButton" Style="{StaticResource Primary}" Content="下载并安装" Margin="4,0,0,0"/>

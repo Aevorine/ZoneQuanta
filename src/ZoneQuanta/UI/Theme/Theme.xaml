@@ -668,6 +668,33 @@
         </Setter>
     </Style>
 
+    <!-- An address that opens when clicked: accent text, underlined under the pointer or with keyboard focus. -->
+    <Style x:Key="LinkButton" TargetType="Button">
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Foreground" Value="{DynamicResource Accent1Brush}"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border Background="{TemplateBinding Background}">
+                        <!-- Shown whole, wrapping where needed: an address is checked by reading all of it. -->
+                        <TextBlock x:Name="Text" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}"
+                                   TextWrapping="Wrap" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Text" Property="TextDecorations" Value="Underline"/>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Text" Property="TextDecorations" Value="Underline"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- A menu entry that is a control of its own (the card size picker): no glyph column, no highlight. -->
     <Style x:Key="PlainMenuItem" TargetType="MenuItem">
         <Setter Property="StaysOpenOnClick" Value="True"/>

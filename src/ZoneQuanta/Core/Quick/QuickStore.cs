@@ -56,9 +56,16 @@ public sealed class QuickGroup
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool AutoNamed { get; set; }
 
+    // The kind automatic grouping files into this group (QuickCategories), kept when the user renames it.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Kind { get; set; }
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? Extra { get; set; }
 }
+
+// Where automatic grouping puts an item: the group of its kind, or a group the user taught (Group).
+public readonly record struct Placement(QuickItem Item, string Kind, string? Group = null);
 
 public sealed class QuickData
 {
@@ -181,6 +188,20 @@ public sealed class QuickStore
             if (string.Equals(i.Group, group.Name, StringComparison.OrdinalIgnoreCase)) yield return i;
     }
 
+    // The group automatic grouping fills with this kind: the one bound to it, else an unbound group named
+    // after it (adopted).
+    public QuickGroup? KindGroup(string kind)
+    {
+        foreach (var g in Data.Groups)
+            if (g.Kind == kind) return g;
+        if (FindGroup(kind) is { Kind: null } named)
+        {
+            named.Kind = kind;
+            return named;
+        }
+        return null;
+    }
+
     public string UniqueGroupName(string wanted)
     {
         string name = wanted.Trim().Length > 0 ? wanted.Trim() : "新建分组";
@@ -212,31 +233,51 @@ public sealed class QuickStore
 
     // Automatic grouping: applied only to items that are still ungrouped and were never placed by hand,
     // so a group the user or an earlier pass chose is never changed. New groups follow the given order.
-    public int AutoAssign(IEnumerable<(QuickItem Item, string Group)> picks, IReadOnlyList<string> order)
+    public int AutoAssign(IEnumerable<Placement> picks, IReadOnlyList<string> order)
     {
-        int count = 0;
+        var valid = picks.Where(p => p.Kind.Length > 0 && NeedsGroup(p.Item) && Data.Items.Contains(p.Item)).ToList();
+        if (valid.Count == 0) return 0;
+        int count = Apply(valid, order);
+        Save(null);
+        return count;
+    }
+
+    // Items this app placed, moved to the group better rules now give them: one undo step, and they stay
+    // automatically placed. Items the user placed by hand are never moved.
+    public int Regroup(IReadOnlyCollection<Placement> moves, IReadOnlyList<string> order)
+    {
+        var valid = moves.Where(p => p.Kind.Length > 0 && !p.Item.GroupManual && Data.Items.Contains(p.Item)).ToList();
+        if (valid.Count == 0) return 0;
+        Checkpoint($"auto-regroup {valid.Count} item(s)");
+        int count = Apply(valid, order);
+        Prune(Data);
+        Save(null);
+        return count;
+    }
+
+    // Into the learned group when it still exists, else the kind's group, created (named after the kind,
+    // bound to it, named from its members from now on) when missing.
+    private int Apply(List<Placement> picks, IReadOnlyList<string> order)
+    {
         var created = new List<QuickGroup>();
-        foreach (var (item, group) in picks)
+        foreach (var p in picks)
         {
-            if (group.Length == 0 || !NeedsGroup(item) || !Data.Items.Contains(item)) continue;
-            var g = FindGroup(group);
+            var g = (p.Group is { Length: > 0 } learned ? FindGroup(learned) : null) ?? KindGroup(p.Kind);
             if (g is null)
             {
-                g = new QuickGroup { Name = group };
+                g = new QuickGroup { Name = UniqueGroupName(p.Kind), Kind = p.Kind, AutoNamed = true };
                 created.Add(g);
                 Data.Groups.Add(g);
             }
-            item.Group = g.Name;
-            count++;
+            p.Item.Group = g.Name;
         }
         if (created.Count > 1)
         {
-            int Rank(QuickGroup g) { int r = -1; for (int i = 0; i < order.Count; i++) if (order[i] == g.Name) r = i; return r < 0 ? int.MaxValue : r; }
+            int Rank(QuickGroup g) { int r = -1; for (int i = 0; i < order.Count; i++) if (order[i] == g.Kind) r = i; return r < 0 ? int.MaxValue : r; }
             Data.Groups.RemoveAll(created.Contains);
             Data.Groups.AddRange(created.OrderBy(Rank));
         }
-        if (count > 0) Save(null);
-        return count;
+        return picks.Count;
     }
 
     // Renaming onto an existing name merges the two groups. auto: a name derived from the members.
@@ -248,7 +289,11 @@ public sealed class QuickStore
         group.AutoNamed = auto;
         var other = FindGroup(n);
         string old = group.Name;
-        if (other is not null && other != group) Data.Groups.Remove(group);
+        if (other is not null && other != group)
+        {
+            Data.Groups.Remove(group);
+            other.Kind ??= group.Kind; // the merged group keeps receiving that kind
+        }
         else group.Name = n;
         string final = other is not null && other != group ? other.Name : n;
         foreach (var i in Data.Items)
@@ -457,6 +502,15 @@ public sealed class QuickStore
         }
         d.Groups ??= new();
         Prune(d);
+        // Groups automatic grouping made before groups were bound to a kind carry the kind's name: bind them.
+        // Their names follow their members only when nothing in them was placed by hand (else the user may have
+        // typed that name).
+        foreach (var g in d.Groups)
+            if (g.Kind is null && QuickCategories.Order.Contains(g.Name) && !d.Groups.Any(o => o.Kind == g.Name))
+            {
+                g.Kind = g.Name;
+                if (!d.Items.Any(i => i.GroupManual && string.Equals(i.Group, g.Name, StringComparison.OrdinalIgnoreCase))) g.AutoNamed = true;
+            }
         return d;
     }
 }

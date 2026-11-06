@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Text;
@@ -16,9 +17,12 @@ internal static class ShellLinks
     {
         try
         {
-            string target = path, args = "";
+            string target = path, args = "", comment = "";
             if (path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase) && File.Exists(path))
-                (target, args) = Resolve(path);
+                (target, args, comment) = Resolve(path);
+            // An Internet shortcut: its address is the target.
+            else if (path.EndsWith(".url", StringComparison.OrdinalIgnoreCase) && File.Exists(path) && new FileInfo(path).Length < 64 * 1024)
+                target = File.ReadLines(path).Select(l => l.Trim()).FirstOrDefault(l => l.StartsWith("URL=", StringComparison.OrdinalIgnoreCase))?[4..] ?? "";
             if (target.Length == 0) return null;
             string desc = "", product = "", company = "";
             if (target.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(target))
@@ -28,7 +32,7 @@ internal static class ShellLinks
                 product = v.ProductName?.Trim() ?? "";
                 company = v.CompanyName?.Trim() ?? "";
             }
-            return new TargetHint(target, args, desc, product, company);
+            return ProgramFacts.With(new TargetHint(target, args, desc, product, company, comment));
         }
         catch (Exception ex) when (ex is COMException or IOException or UnauthorizedAccessException or ArgumentException or InvalidCastException)
         {
@@ -43,7 +47,7 @@ internal static class ShellLinks
         catch (Exception ex) when (ex is COMException or IOException or UnauthorizedAccessException or ArgumentException or InvalidCastException) { return ""; }
     }
 
-    private static (string Target, string Args) Resolve(string lnk)
+    private static (string Target, string Args, string Comment) Resolve(string lnk)
     {
         var link = (IShellLinkW)new ShellLink();
         try
@@ -53,7 +57,9 @@ internal static class ShellLinks
             link.GetPath(path, path.Capacity, IntPtr.Zero, 0);
             var args = new StringBuilder(2048);
             link.GetArguments(args, args.Capacity);
-            return (Environment.ExpandEnvironmentVariables(path.ToString()), args.ToString());
+            var comment = new StringBuilder(1024);
+            link.GetDescription(comment, comment.Capacity);
+            return (Environment.ExpandEnvironmentVariables(path.ToString()), args.ToString(), comment.ToString().Trim());
         }
         finally
         {

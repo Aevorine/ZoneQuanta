@@ -19,7 +19,13 @@ internal static class ShellIcons
     private static readonly object Gate = new();
     private static Thread? _worker;
 
-    private static string Key(string path, int px) => px + "|" + path;
+    // Text colour of the current theme: image icons that are a one-colour mark are redrawn in it when they
+    // would vanish into the background.
+    public static Color Ink { get; set; } = Colors.Black;
+
+    // Icons depend on the text colour (see IconImages.Contrasted); picture thumbnails do not.
+    private static string Key(string path, int px) =>
+        IsImage(path) && !path.StartsWith(IconImages.Prefix, StringComparison.Ordinal) ? px + "|" + path : px + "|" + Ink + "|" + path;
 
     public static BitmapSource? Cached(string path, int px) => Cache.TryGetValue(Key(path, px), out var b) ? b : null;
 
@@ -71,6 +77,7 @@ internal static class ShellIcons
 
     private static BitmapSource? Load(string path, int px)
     {
+        if (path.StartsWith(IconImages.Prefix, StringComparison.Ordinal)) return IconImages.Load(path[IconImages.Prefix.Length..], px, Ink);
         if (SHCreateItemFromParsingName(path, IntPtr.Zero, typeof(IShellItemImageFactory).GUID, out var factory) == 0 && factory is not null)
         {
             try
@@ -78,7 +85,7 @@ internal static class ShellIcons
                 int flags = SIIGBF_BIGGERSIZEOK | (IsImage(path) ? 0 : SIIGBF_ICONONLY);
                 if (factory.GetImage(new SIZE { cx = px, cy = px }, flags, out IntPtr hbmp) == 0 && hbmp != IntPtr.Zero)
                 {
-                    try { if (FromHBitmap(hbmp) is { } b) return b; }
+                    try { if (FromHBitmap(hbmp) is { } b) return IsImage(path) ? b : IconImages.Contrasted(b, Ink); }
                     finally { DeleteObject(hbmp); }
                 }
             }

@@ -39,6 +39,7 @@ public static class ThemeManager
         r["Accent1Color"] = Parse(p.Accent1);
         r["Accent2Color"] = Parse(p.Accent2);
         r["CardColor"] = Parse(p.Card);
+        Platform.ShellIcons.Ink = Parse(p.Text);
     }
 
     public static Color Parse(string hex) => (Color)ColorConverter.ConvertFromString(hex);

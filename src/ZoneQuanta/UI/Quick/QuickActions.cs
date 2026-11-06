@@ -39,7 +39,7 @@ public sealed class QuickActions
     public QuickItem? Highlight { get; private set; }
 
     // A group just made from two items; the view starts renaming it once it is on screen.
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Kind, string Maker)> _facts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Kind, string Sub, string Maker)> _facts = new(StringComparer.OrdinalIgnoreCase);
     public QuickGroup? PendingRename { get; private set; }
     public event Action? Opened;
     public event Action<string>? Failed;
@@ -196,7 +196,7 @@ public sealed class QuickActions
     {
         var members = Store.ItemsOf(group).ToList();
         if (members.Count == 0) return;
-        string want = SuggestName(members);
+        string want = SuggestName(members, group);
         if (!GroupNamer.IsNameFor(group.Name, want)) Store.RenameGroup(group, Store.UniqueGroupName(want), auto: true);
         else Store.MarkAutoNamed(group);
     }
@@ -225,26 +225,165 @@ public sealed class QuickActions
         return g;
     }
 
-    public string SuggestName(IReadOnlyCollection<QuickItem> items)
+    // self: the group being named, whose own name does not count as taken.
+    public string SuggestName(IReadOnlyCollection<QuickItem> items, QuickGroup? self = null)
     {
         var facts = items.Select(Facts).ToList();
-        return GroupNamer.Suggest(facts.Select(f => f.Kind).ToList(), items.Select(i => i.DisplayName).ToList(), facts.Select(f => f.Maker).ToList());
+        bool Taken(string name) => Store.Groups.Any(g => g != self && GroupNamer.IsNameFor(g.Name, name));
+        return GroupNamer.Suggest(facts.Select(f => f.Kind).ToList(), items.Select(i => i.DisplayName).ToList(), facts.Select(f => f.Maker).ToList(),
+            facts.Select(f => f.Sub).ToList(), Taken);
     }
 
     // What an item is for and who makes it, cached per path. Read off the UI thread: a shortcut on an
     // offline network drive gets 200 ms, then counts as unknown while the read finishes in the background.
-    private (string Kind, string Maker) Facts(QuickItem item)
+    private (string Kind, string Sub, string Maker) Facts(QuickItem item)
     {
         if (_facts.TryGetValue(item.Path, out var f)) return f;
         string path = item.Path, name = item.DisplayName;
         var read = Task.Run(() => _facts[path] = ReadFacts(path, name));
-        return read.Wait(200) ? read.Result : ("", "");
+        return read.Wait(200) ? read.Result : ("", "", "");
     }
 
-    private static (string Kind, string Maker) ReadFacts(string path, string name)
+    private static (string Kind, string Sub, string Maker) ReadFacts(string path, string name)
     {
         var hint = ShellLinks.Describe(path);
-        return (QuickCategories.Classify(path, name, hint), hint?.Company ?? "");
+        var e = QuickCategories.Explain(path, name, hint);
+        return (e.Group, e.Sub, hint?.Company ?? "");
+    }
+
+    // Programs that only start others: they say nothing about what a shortcut is for.
+    private static readonly HashSet<string> Launchers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "explorer.exe", "cmd.exe", "powershell.exe", "pwsh.exe", "rundll32.exe", "wscript.exe", "cscript.exe", "javaw.exe", "java.exe",
+        "python.exe", "pythonw.exe", "mshta.exe", "chrome_proxy.exe", "chrome.exe", "msedge.exe", "msedge_proxy.exe", "firefox.exe",
+        "conhost.exe", "wt.exe", "mmc.exe", "control.exe", "update.exe",
+    };
+
+    // What identifies an item across shortcuts: the site it opens (its own host: mail.google.com is not
+    // drive.google.com), its Store app, or its program file.
+    private static string Signature(string path, TargetHint? hint)
+    {
+        if (hint?.Url is { } u) return "site:" + (u.Host.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ? u.Host[4..] : u.Host).ToLowerInvariant();
+        if (path.StartsWith(@"shell:AppsFolder\", StringComparison.OrdinalIgnoreCase))
+        {
+            string id = path[17..];
+            int bang = id.IndexOf('!');
+            return "app:" + (bang > 0 ? id[..bang] : id).ToLowerInvariant();
+        }
+        string exe = Path.GetFileName(hint?.Target ?? "");
+        return exe.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && !Launchers.Contains(exe) ? "exe:" + exe.ToLowerInvariant() : "";
+    }
+
+    // What the user taught by placing items by hand: the same site, Store app or program goes to the same
+    // group, and a narrower kind (电脑管家, 终端) that two or more hand-placed items share goes to the group of
+    // the user's own they all sit in. Only where those placements agree. Background thread.
+    private sealed record Lessons(Dictionary<string, string> BySignature, Dictionary<(string Kind, string Sub), string> BySub);
+
+    // groupKinds: each group's bound kind, read on the UI thread.
+    private static Lessons Learn(IEnumerable<(string Path, string Name, string Group)> manual, IReadOnlyDictionary<string, string?> groupKinds)
+    {
+        var bySig = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var clash = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var subs = new Dictionary<(string, string), List<string>>();
+        foreach (var (path, name, group) in manual)
+        {
+            var hint = ShellLinks.Describe(path);
+            string sig = Signature(path, hint);
+            if (sig.Length > 0 && !clash.Contains(sig))
+            {
+                if (bySig.TryGetValue(sig, out var had) && !string.Equals(had, group, StringComparison.OrdinalIgnoreCase))
+                {
+                    bySig.Remove(sig);
+                    clash.Add(sig);
+                }
+                else bySig[sig] = group;
+            }
+            var e = QuickCategories.Explain(path, name, hint);
+            if (e.Sub.Length == 0) continue;
+            if (!subs.TryGetValue((e.Group, e.Sub), out var list)) subs[(e.Group, e.Sub)] = list = new();
+            list.Add(group);
+        }
+        var bySub = new Dictionary<(string, string), string>();
+        foreach (var (key, groups) in subs)
+        {
+            if (groups.Count < 2 || groups.Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1) continue;
+            // Taught only by a group that is not simply that kind's own group.
+            if (groupKinds.TryGetValue(groups[0], out var bound) && bound != key.Item1) bySub[key] = groups[0];
+        }
+        return new Lessons(bySig, bySub);
+    }
+
+    private List<(string Path, string Name, string Group)> ManualPlacements() =>
+        Store.Items.Where(i => i.GroupManual && i.Group.Length > 0).Select(i => (i.Path, i.DisplayName, i.Group)).ToList();
+
+    private Dictionary<string, string?> GroupKinds() =>
+        Store.Groups.GroupBy(g => g.Name, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First().Kind, StringComparer.OrdinalIgnoreCase);
+
+    // Where an item goes and why: what the user taught first, then the rules.
+    private static (string Kind, string? Group, string Why) Pick(string path, string name, Lessons learned)
+    {
+        var hint = ShellLinks.Describe(path);
+        string sig = Signature(path, hint);
+        var e = QuickCategories.Explain(path, name, hint);
+        if (sig.Length > 0 && learned.BySignature.TryGetValue(sig, out var taught)) return (e.Group, taught, "learned " + sig);
+        if (e.Sub.Length > 0 && learned.BySub.TryGetValue((e.Group, e.Sub), out var bySub)) return (e.Group, bySub, $"learned {e.Sub}, {e.Why}");
+        return (e.Group, null, e.Sub.Length > 0 ? $"{e.Why}, {e.Sub}" : e.Why);
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex Mail = new(@"[\w.+-]+@[\w-]+(\.[\w-]+)+");
+
+    private static string Describe(IEnumerable<(QuickItem Item, string Kind, string? Group, string Why)> picks) =>
+        string.Join(", ", picks.Take(40).Select(p => $"{Mail.Replace(p.Item.DisplayName, "…")} -> {p.Group ?? p.Kind}{(p.Why.Length > 0 ? $" ({p.Why})" : "")}"));
+
+    public const int ClassifierVersion = 3;
+    public event Action<int>? Regrouped;
+
+    // Once per version of the rules: items this app placed in a kind's group move to the group the rules (or what
+    // the user taught) now give them, in one undo step. Hand placements, groups the user built, and moves to a
+    // catch-all are skipped.
+    public async Task<int> RegroupAsync()
+    {
+        try { return await RegroupCoreAsync(); }
+        catch (Exception ex)
+        {
+            Log.Error("auto-regroup", ex);
+            return 0;
+        }
+    }
+
+    private async Task<int> RegroupCoreAsync()
+    {
+        if (!Settings.QuickAutoGroup || Settings.QuickClassifier >= ClassifierVersion) return 0;
+        var todo = Store.Items.Where(i => !i.GroupManual && Store.FindGroup(i.Group) is { Kind: not null })
+            .Select(i => (Item: i, i.Path, Name: i.DisplayName, i.Group, Kind: Store.FindGroup(i.Group)!.Kind!)).ToList();
+        var manual = ManualPlacements();
+        var kinds = GroupKinds();
+        var all = Store.Items.Select(i => (i.Path, i.DisplayName)).ToList();
+        var sw = Stopwatch.StartNew();
+        var moves = await Task.Run(() =>
+        {
+            // Every item's kind read now, so the renames that follow the moves need no further wait.
+            foreach (var (p, n) in all) if (!_facts.ContainsKey(p)) _facts[p] = ReadFacts(p, n);
+            var learned = Learn(manual, kinds);
+            return todo.Select(t => (t.Item, t.Group, t.Kind, Pick: Pick(t.Path, t.Name, learned)))
+                .Where(t => t.Pick.Group is { } g ? !string.Equals(g, t.Group, StringComparison.OrdinalIgnoreCase)
+                    : t.Pick.Kind != t.Kind && t.Pick.Kind is not (QuickCategories.OtherApps or QuickCategories.Files) && t.Pick.Kind.Length > 0)
+                .Select(t => (Placement: new Placement(t.Item, t.Pick.Kind, t.Pick.Group), Why: $"{t.Group} -> {t.Pick.Group ?? t.Pick.Kind} ({t.Pick.Why})"))
+                .ToList();
+        });
+        Settings.QuickClassifier = ClassifierVersion;
+        if (moves.Count == 0)
+        {
+            Log.Write($"auto-regroup v{ClassifierVersion}: nothing to move ({todo.Count} checked, {sw.ElapsedMilliseconds}ms)");
+            RefreshAutoNames();
+            return 0;
+        }
+        int n = Store.Regroup(moves.Select(m => m.Placement).ToList(), QuickCategories.Order);
+        Log.Write($"auto-regroup v{ClassifierVersion} {n}/{todo.Count} {sw.ElapsedMilliseconds}ms: "
+                  + string.Join(", ", moves.Take(40).Select(m => $"{Mail.Replace(m.Placement.Item.DisplayName, "…")} {m.Why}")));
+        RefreshAutoNames();
+        if (n > 0) Regrouped?.Invoke(n);
+        return n;
     }
 
     // Filled once in the background at start, so naming a new group normally never touches the disk.
@@ -254,14 +393,39 @@ public sealed class QuickActions
         if (todo.Count > 0) _ = Task.Run(() => { foreach (var (p, n) in todo) _facts.TryAdd(p, ReadFacts(p, n)); });
     }
 
-    // Groups named from their members follow them after a hand move; a name the user typed stays.
-    private void RefreshAutoNames()
+    // Groups named from their members follow them after a move; a name the user typed stays. A kind's group
+    // is named for the members of its kind (终端 when they are all terminals, 办公 when no learning app is in
+    // 办公学习), any other from all its members. The members' kinds are read off the UI thread first; only the
+    // newest pass renames.
+    private int _namesPass;
+    private void RefreshAutoNames() => _ = RefreshAutoNamesAsync();
+
+    private async Task RefreshAutoNamesAsync()
     {
+        try { await RenameByMembersAsync(); }
+        catch (Exception ex) { Log.Error("group-names", ex); }
+    }
+
+    private async Task RenameByMembersAsync()
+    {
+        int pass = ++_namesPass;
+        var todo = Store.Groups.Where(g => g.AutoNamed).SelectMany(g => Store.ItemsOf(g)).Where(i => !_facts.ContainsKey(i.Path))
+            .Select(i => (i.Path, i.DisplayName)).ToList();
+        if (todo.Count > 0)
+            await Task.Run(() => { foreach (var (p, n) in todo) if (!_facts.ContainsKey(p)) _facts[p] = ReadFacts(p, n); });
+        if (pass != _namesPass) return;
         foreach (var g in Store.Groups.Where(g => g.AutoNamed).ToList())
         {
             var members = Store.ItemsOf(g).ToList();
             if (members.Count == 0) continue;
-            string want = SuggestName(members);
+            string want;
+            if (g.Kind is { } kind)
+            {
+                var facts = members.Select(Facts).ToList();
+                want = GroupNamer.ForKindGroup(kind, facts.Select(f => f.Kind).ToList(), facts.Select(f => f.Sub).ToList(),
+                    name => Store.Groups.Any(o => o != g && GroupNamer.IsNameFor(o.Name, name)));
+            }
+            else want = SuggestName(members, g);
             if (GroupNamer.IsNameFor(g.Name, want)) continue;
             string to = Store.UniqueGroupName(want);
             Log.Write($"group-rename \"{g.Name}\" -> \"{to}\"");
@@ -291,11 +455,19 @@ public sealed class QuickActions
         {
             var todo = Store.Items.Where(QuickStore.NeedsGroup).Select(i => (Item: i, i.Path, Name: i.DisplayName)).ToList();
             if (todo.Count == 0) return 0;
+            var manual = ManualPlacements();
+            var kinds = GroupKinds();
             var sw = Stopwatch.StartNew();
-            var picks = await Task.Run(() => todo.Select(t => (t.Item, QuickCategories.Classify(t.Path, t.Name, ShellLinks.Describe(t.Path)))).ToList());
+            var picks = await Task.Run(() =>
+            {
+                var learned = Learn(manual, kinds);
+                return todo.Select(t => { var p = Pick(t.Path, t.Name, learned); return (t.Item, p.Kind, p.Group, p.Why); }).ToList();
+            });
             if (!Settings.QuickAutoGroup) return 0;
-            int n = Store.AutoAssign(picks, QuickCategories.Order);
-            Log.Write($"auto-group {n}/{todo.Count} {sw.ElapsedMilliseconds}ms");
+            int n = Store.AutoAssign(picks.Select(p => new Placement(p.Item, p.Kind, p.Group)), QuickCategories.Order);
+            // Every decision and its evidence: enough to tell from the log why an item went where it did.
+            Log.Write($"auto-group {n}/{todo.Count} {sw.ElapsedMilliseconds}ms: {Describe(picks)}");
+            if (n > 0) RefreshAutoNames();
             return n;
         }
         catch (Exception ex)

@@ -60,11 +60,8 @@ public static class Quota
         long remaining = Math.Max(0, cap - used);
         long projected = used + (long)(rate * daysLeft);
         DateTime? exhaust = null;
-        if (cap > used && rate > 0)
-        {
-            var at = now.AddDays((cap - used) / rate);
-            if (at < end) exhaust = at;
-        }
+        // Compared in days first: a near-zero rate (minutes of history) gives a span no date can hold.
+        if (cap > used && rate > 0 && (cap - used) / rate is var toEmpty && toEmpty < daysLeft) exhaust = now.AddDays(toEmpty);
         double budget = remaining / Math.Max(daysLeft, 1);
         double fraction = cap > 0 ? (double)used / cap : 0;
         int todayIndex = (int)(now.Date - start).TotalDays;

@@ -32,6 +32,9 @@ public sealed class UpdateService
     private readonly HttpClient _http;
     private readonly ParallelDownloader _downloader;
 
+    // The newest release a manifest with a valid signature named, newer than this one or not.
+    public UpdateInfo? Latest { get; private set; }
+
     public static Version CurrentVersion { get; } =
         Assembly.GetExecutingAssembly().GetName().Version is { } v ? new Version(v.Major, v.Minor, Math.Max(v.Build, 0)) : new Version(1, 0, 0);
 
@@ -68,6 +71,7 @@ public sealed class UpdateService
             if (info is not null)
             {
                 Log.Write($"manifest ok: latest v{info.Version}, current v{CurrentVersion}, flavor {Flavor}");
+                Latest = info;
                 return info.Version > CurrentVersion ? info : null;
             }
         }

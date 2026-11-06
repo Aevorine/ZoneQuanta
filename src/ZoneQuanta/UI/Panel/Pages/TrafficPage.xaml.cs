@@ -103,10 +103,15 @@ public partial class TrafficPage : UserControl
             Refresh(animate: true);
         };
 
+        WebIcons.Enabled = s.OnlineIcons;
         s.PropertyChanged += (_, e) =>
         {
             switch (e.PropertyName)
             {
+                case nameof(AppSettings.OnlineIcons):
+                    WebIcons.Enabled = s.OnlineIcons;
+                    if (IsVisible) Refresh(animate: false);
+                    break;
                 case nameof(AppSettings.TrackApps):
                     TrackToggle.IsChecked = s.TrackApps;
                     Refresh(animate: false);

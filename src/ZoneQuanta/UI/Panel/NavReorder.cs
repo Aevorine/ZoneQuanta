@@ -11,9 +11,10 @@ using System.Windows.Media.Effects;
 
 namespace ZoneQuanta.UI.Panel;
 
-// Dragging a nav item moves the item: it lifts as soon as the pointer travels, follows it up or down, the
-// others slide aside, and the release drops it into its slot (order handed to Save). A click still navigates;
-// Alt+Up / Alt+Down moves the selected item. The window moves from the sidebar's empty parts instead.
+// Dragging a nav item up or down moves the item: it lifts as soon as the pointer travels, follows it, the
+// others slide aside, and the release drops it into its slot (order handed to Save). Dragging it sideways
+// moves the window instead, like the sidebar's empty parts, and so does pulling a lifted item out of the bar
+// sideways. No hold either way; a click still navigates; Alt+Up / Alt+Down moves the selected item.
 internal sealed class NavReorder
 {
     private static readonly Duration Slide = TimeSpan.FromMilliseconds(140);
@@ -61,13 +62,41 @@ internal sealed class NavReorder
         {
             if (_pressed is null) return;
             if (e.LeftButton != MouseButtonState.Pressed) { _pressed = null; return; }
-            if (Math.Abs(p.X - _downAt.X) < SystemParameters.MinimumHorizontalDragDistance
-                && Math.Abs(p.Y - _downAt.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-            Lift(_pressed);
+            double dx = p.X - _downAt.X, dy = p.Y - _downAt.Y;
+            if (dx * dx + dy * dy < DecideAt * DecideAt) return;
+            var item = _pressed;
             _pressed = null;
+            // The bar runs up and down: along it is a reorder, across it a window move.
+            if (Math.Abs(dx) > Math.Abs(dy))
+            {
+                MoveWindow(item, "across");
+                e.Handled = true;
+                return;
+            }
+            Lift(item);
+        }
+        // Pulled well out of the bar sideways: the window follows instead and the item goes back.
+        if (Math.Abs(p.X - _downAt.X) > _nav.ActualWidth * 0.5 + PullOut)
+        {
+            var item = _lifted!;
+            Drop(commit: false);
+            MoveWindow(item, "pulled out");
+            e.Handled = true;
+            return;
         }
         Follow(p.Y - _downAt.Y);
         e.Handled = true;
+    }
+
+    // Pointer travel before the direction is judged: a little more than the system's drag threshold, so a
+    // slightly slanted start is not misread.
+    private const double DecideAt = 7, PullOut = 36;
+
+    private void MoveWindow(ButtonBase item, string how)
+    {
+        if (Window.GetWindow(_nav) is not { } window) return;
+        Core.Log.Write($"nav window-move {(item as ContentControl)?.Content} ({how})");
+        Controls.WindowDrag.Begin(window);
     }
 
     private void OnUp(object sender, MouseButtonEventArgs e)

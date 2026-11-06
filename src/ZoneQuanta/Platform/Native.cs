@@ -264,10 +264,34 @@ internal static class Native
     private static extern int GetSystemMetrics(int index);
 
     // Hands the current press to the system caption drag: Snap, Shake and dragging a maximized window out.
-    public static void BeginCaptionDrag(IntPtr hwnd)
+    public static void BeginCaptionDrag(IntPtr hwnd) => BeginFrameDrag(hwnd, HTCAPTION);
+
+    // The system resize from the bottom-right corner, exactly as if that border had been grabbed.
+    public static void BeginCornerResize(IntPtr hwnd) => BeginFrameDrag(hwnd, HTBOTTOMRIGHT);
+
+    private const int HTBOTTOMRIGHT = 17;
+
+    private static void BeginFrameDrag(IntPtr hwnd, int hit)
     {
         GetCursorPos(out var p);
         ReleaseCapture();
-        SendMessage(hwnd, WM_NCLBUTTONDOWN, new IntPtr(HTCAPTION), new IntPtr(((p.Y & 0xFFFF) << 16) | (p.X & 0xFFFF)));
+        SendMessage(hwnd, WM_NCLBUTTONDOWN, new IntPtr(hit), new IntPtr(((p.Y & 0xFFFF) << 16) | (p.X & 0xFFFF)));
+    }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromPoint(POINT pt, uint flags);
+
+    [DllImport("shcore.dll")]
+    private static extern int GetDpiForMonitor(IntPtr monitor, int type, out uint dpiX, out uint dpiY);
+
+    // Effective scale (1 = 96 dpi) of the monitor at a screen pixel; null when Windows cannot tell.
+    public static double? MonitorScale(int x, int y)
+    {
+        try
+        {
+            var m = MonitorFromPoint(new POINT { X = x, Y = y }, 2);
+            return m != IntPtr.Zero && GetDpiForMonitor(m, 0, out uint dpi, out _) == 0 && dpi > 0 ? dpi / 96.0 : null;
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException) { return null; }
     }
 }

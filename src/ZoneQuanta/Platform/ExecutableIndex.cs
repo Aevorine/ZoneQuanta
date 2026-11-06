@@ -30,6 +30,7 @@ internal static class ExecutableIndex
     };
     private static readonly object Gate = new(), ScanGate = new();
     private static Dictionary<string, List<Hit>>? _evidence;
+    private static Dictionary<string, string> _packageNames = new(StringComparer.OrdinalIgnoreCase);
     private static long _evidenceAt;
 
     private static string ScanFile => DataPaths.File("exe-index.tsv");
@@ -54,6 +55,13 @@ internal static class ExecutableIndex
         return null;
     }
 
+    // The Store app called like a program ("codex" -> the OpenAI.Codex package): its AppUserModelID.
+    public static string? PackageNamed(string name)
+    {
+        Evidence();
+        lock (Gate) return _packageNames.GetValueOrDefault(name);
+    }
+
     // Program files of names no cheap source knows: one breadth-first search of the install folders for all of
     // them (shallow installs first), ending when every name is found or after MaxFolders folders / MaxSearchMs.
     // Answers, found or not, are kept in exe-index.tsv for a day so the search does not repeat.
@@ -75,7 +83,7 @@ internal static class ExecutableIndex
             }
             if (want.Count == 0) return found;
             var sw = Stopwatch.StartNew();
-            var (folders, complete) = Breadth(want, Roots(extraRoots), found);
+            var (folders, complete) = Breadth(want, Roots(extraRoots), found, MaxFolders, MaxSearchMs);
             var now = DateTime.UtcNow;
             // A search cut short by its budget proves nothing about the rest: those misses are asked again in an hour.
             var missAt = complete ? now : now - ScanTtl + TimeSpan.FromHours(1);
@@ -117,7 +125,9 @@ internal static class ExecutableIndex
                 if (!d.TryGetValue(n, out var list)) d[n] = list = new List<Hit>();
                 if (!list.Exists(h => string.Equals(h.Path, path, StringComparison.OrdinalIgnoreCase))) list.Add(new Hit(path, aumid, source));
             }
-            int pkg = Packages(Add);
+            var names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            int pkg = Packages(Add, names);
+            _packageNames = names;
             int pca = ValueNames(Registry.CurrentUser, @"Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Compatibility Assistant\Store", v => Add(v, "", "history"));
             int mui = ValueNames(Registry.CurrentUser, @"Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache", v =>
             {
@@ -133,7 +143,8 @@ internal static class ExecutableIndex
                         if (line.IndexOf('\t') is int tab and > 0) { Add(line[(tab + 1)..], "", "recent"); seen++; }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Error("exe-seen", ex); }
-            Log.Write($"exe-evidence packages {pkg}, compat {pca}, muicache {mui}, recent runs {seen}, {d.Count} names {sw.ElapsedMilliseconds}ms");
+            int ext = Extensions(p => Add(p, "", "extension"));
+            Log.Write($"exe-evidence packages {pkg}, compat {pca}, muicache {mui}, recent runs {seen}, extensions {ext}, {d.Count} names {sw.ElapsedMilliseconds}ms");
             _evidenceAt = Environment.TickCount64;
             return _evidence = d;
         }
@@ -151,8 +162,26 @@ internal static class ExecutableIndex
         return n;
     }
 
-    // Installed Store packages of this user: each application's program file and AppUserModelID.
-    private static int Packages(Action<string, string, string> add)
+    // Programs that editor extensions bring along (language servers, debuggers, device tools), deep inside
+    // ~\.<editor>\extensions where the install-folder search does not reach.
+    private static int Extensions(Action<string> add)
+    {
+        int n = 0;
+        string profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var roots = new List<(string Dir, int Depth)>();
+        try
+        {
+            foreach (string editor in Directory.EnumerateDirectories(profile, ".*"))
+                if (Directory.Exists(Path.Combine(editor, "extensions"))) roots.Add((Path.Combine(editor, "extensions"), 7));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return 0; }
+        Breadth(null, roots, new Dictionary<string, string>(), maxFolders: 8_000, maxMs: 2_000, each: f => { add(f); n++; });
+        return n;
+    }
+
+    // Installed Store packages of this user: each application's program file and AppUserModelID; names maps the
+    // package's own name ("OpenAI.Codex" -> "Codex") to its first application.
+    private static int Packages(Action<string, string, string> add, Dictionary<string, string> names)
     {
         int n = 0;
         try
@@ -169,7 +198,10 @@ internal static class ExecutableIndex
                     foreach (var app in XDocument.Load(manifest).Descendants().Where(e => e.Name.LocalName == "Application"))
                     {
                         if ((string?)app.Attribute("Executable") is not { Length: > 0 } exe || (string?)app.Attribute("Id") is not { Length: > 0 } id) continue;
-                        add(Path.Combine(root, exe), ProcessImages.AumidOf(full, id), "package");
+                        string aumid = ProcessImages.AumidOf(full, id);
+                        add(Path.Combine(root, exe), aumid, "package");
+                        string packageName = full.Split('_')[0];
+                        names.TryAdd(packageName[(packageName.LastIndexOf('.') + 1)..], aumid);
                         n++;
                     }
                 }
@@ -272,9 +304,11 @@ internal static class ExecutableIndex
 
     private const int MaxFolders = 40_000, MaxSearchMs = 8_000;
 
-    // Level by level over all roots at once, below normal priority so the desktop stays smooth.
-    // Returns the folders visited and whether the search finished (everything found or nothing left to visit).
-    private static (int Folders, bool Complete) Breadth(HashSet<string> want, List<(string Dir, int Depth)> roots, Dictionary<string, string> found)
+    // Level by level over all roots at once, below normal priority so the desktop stays smooth. With want, looks
+    // for those names; without, hands every program file to each. Returns the folders visited and whether the
+    // search finished (everything found or nothing left to visit).
+    private static (int Folders, bool Complete) Breadth(HashSet<string>? want, List<(string Dir, int Depth)> roots, Dictionary<string, string> found,
+        int maxFolders, int maxMs, Action<string>? each = null)
     {
         var prio = System.Threading.Thread.CurrentThread.Priority;
         System.Threading.Thread.CurrentThread.Priority = System.Threading.ThreadPriority.BelowNormal;
@@ -283,7 +317,7 @@ internal static class ExecutableIndex
         int folders = 0;
         try
         {
-            while (queue.Count > 0 && want.Count > 0 && folders < MaxFolders && sw.ElapsedMilliseconds < MaxSearchMs)
+            while (queue.Count > 0 && (want is null || want.Count > 0) && folders < maxFolders && sw.ElapsedMilliseconds < maxMs)
             {
                 var (dir, left) = queue.Dequeue();
                 folders++;
@@ -291,8 +325,8 @@ internal static class ExecutableIndex
                 {
                     foreach (string f in Directory.EnumerateFiles(dir, "*.exe"))
                     {
-                        string n = ProcessImages.NameOf(f);
-                        if (want.Remove(n)) found[n] = f;
+                        if (want is null) each?.Invoke(f);
+                        else if (want.Remove(ProcessImages.NameOf(f))) found[ProcessImages.NameOf(f)] = f;
                     }
                     if (left <= 0) continue;
                     foreach (string sub in Directory.EnumerateDirectories(dir))
@@ -307,6 +341,6 @@ internal static class ExecutableIndex
             }
         }
         finally { System.Threading.Thread.CurrentThread.Priority = prio; }
-        return (folders, want.Count == 0 || queue.Count == 0);
+        return (folders, want is { Count: 0 } || queue.Count == 0);
     }
 }

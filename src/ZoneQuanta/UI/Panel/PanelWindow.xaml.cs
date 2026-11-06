@@ -48,7 +48,7 @@ public partial class PanelWindow : Window
         _resizeBorder = WindowChrome.GetWindowChrome(this).ResizeBorderThickness;
 
         // Opens where it was left: size, spot and maximized state survive restarts and updates.
-        _memory = new Controls.WindowMemory(this, () => _host.Settings.PanelBounds, b => _host.Settings.PanelBounds = b);
+        _memory = new Controls.WindowMemory(this, () => _host.Settings.PanelBounds, b => _host.Settings.PanelBounds = b, "panel");
         _memory.Place(Controls.WindowMemory.Spot.Last, new Size(Width, Height), onCursorScreen: false);
         if (Content is Grid root)
         {

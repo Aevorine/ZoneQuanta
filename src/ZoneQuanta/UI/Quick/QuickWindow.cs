@@ -73,7 +73,17 @@ public sealed class QuickWindow : LauncherWindow
         root.Children.Add(body);
         Grid.SetRowSpan(_sizeBadge, 2);
         root.Children.Add(_sizeBadge);
+        var grip = ResizeGrip();
+        Grid.SetRowSpan(grip, 2);
+        root.Children.Add(grip);
+        StateChanged += (_, _) => grip.Visibility = WindowState == WindowState.Maximized ? Visibility.Collapsed : Visibility.Visible;
         SetRoot(root);
+        bar.MouseRightButtonUp += (_, e) =>
+        {
+            if (e.OriginalSource != bar && e.OriginalSource != tools) return;
+            OpenWindowMenu();
+            e.Handled = true;
+        };
         // Margins and bar gaps move at once; buttons and the empty part of the field once the pointer travels.
         Controls.WindowDrag.Attach(this, this, e =>
         {
@@ -96,7 +106,7 @@ public sealed class QuickWindow : LauncherWindow
         _grid.LeftTop += () => _search.Focus();
         SyncView();
         SyncEmpty();
-        _memory = new Controls.WindowMemory(this, () => actions.Settings.QuickBounds, b => actions.Settings.QuickBounds = b);
+        _memory = new Controls.WindowMemory(this, () => actions.Settings.QuickBounds, b => actions.Settings.QuickBounds = b, "quick");
         _sizeBadge.Attach(_memory);
     }
 
@@ -215,6 +225,55 @@ public sealed class QuickWindow : LauncherWindow
             menu.Items.Add(flow);
         }
         menu.IsOpen = true;
+    }
+
+    // Right-click on the bar's empty part: window size and where the panel opens.
+    private void OpenWindowMenu()
+    {
+        var menu = new ContextMenu { Placement = PlacementMode.MousePoint };
+        bool max = WindowState == WindowState.Maximized;
+        var size = new MenuItem { Header = max ? "还原" : "最大化", Tag = FindResource(max ? "Icon.Restore" : "Icon.Max") };
+        size.Click += (_, _) => Controls.WindowDrag.ToggleMaximize(this);
+        var reset = new MenuItem { Header = "恢复默认大小", Tag = FindResource("Icon.Reset") };
+        reset.Click += (_, _) =>
+        {
+            var work = SystemParameters.WorkArea;
+            _memory.Reset(Place(work, firstTime: true).Size, rise: 0.4);
+        };
+        menu.Items.Add(size);
+        menu.Items.Add(reset);
+        menu.Items.Add(new Separator());
+        var where = new MenuItem { Header = "打开位置", Tag = FindResource("Icon.Window") };
+        foreach (var (key, text) in new[] { ("Last", "上次位置"), ("Center", "屏幕中央"), ("Cursor", "鼠标处") })
+        {
+            var mi = new MenuItem { Header = text, IsCheckable = true, IsChecked = _actions.Settings.QuickPlacement == key };
+            mi.Click += (_, _) => _actions.Settings.QuickPlacement = key;
+            where.Items.Add(mi);
+        }
+        menu.Items.Add(where);
+        menu.IsOpen = true;
+    }
+
+    // The theme's corner grip (as on group cards) in the bottom-right corner: shows that the panel can be
+    // resized and starts the system resize from there.
+    private FrameworkElement ResizeGrip()
+    {
+        var grip = new Thumb
+        {
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(0, 0, -14, -14),
+            Opacity = 0.55,
+        };
+        grip.SetResourceReference(StyleProperty, "CornerGrip");
+        grip.MouseEnter += (_, _) => grip.Opacity = 1;
+        grip.MouseLeave += (_, _) => grip.Opacity = 0.55;
+        grip.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            Platform.Native.BeginCornerResize(new System.Windows.Interop.WindowInteropHelper(this).Handle);
+            e.Handled = true;
+        };
+        return grip;
     }
 
     private void OpenAddMenu(FrameworkElement anchor)

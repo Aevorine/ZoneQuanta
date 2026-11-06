@@ -28,30 +28,34 @@ Windows 桌面时钟组件（本地 + 洛杉矶），WPF / .NET 8 单文件 exe�
 
 ### T-20261105-1 第九轮验收（v1.4.6 / v1.4.7，32–37）见 `history/2026-11_v1.4.6-1.4.7.md`
 
-### T-20261105-1 第十轮验收（v1.4.8，导航图标拖动即移动、流量页真实图标）
-38. 按住导航图标一移动（超过系统拖动阈值）就是调整顺序：图标浮起跟随指针、其他图标让位、松开保存，窗口不动；收起为仅图标时同样；单击仍切换页面；拖动导航栏标志 / 空白处 / 版本号移动窗口；Alt + ↑ / ↓ 移动当前页图标；顺序重启后保持
-39. 「流量」页应用显示真实图标：已退出程序也能从运行记录（兼容性助手、MuiCache、BAM）、商店清单、系统文件夹、安装目录找到程序文件；路径必须是「进程名.exe」；同目录多快捷方式选最合适的；系统程序不归属开始菜单项；无图标的程序显示资源管理器同款图标；快速来源约 1 秒出图标，安装目录查找在后台低优先级、有上限、结果记一天
+### T-20261105-1 第十轮验收（v1.4.8，38–39）见 `history/2026-11_v1.4.8.md`
+
+### T-20261105-1 第十一、十二轮验收（v1.4.9）
+40–45（多方法真实图标、助手自愈、导航拖窗、快捷面板大小、自动分组第一轮、更新页网址）见 `history/2026-11_v1.4.9.md`。
+第十二轮（同一版本 v1.4.9，用户再次要求分组分类与名称彻底准确）：
+46. 分类依据逐级换用：名称 → 网站（主机、路径、# 栏目）→ 程序名 / 描述 / 备注 → 产品自述（应用和功能说明、Electron 包描述）→ 系统登记由它打开的文件类型与协议 → 文件夹 → 附带说明文档开头；长文本打分；学习手动放置的细类。检查：真实数据副本 102 项重分类后无「其他应用」「网站」组、手动项 0 移动、日志写明每项依据（`scratchpad/explain.ps1`、`tgroup3.ps1`）
+47. 组名按实际成员：同细类 → 细类名，两段式大类只占一段 → 那一段（办公 / 学习、网盘 / 下载、网络工具 / 远程、嵌入式 / 工程），两类 → 短「A与B」/ 上位词 / 常用；自动组绑定类别，改名后同类新项仍进入，用户输入的名字不改。检查：`tnames3.ps1` 21 例；副本去掉下载工具与学习通后组名自动变「网盘」「办公」，项目加回后进同一组且名字变回（`tgroup3b/3c.ps1`）
+48. 审查修正：图标图片先查格式与头部尺寸、卡住的服务器 25 s 内放弃、离线 15 分钟重试、不访问本机与局域网（含跳转）、跨屏窗口尺寸只在原屏保存、流量额度推算日期溢出不再打断启动。检查：`fixtest`（大图 14 ms 拒绝 +0 MB、10 个内网地址拒绝、不可达主机不进 1 天名单、卡住 3 s 放弃）
 
 ## 明确不做
 - [2026-11-05] 安卓手机 / 平板版、网页版（React、shadcn/ui、Motion、dnd-kit、Zustand 等前端栈）｜安卓、平板、React、shadcn、Web — 本项目是 WPF 桌面组件（ADR 0001），通用需求模板里的这些条目不适用；对应诉求用 WPF 自带控件实现（Thumb、拖放、动画）
+- [2026-11-06] 真实鼠标 / 键盘测试（导航横向拖动、快捷面板角手柄与顶栏右键菜单、点击更新页链接）｜真实输入、注入鼠标、鼠标测试 — 用户未选；只用 UIA、SetWindowPos、日志等不接管输入的方式验证，这几项保持 NOT TESTED
 
 ## 问题与待决
 - 程序未做 Authenticode 代码签名，SmartScreen 会提示未知发布者（需购买证书，暂不做）
 - 镜像线路（ghfast.top、gh-proxy.com）为第三方，可用性随时变化；已有签名校验，失效时自动回退直连
 
 ## 恢复点
-> 更早的恢复点见 `history/2026-10_11.md`、`history/2026-11_v1.0-1.4.1.md`、`history/2026-11_v1.4.2-1.4.4.md`、`history/2026-11_v1.4.4-1.4.5.md`、`history/2026-11_v1.4.6-1.4.7.md`。
-2026-11-06 第十轮（v1.4.8）：用户再次提出导航图标难移动与流量页图标不真实。导航根因：v1.4.4 起导航项上的拖动先交给窗口移动，只有静止 0.3 秒才浮起排序 → 改为越过拖动阈值即浮起排序，窗口改由标志 / 空白 / 版本号拖动，新增窗口级 Alt+↑/↓（导航项 Focusable=False，导航级按键收不到）。图标根因（逐项分析 apps-meta.json 前 80 名）：27 个 v1.4.6 前退出的程序无路径、同目录多快捷方式时归属放弃、系统程序画成 Windows 标志、App Paths / 旧缓存把 wpp 指到 wps.exe → 新增 `Platform/ExecutableIndex`（商店清单、兼容性助手、MuiCache、系统文件夹含 UUS、助手写的 apps-seen.tsv（BAM，仅当前用户、同名取最近运行）、两阶段 + 广度优先有预算的安装目录查找，结果记 exe-index.tsv 一天，预算截断的未找到 1 小时后再查）、`Platform/InstalledPrograms`（应用和功能图标）、`Matching`（必须是 <name>.exe）、Windows 文件不归属开始菜单项、无图标用文件本身的系统图标、未知名称退避重试、Revision 3。测试中发现并修复回归：System32 文件被「任意快捷方式在其中」规则归到「系统信息」。隔离实例真实输入：导航 6 项通过；流量页 88 名 1.15–1.4 秒出图标、后台查找补 10–11 个、剩 7 个已不存在。独立审查 REQUEST_CHANGES 2 条已修。v1.4.6 / v1.4.7 的恢复点见 `history/2026-11_v1.4.6-1.4.7.md`。
+> 更早的恢复点与已完成轮次的验收见 `history/`（按版本分文件，最新 `2026-11_v1.4.9.md`）。
+2026-11-06 第十一 / 十二轮（v1.4.9）：验收 40–48 已实现。第十二轮根因：组名是固定类别名、按名字找组（改名后同类另建一组），无证据的程序全进「其他应用」。改为：QuickGroup.Kind 绑定类别 + 组名随成员（GroupNamer.ForKindGroup）；ProgramFacts 新证据（文件类型 / 协议反查、ARP 说明、Electron 包、说明文档）；Learn 学细类；ClassifierVersion 3 一次性重分类。审查（第一次）的 4 个问题 + 加固已修并实测；第二次独立审查进行中。未用真实鼠标测：导航横向拖、快捷面板角手柄与右键菜单、点击链接；未在双屏上测窗口尺寸。下一步：处理第二次审查结论 → 提交推送 → release.ps1 1.4.9（只留两版）→ 已安装副本更新后核对僵尸助手被结束、分组重分类与组名。
 <!-- wf:resume:start -->
 （机器快照，PreCompact 钩子写，勿手改；恢复时以真实 Git 与代码为准）
-- 快照时间：2026-11-05T13:45:38.336Z（PreCompact/auto，会话 e7b7b0cb）
-- Git：main → origin/main @ 12f1700（+0 -0）；未提交 0 个
-- 最近 3 小时改过的文件（项目根，前 15）：.claude\SPEC.md，src\ZoneQuanta\ZoneQuanta.csproj，CHANGELOG.md，src\ZoneQuanta\Core\Traffic\HelperLauncher.cs，src\ZoneQuanta\Core\Traffic\TrafficHelper.cs，.claude\privacy-allow.txt，src\ZoneQuanta\UI\Quick\QuickGrid.cs，src\ZoneQuanta\AppController.cs，src\ZoneQuanta\UI\Quick\StartPinSync.cs，README.en.md，README.md，src\ZoneQuanta\UI\Panel\NavReorder.cs，src\ZoneQuanta\UI\Panel\PanelWindow.xaml.cs，src\ZoneQuanta\UI\Quick\QuickGrid.Board.cs，src\ZoneQuanta\UI\Theme\Theme.xaml
+- 快照时间：2026-11-06T04:28:40.283Z（PreCompact/auto，会话 a3dad127）
+- Git：main → origin/main @ 0ff4c46（+0 -0）；未提交 39 个：.claude/SPEC.md，CHANGELOG.md，README.en.md，README.md，src/ZoneQuanta/App.xaml.cs，src/ZoneQuanta/AppController.cs，src/ZoneQuanta/Core/DataHistory.cs，src/ZoneQuanta/Core/Quick/GroupNamer.cs，src/ZoneQuanta/Core/Quick/QuickCategories.cs，src/ZoneQuanta/Core/Quick/QuickStore.cs，src/ZoneQuanta/Core/Settings/AppSettings.cs，src/ZoneQuanta/Core/Traffic/HelperLauncher.cs，src/ZoneQuanta/Core/Update/UpdateCoordinator.cs，src/ZoneQuanta/Core/Update/UpdateService.cs，src/ZoneQuanta/Platform/AppDirectory.cs…
+- 最近 3 小时改过的文件（项目根，前 15）：.claude\history\2026-11_v1.4.8.md，.claude\SPEC.md，README.en.md，README.md，CHANGELOG.md，src\ZoneQuanta\ZoneQuanta.csproj，src\ZoneQuanta\UI\Theme\Theme.xaml，src\ZoneQuanta\UI\Quick\QuickWindow.cs，src\ZoneQuanta\Core\Update\UpdateCoordinator.cs，src\ZoneQuanta\Core\Update\UpdateService.cs，src\ZoneQuanta\Core\Update\ReleaseLinks.cs，src\ZoneQuanta\AppController.cs，src\ZoneQuanta\UI\Quick\QuickActions.cs，src\ZoneQuanta\Core\Quick\QuickStore.cs，src\ZoneQuanta\Core\DataHistory.cs
 <!-- wf:resume:end -->
 
 ## 学习候选
-- [2026-11-06] WPF 同一 Visual 换 HwndSource 宿主：先清旧 RootVisual，再给每个宿主套新外层容器；宿主随任务栏被销毁时根标记可能残留，复用即抛 VisualTarget 异常并退出｜复现 2 次（Windows 事件日志）｜开机登录时程序消失｜范围：全局
-- [2026-11-06] 真实数据测试不能「测前备份、测后写回」，会覆盖用户在测试期间的改动；一律在隔离数据目录（副本）上测｜复现 1 次｜用户分组被恢复原位｜范围：全局
-- [2026-11-05] WPF 把鼠标捕获从子元素转给父元素时，子元素的 LostMouseCapture 会冒泡到父元素，父元素处理器要判 e.OriginalSource == 自己｜复现 1 次｜长按导航排序第一次实测时刚浮起就被自己取消｜范围：全局
-- [2026-11-05] 代码里引用主题资源先 grep 确认键存在，或用 TryFindResource；FindResource 缺键会在窗口构造时让整个程序崩溃｜复现 1 次｜Icon.Refresh 不存在导致 --panel 启动即崩｜范围：项目
-- [2026-11-05] 真实输入测试的指针检查要核对目标顶层窗口句柄，不能只核对进程：同进程的置顶窗口会盖住目标｜复现 1 次｜右键落在快捷面板而不是主面板上｜范围：全局
+- [2026-11-06] 全局 DispatcherUnhandledException 吞掉退出期异常会让进程永远不退（单文件 exe 被替换后懒加载程序集失败）；后台 / 助手模式不装吞异常处理器，工作结束直接 Environment.Exit｜复现 1 次｜自更新后提权助手成僵尸、流量停止统计｜范围：全局
+- [2026-11-06] 记住的窗口尺寸比工作区还大时边缘够不着、用户无法改尺寸、也就永远不会重新保存；恢复时先按工作区收缩并保存｜复现 1 次｜快捷面板「不记得大小」｜范围：全局
+- [2026-11-06] 注入真实鼠标 / 键盘的测试会抢用户的指针，用户会拒绝；先用 UIA、SetWindowPos、WM_CLOSE、日志等不接管输入的方法，真实输入测试先问｜复现 1 次｜用户中止 tquick2｜范围：全局
