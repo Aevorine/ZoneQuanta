@@ -217,7 +217,8 @@ public partial class TrafficPage : UserControl
 
         // Program file, name, owner and icon are worked out off the UI thread; rows refresh once something new is known.
         var names = byName.Keys.ToList();
-        System.Threading.Tasks.Task.Run(() => AppDirectory.Resolve(names)).ContinueWith(t =>
+        void Redraw() => Dispatcher.BeginInvoke(new Action(() => Refresh(animate: false)));
+        System.Threading.Tasks.Task.Run(() => AppDirectory.Resolve(names, Redraw)).ContinueWith(t =>
         {
             if (t.IsCompletedSuccessfully && t.Result) Dispatcher.BeginInvoke(new Action(() => Refresh(animate: false)));
         }, System.Threading.Tasks.TaskScheduler.Default);

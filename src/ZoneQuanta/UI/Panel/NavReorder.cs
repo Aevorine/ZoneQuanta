@@ -7,30 +7,27 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
-using System.Windows.Threading;
+using System.Windows.Media.Effects;
 
 namespace ZoneQuanta.UI.Panel;
 
-// A nav item dragged straight away moves the window; held still for HoldMs it lifts instead, follows the
-// pointer up or down and drops into its new slot (order handed to Save). A short click still navigates.
+// Dragging a nav item moves the item: it lifts as soon as the pointer travels, follows it up or down, the
+// others slide aside, and the release drops it into its slot (order handed to Save). A click still navigates;
+// Alt+Up / Alt+Down moves the selected item. The window moves from the sidebar's empty parts instead.
 internal sealed class NavReorder
 {
     private static readonly Duration Slide = TimeSpan.FromMilliseconds(140);
     private readonly StackPanel _nav;
     private readonly Action<IReadOnlyList<string>> _save;
-    private readonly Action _moveWindow;
-    private readonly DispatcherTimer _hold = new() { Interval = TimeSpan.FromMilliseconds(Controls.WindowDrag.HoldMs) };
     private ButtonBase? _pressed, _lifted;
     private Point _downAt;
     private int _from, _to;
     private double _slot;
 
-    public NavReorder(StackPanel nav, Action<IReadOnlyList<string>> save, Action moveWindow)
+    public NavReorder(StackPanel nav, Action<IReadOnlyList<string>> save)
     {
         _nav = nav;
         _save = save;
-        _moveWindow = moveWindow;
-        _hold.Tick += (_, _) => Lift();
         nav.PreviewMouseLeftButtonDown += OnDown;
         nav.PreviewMouseMove += OnMove;
         nav.PreviewMouseLeftButtonUp += OnUp;
@@ -47,91 +44,94 @@ internal sealed class NavReorder
 
     private void OnDown(object sender, MouseButtonEventArgs e)
     {
-        _pressed = ItemAt(e.OriginalSource);
-        if (_pressed is null) return;
-        _downAt = e.GetPosition(_nav);
-        _hold.Start();
+        _pressed = e.ClickCount == 1 ? ItemAt(e.OriginalSource) : null;
+        if (_pressed is not null) _downAt = e.GetPosition(_nav);
     }
 
     private void OnMove(object sender, MouseEventArgs e)
     {
         var p = e.GetPosition(_nav);
         // The release was never seen (it went to another window or a menu loop): end the lift, change nothing.
-        if (_lifted is not null && e.LeftButton != MouseButtonState.Pressed)
+        if (_lifted is not null && (e.LeftButton != MouseButtonState.Pressed || !Platform.Native.LeftButtonDown()))
         {
             Drop(commit: false);
             return;
         }
         if (_lifted is null)
         {
-            // Moving before the hold elapses drags the window; the item is released, so it is not a click.
-            if (_pressed is not null && (Math.Abs(p.X - _downAt.X) > SystemParameters.MinimumHorizontalDragDistance
-                || Math.Abs(p.Y - _downAt.Y) > SystemParameters.MinimumVerticalDragDistance))
-            {
-                Cancel();
-                _moveWindow();
-                e.Handled = true;
-            }
-            return;
+            if (_pressed is null) return;
+            if (e.LeftButton != MouseButtonState.Pressed) { _pressed = null; return; }
+            if (Math.Abs(p.X - _downAt.X) < SystemParameters.MinimumHorizontalDragDistance
+                && Math.Abs(p.Y - _downAt.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+            Lift(_pressed);
+            _pressed = null;
         }
-        double dy = Math.Clamp(p.Y - _downAt.Y, -_from * _slot, (_nav.Children.Count - 1 - _from) * _slot);
-        Shift(_lifted).Y = dy;
-        int to = Math.Clamp(_from + (int)Math.Round(dy / _slot), 0, _nav.Children.Count - 1);
-        if (to != _to)
-        {
-            _to = to;
-            for (int i = 0; i < _nav.Children.Count; i++)
-            {
-                if (i == _from) continue;
-                double y = _from < to && i > _from && i <= to ? -_slot : to < _from && i >= to && i < _from ? _slot : 0;
-                Shift((UIElement)_nav.Children[i]).BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(y, Slide));
-            }
-        }
+        Follow(p.Y - _downAt.Y);
         e.Handled = true;
     }
 
     private void OnUp(object sender, MouseButtonEventArgs e)
     {
-        if (_lifted is not null)
-        {
-            Drop(commit: true);
-            e.Handled = true;
-        }
-        Cancel();
+        _pressed = null;
+        if (_lifted is null) return;
+        Drop(commit: true);
+        e.Handled = true;
     }
 
-    private void Cancel()
+    // Alt+Up / Alt+Down anywhere in the window (nav items take no focus): the current page's item moves one
+    // slot with the same slide as a drag. Not while a list or text field has focus: Alt+Down opens a list there.
+    public void OnWindowKey(object sender, KeyEventArgs e)
     {
-        _hold.Stop();
-        _pressed = null;
+        if (_lifted is not null || e.Key != Key.System || e.SystemKey is not (Key.Up or Key.Down)) return;
+        if (Keyboard.FocusedElement is DependencyObject f && Controls.WindowDrag.Ancestor<Control>(f) is ComboBox or TextBoxBase) return;
+        var item = _nav.Children.OfType<ToggleButton>().FirstOrDefault(t => t.IsChecked == true);
+        if (item is null) return;
+        int from = _nav.Children.IndexOf(item), to = from + (e.SystemKey == Key.Up ? -1 : 1);
+        e.Handled = true;
+        if (to < 0 || to >= _nav.Children.Count) return;
+        double slot = item.ActualHeight + item.Margin.Top + item.Margin.Bottom;
+        _nav.Children.RemoveAt(from);
+        _nav.Children.Insert(to, item);
+        Settle(item, (from - to) * slot);
+        Core.Log.Write($"nav key-move {(item as ContentControl)?.Content} {from}->{to}");
+        _save(Order());
     }
 
-    private void Lift()
+    private void Lift(ButtonBase item)
     {
-        _hold.Stop();
-        if (_pressed is null || Mouse.LeftButton != MouseButtonState.Pressed || !Platform.Native.LeftButtonDown())
-        {
-            _pressed = null;
-            return;
-        }
-        _lifted = _pressed;
-        Core.Log.Write($"nav lift {_lifted.Content}");
-        _pressed = null;
-        _from = _to = _nav.Children.IndexOf(_lifted);
-        _slot = _lifted.ActualHeight + _lifted.Margin.Top + _lifted.Margin.Bottom;
-        System.Windows.Controls.Panel.SetZIndex(_lifted, 1);
+        _lifted = item;
+        _from = _to = _nav.Children.IndexOf(item);
+        _slot = item.ActualHeight + item.Margin.Top + item.Margin.Bottom;
+        System.Windows.Controls.Panel.SetZIndex(item, 1);
         var scale = new ScaleTransform(1, 1);
         var group = new TransformGroup();
         group.Children.Add(scale);
         group.Children.Add(new TranslateTransform());
-        _lifted.RenderTransformOrigin = new Point(0.5, 0.5);
-        _lifted.RenderTransform = group;
+        item.RenderTransformOrigin = new Point(0.5, 0.5);
+        item.RenderTransform = group;
         var grow = new DoubleAnimation(1.04, TimeSpan.FromMilliseconds(120));
         scale.BeginAnimation(ScaleTransform.ScaleXProperty, grow);
         scale.BeginAnimation(ScaleTransform.ScaleYProperty, grow);
-        _lifted.Opacity = 0.92;
-        // Taking the capture also stops the item's own press, so releasing it later is not a click.
+        item.Effect = new DropShadowEffect { BlurRadius = 14, ShadowDepth = 2, Direction = 270, Opacity = 0.18 };
+        // Taking the capture also ends the item's own press, so releasing it later is not a click.
         _nav.CaptureMouse();
+        Core.Log.Write($"nav lift {(item as ContentControl)?.Content}");
+    }
+
+    // The lifted item tracks the pointer (kept inside the list); the slot it would land in opens up.
+    private void Follow(double dy)
+    {
+        dy = Math.Clamp(dy, -_from * _slot, (_nav.Children.Count - 1 - _from) * _slot);
+        Shift(_lifted!).Y = dy;
+        int to = Math.Clamp(_from + (int)Math.Round(dy / _slot), 0, _nav.Children.Count - 1);
+        if (to == _to) return;
+        _to = to;
+        for (int i = 0; i < _nav.Children.Count; i++)
+        {
+            if (i == _from) continue;
+            double y = _from < to && i > _from && i <= to ? -_slot : to < _from && i >= to && i < _from ? _slot : 0;
+            Shift((UIElement)_nav.Children[i]).BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(y, Slide));
+        }
     }
 
     private void Drop(bool commit)
@@ -146,20 +146,30 @@ internal sealed class NavReorder
             t.Y = 0;
         }
         item.RenderTransform = null;
-        item.Opacity = 1;
+        item.Effect = null;
         System.Windows.Controls.Panel.SetZIndex(item, 0);
         if (_nav.IsMouseCaptured) _nav.ReleaseMouseCapture();
-        Core.Log.Write($"nav drop {item.Content} {_from}->{_to} {(commit ? "commit" : "cancel")}");
-        if (!commit || _to == _from) return;
-
+        Core.Log.Write($"nav drop {(item as ContentControl)?.Content} {_from}->{_to} {(commit ? "commit" : "cancel")}");
+        if (!commit || _to == _from)
+        {
+            if (dy != 0) Settle(item, dy);
+            return;
+        }
         _nav.Children.RemoveAt(_from);
         _nav.Children.Insert(_to, item);
-        // Settle from where it was let go into its new slot.
-        var settle = new TranslateTransform(0, dy - (_to - _from) * _slot);
-        item.RenderTransform = settle;
-        settle.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, Slide));
-        _save(_nav.Children.OfType<ContentControl>().Select(c => c.Content as string ?? "").ToList());
+        Settle(item, dy - (_to - _from) * _slot);
+        _save(Order());
     }
+
+    // Slides an item from offset to its place.
+    private static void Settle(UIElement item, double offset)
+    {
+        var t = new TranslateTransform(0, offset);
+        item.RenderTransform = t;
+        t.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, Slide) { EasingFunction = new CubicEase() });
+    }
+
+    private List<string> Order() => _nav.Children.OfType<ContentControl>().Select(c => c.Content as string ?? "").ToList();
 
     private static TranslateTransform Shift(UIElement e)
     {

@@ -16,7 +16,7 @@ namespace ZoneQuanta.Platform;
 internal static class AppDirectory
 {
     // Bumped when the way an entry is worked out changes: older entries are worked out again.
-    private const int Revision = 2;
+    private const int Revision = 3;
 
     public sealed record Entry
     {
@@ -33,7 +33,8 @@ internal static class AppDirectory
     private static readonly object Gate = new();
     private static readonly object SaveGate = new();
     private static string FilePath => DataPaths.File("apps-meta.json");
-    private static readonly Dictionary<string, long> Tried = new(StringComparer.OrdinalIgnoreCase);
+    // Names asked for and when; a name that stays unknown waits twice as long each time (1 min .. 30 min).
+    private static readonly Dictionary<string, (long At, int Misses)> Tried = new(StringComparer.OrdinalIgnoreCase);
     private static Dictionary<string, Entry>? _cache;
     private static Dictionary<string, (string Path, string Aumid)> _helper = new(StringComparer.OrdinalIgnoreCase);
     private static DateTime _helperStamp;
@@ -45,7 +46,9 @@ internal static class AppDirectory
     }
 
     // Background thread. True when something new was worked out.
-    public static bool Resolve(IEnumerable<string> names)
+    // Two passes: everything the quick sources know is published at once (progress), then one search of the
+    // install folders for what is left. True when the second pass found something too.
+    public static bool Resolve(IEnumerable<string> names, Action? progress = null)
     {
         var todo = new List<string>();
         bool helperChanged = RefreshHelperPaths();
@@ -57,40 +60,82 @@ internal static class AppDirectory
             {
                 bool done = cache.TryGetValue(n, out var e) && e.Rev == Revision && (e.Path.Length > 0 || !_helper.ContainsKey(n));
                 if (done && !(helperChanged && _helper.TryGetValue(n, out var h) && h.Path != e!.Path)) continue;
-                if (!helperChanged && Tried.TryGetValue(n, out long at) && now - at < 60_000) continue;
-                Tried[n] = now;
+                var t = Tried.GetValueOrDefault(n);
+                if (!helperChanged && t.At != 0 && now - t.At < Math.Min(60_000L << Math.Min(t.Misses, 5), 1_800_000)) continue;
+                Tried[n] = (now, t.Misses + (t.At != 0 ? 1 : 0));
                 todo.Add(n);
             }
         }
         if (todo.Count == 0) return false;
         var sw = Stopwatch.StartNew();
         bool found = false;
+        var via = new Dictionary<string, int>();
+        var missing = new List<string>();
         foreach (string n in todo)
         {
-            var e = Work(n);
-            if (e is null) continue;
+            var e = Work(n, out string source);
+            if (e is null)
+            {
+                missing.Add(n);
+                continue;
+            }
+            via[source] = via.GetValueOrDefault(source) + 1;
             lock (Gate) Cache()[n] = e;
             found = true;
         }
-        if (found) Save();
-        Log.Write($"app-identity {todo.Count} name(s) {sw.ElapsedMilliseconds}ms");
-        return found;
+        if (found)
+        {
+            Save();
+            progress?.Invoke();
+        }
+        long quick = sw.ElapsedMilliseconds;
+        bool late = false;
+        if (missing.Count > 0)
+        {
+            foreach (var (n, path) in ExecutableIndex.Search(missing, StartMenuIndex.Current.AppFolders))
+            {
+                if (Work(n, out _, path) is not { } e) continue;
+                via["scan"] = via.GetValueOrDefault("scan") + 1;
+                lock (Gate) Cache()[n] = e;
+                missing.Remove(n);
+                late = true;
+            }
+            if (late) Save();
+        }
+        // Which source answered how often, and what is still unknown: enough to improve resolution from the log alone.
+        Log.Write($"app-identity {todo.Count} name(s) {quick}ms (+search {sw.ElapsedMilliseconds - quick}ms) via {string.Join(", ", via.Select(kv => $"{kv.Key} {kv.Value}"))}"
+                  + (missing.Count > 0 ? $"; unknown: {string.Join(", ", missing.Take(20))}" : ""));
+        return late || (found && progress is null);
     }
 
-    private static Entry? Work(string name)
+    private static Entry? Work(string name, out string source, string? searched = null)
     {
+        source = "fixed";
         if (name == "System") return new Entry { Icon = AppIdentity.WindowsGlyph, Friendly = "System", OwnerKey = "System", Rev = Revision };
         if (name == TrafficHelper.ExitedName) return new Entry { Icon = AppIdentity.ExitedGlyph, Friendly = name, OwnerKey = name, Rev = Revision };
 
-        string path = "", aumid = "";
-        lock (Gate)
+        // Most trusted first: what the helper saw the process run from, the running process itself, then
+        // registrations and Windows' own records, then a scan of the install folders. A source naming another
+        // program file (an App Paths alias, a stale cache) only counts if <name>.exe sits next to it.
+        string path = searched ?? "", aumid = "";
+        source = searched is null ? "" : "scan";
+        if (path.Length == 0)
         {
-            if (_helper.TryGetValue(name, out var h)) (path, aumid) = h;
-            else if (Cache().TryGetValue(name, out var old) && File.Exists(old.Path)) (path, aumid) = (old.Path, old.Aumid);
+            lock (Gate)
+            {
+                if (_helper.TryGetValue(name, out var h)) (path, aumid, source) = (h.Path, h.Aumid, "helper");
+                else if (Cache().TryGetValue(name, out var old) && Matching(old.Path, name) is { } kept) (path, aumid, source) = (kept, kept == old.Path ? old.Aumid : "", "cache");
+            }
         }
-        if (path.Length == 0 && Running(name) is { } r) (path, aumid) = r;
-        if (path.Length == 0) path = Registered(name) ?? StartMenuIndex.Current.PathOf(name) ?? OnPath(name) ?? "";
-        if (path.Length == 0) return null; // tried again once the helper or a running process knows it
+        if (path.Length == 0 && Running(name) is { } r) (path, aumid, source) = (r.Path, r.Aumid, "running");
+        if (path.Length == 0 && (Matching(Registered(name), name) ?? Matching(StartMenuIndex.Current.PathOf(name), name)) is { } reg) (path, source) = (reg, "registry");
+        if (path.Length == 0 && ExecutableIndex.Known(name) is { } known) (path, aumid, source) = (known.Path, known.Aumid, known.Source);
+        if (path.Length == 0 && OnPath(name) is { } onPath) (path, source) = (onPath, "path");
+        if (path.Length == 0)
+        {
+            source = "";
+            return null; // tried again once the helper or a running process knows it
+        }
 
         string desc = "";
         try { if (File.Exists(path)) desc = FileVersionInfo.GetVersionInfo(path).FileDescription?.Trim() ?? ""; }
@@ -185,6 +230,15 @@ internal static class AppDirectory
         }
         int exe = v.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
         return exe > 0 ? v[..(exe + 4)] : null;
+    }
+
+    // path itself when it is <name>.exe, else <name>.exe in the same folder (wpp -> office6\wpp.exe, not wps.exe).
+    private static string? Matching(string? path, string name)
+    {
+        if (string.IsNullOrEmpty(path) || !File.Exists(path)) return null;
+        if (string.Equals(ProcessImages.NameOf(path), name, StringComparison.OrdinalIgnoreCase)) return path;
+        string sibling = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(path) ?? "", name + ".exe");
+        return File.Exists(sibling) ? sibling : null;
     }
 
     private static string? OnPath(string name)

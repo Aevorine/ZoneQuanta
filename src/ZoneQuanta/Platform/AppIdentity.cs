@@ -33,8 +33,12 @@ internal static class AppIdentity
         if (index.ByTarget(path) is { } exact)
             return new Identity(exact.Lnk, exact.Name, "", exact.Target);
         var owner = index.OwnerOf(path);
-        string icon = own ? path : owner?.Lnk ?? (IsWindows(path) ? WindowsGlyph : "");
-        return new Identity(icon, Pick(description, name), owner?.Name ?? "", owner?.Target ?? path);
+        if (owner is not null) return new Identity(own ? path : owner.Lnk, Pick(description, name), owner.Name, owner.Target);
+        // No Start menu entry around it: the installed program it belongs to (Apps & features), if that has an icon.
+        if (!own && !IsWindows(path) && InstalledPrograms.OwnerOf(path) is { } product)
+            return new Identity(product.Icon, Pick(description, name), product.Name, product.Key);
+        // Otherwise the icon Windows itself shows for the file (the generic program icon when it carries none).
+        return new Identity(File.Exists(path) ? path : "", Pick(description, name), "", path);
     }
 
     private static string Pick(string description, string name) =>
@@ -138,6 +142,8 @@ internal sealed class StartMenuIndex
     // never past a folder that holds several applications (Program Files, D:\APPS, the user profile).
     public Link? OwnerOf(string path)
     {
+        // Windows' own programs belong to no Start menu entry (System32 holds dozens of unrelated tools).
+        if (AppIdentity.IsWindows(path)) return null;
         string? dir = Path.GetDirectoryName(path);
         string? top = null;
         for (string? a = dir; a is not null && !_containers.Contains(a); a = Path.GetDirectoryName(a))
@@ -146,21 +152,43 @@ internal sealed class StartMenuIndex
             if (_byDir.TryGetValue(a, out var here)) return Unique(here, path);
         }
         if (top is null) return null;
-        // Nothing directly above it: accept the single application found anywhere inside its install folder.
-        var inside = _byTarget.Values.Where(l => l.Target.StartsWith(top + "\\", StringComparison.OrdinalIgnoreCase)).ToList();
-        return Unique(inside, path);
+        // Nothing directly above it: only one application anywhere inside its install folder, or one whose
+        // product name matches; otherwise none rather than a wrong icon.
+        var inside = _byTarget.Values.Where(l => l.Target.StartsWith(top + "\\", StringComparison.OrdinalIgnoreCase))
+            .GroupBy(l => l.Target, StringComparer.OrdinalIgnoreCase).Select(g => g.First()).ToList();
+        if (inside.Count <= 1) return inside.FirstOrDefault();
+        string product = Product(path);
+        return product.Length > 0 && inside.Where(l => Product(l.Target) == product).ToList() is { Count: 1 } same ? same[0] : null;
     }
 
-    // One clear owner, or the one whose product matches the helper's; otherwise none rather than a wrong icon.
+    // Folders that hold several installed applications (e.g. D:\APPS), found from where shortcuts point.
+    public IEnumerable<string> AppFolders => _appFolders;
+    private readonly List<string> _appFolders = new();
+
+    // Shortcuts inside one install folder are one product (folders holding several products are containers and
+    // never reached), so one of them is always chosen: same product name as the helper, else the program
+    // nearest the install folder's top, else the one named most like the folder, else the shortest name.
     private static Link? Unique(List<Link> links, string path)
     {
         var distinct = links.GroupBy(l => l.Target, StringComparer.OrdinalIgnoreCase).Select(g => g.First()).ToList();
-        if (distinct.Count == 1) return distinct[0];
-        if (distinct.Count == 0) return null;
+        if (distinct.Count <= 1) return distinct.FirstOrDefault();
         string product = Product(path);
-        if (product.Length == 0) return null;
-        var same = distinct.Where(l => Product(l.Target) == product).ToList();
-        return same.Count == 1 ? same[0] : null;
+        if (product.Length > 0 && distinct.Where(l => Product(l.Target) == product).ToList() is { Count: 1 } same) return same[0];
+        return distinct
+            .OrderBy(l => l.Target.Count(c => c == '\\'))
+            .ThenByDescending(l => Similarity(l, path))
+            .ThenBy(l => l.Name.Length)
+            .ThenBy(l => l.Target, StringComparer.OrdinalIgnoreCase)
+            .First();
+    }
+
+    // Shared leading letters of the shortcut name and the install folder holding both ("Git Bash" ~ "Git").
+    private static int Similarity(Link l, string path)
+    {
+        string folder = Path.GetFileName(Path.GetDirectoryName(l.Target) ?? "") ?? "";
+        int n = 0;
+        while (n < folder.Length && n < l.Name.Length && char.ToLowerInvariant(folder[n]) == char.ToLowerInvariant(l.Name[n])) n++;
+        return n;
     }
 
     private static string Product(string exe)
@@ -208,8 +236,13 @@ internal sealed class StartMenuIndex
             }
         }
         // A folder holding two or more separate installs is a place for applications, not one application.
+        var generic = new HashSet<string>(GenericRoots(), StringComparer.OrdinalIgnoreCase);
         foreach (var (folder, set) in children)
-            if (set.Count >= 2) index._containers.Add(folder);
+        {
+            if (set.Count < 2) continue;
+            index._containers.Add(folder);
+            if (!generic.Contains(folder) && !AppIdentity.IsWindows(folder + "\\")) index._appFolders.Add(folder);
+        }
         return index;
     }
 

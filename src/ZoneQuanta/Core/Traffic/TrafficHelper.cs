@@ -20,6 +20,9 @@ public static class TrafficHelper
     public const string AppsFileName = "apps.tsv";
     // name \t full path \t AppUserModelID, so the panel can show the real icon of programs that have exited.
     public const string PathsFileName = "apps-paths.tsv";
+    // name 	 path of programs this user ran lately (from Windows' records, not watched by the helper): a hint
+    // the panel ranks below what it can see itself.
+    public const string SeenFileName = "apps-seen.tsv";
     public const string MutexName = "ZoneQuanta.TrafficHelper.7F3A";
     public const string ExitedName = "已退出的进程";
     private static readonly Guid KernelNetwork = new("7DD42A49-5329-4832-8DFD-43D979153A88");
@@ -59,6 +62,7 @@ public static class TrafficHelper
         var procs = new Dictionary<int, Proc>();
         var known = LoadPaths(pathsFile);
         bool knownDirty = false;
+        SaveRecentlyRun(Path.Combine(dir, SeenFileName));
         var pending = new Dictionary<string, (long Up, long Down)>();
         object gate = new();
 
@@ -180,6 +184,26 @@ public static class TrafficHelper
         Flush(file, pending, gate, path);
         lock (gate) SavePaths(pathsFile, known);
         return 0;
+    }
+
+    private static void SaveRecentlyRun(string file)
+    {
+        if (!SafeToWrite(file)) return;
+        try
+        {
+            var sb = new StringBuilder();
+            int n = 0;
+            foreach (var (name, path) in Platform.ExecutableIndex.RecentlyRun().OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                if (path.Length <= 3 || path[1] != ':') continue;
+                sb.Append(name).Append('\t').Append(path).Append('\n');
+                n++;
+            }
+            File.WriteAllText(file + ".tmp", sb.ToString(), Encoding.UTF8);
+            File.Move(file + ".tmp", file, overwrite: true);
+            Log.Write($"helper recent runs {n}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Error("apps-seen-save", ex); }
     }
 
     public static Dictionary<string, (string Path, string Aumid)> LoadPaths(string file)

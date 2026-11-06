@@ -73,9 +73,11 @@ public partial class PanelWindow : Window
         // Reopens on the page it was left on (settings.json PanelPage), else the first.
         (Nav.Children.OfType<RadioButton>().FirstOrDefault(r => (string)r.Content == _host.Settings.PanelPage)
             ?? (RadioButton)Nav.Children[0]).IsChecked = true;
-        _ = new NavReorder(Nav, order => _host.Settings.NavOrder = order.ToList(), () => Controls.WindowDrag.Begin(this));
-        // The rest of the sidebar is title bar too: drag to move, double-click to maximize.
-        Controls.WindowDrag.Attach(Sidebar, this, e => e.OriginalSource == Sidebar || e.OriginalSource is TextBlock { Name: "VersionText" }
+        var reorder = new NavReorder(Nav, order => _host.Settings.NavOrder = order.ToList());
+        PreviewKeyDown += reorder.OnWindowKey;
+        // Nav items move themselves; everything else on the sidebar (logo, name, gaps, version) is title bar:
+        // drag to move the window, double-click to maximize.
+        Controls.WindowDrag.Attach(Sidebar, this, e => IsSidebarBlank(e.OriginalSource as DependencyObject)
             ? Controls.WindowDrag.Grip.Blank : Controls.WindowDrag.Grip.None);
         var reset = new MenuItem { Header = "恢复默认顺序", Tag = TryFindResource("Icon.Reset") };
         reset.Click += (_, _) => { _host.Settings.NavOrder = new(); BuildNav(); };
@@ -110,6 +112,14 @@ public partial class PanelWindow : Window
     }
 
     private WindowState RestoredState => _maximized ? WindowState.Maximized : WindowState.Normal;
+
+    private bool IsSidebarBlank(DependencyObject? d)
+    {
+        if (d == Sidebar || d == Nav || d is TextBlock { Name: "VersionText" }) return true;
+        for (; d is not null && d != Sidebar; d = VisualTreeHelper.GetParent(d))
+            if (d == Brand) return true;
+        return false;
+    }
 
     // Saved order first (unknown titles skipped), then any page it does not mention, in built-in order.
     private void BuildNav()
