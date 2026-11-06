@@ -30,6 +30,10 @@
 | Display speed | A dedicated high-resolution timer thread wakes about 12 ms before each second, so the new second is presented in the frame that contains the boundary; sampling runs on a background thread and the taskbar numbers refresh every 0.5 s by default (0.25 / 0.5 / 1 / 2 s selectable); the hover card opens in about 10 ms; the monitor follows an auto-hidden taskbar within a few milliseconds of it appearing |
 | Low footprint | Redraws only what changes; sampling drops to once a second while the band is tucked away and the panel is closed; about 75 MB RAM and normally under 1% of one core when idle |
 
+## v1.4.6
+
+Groups, card places and the navigation order no longer "go back": tests run only on an isolated instance (`--data-dir`), the app keeps a history of versions (on start, exit, before updates and after every change) that the System page restores in one step, the quick panel has Ctrl+Z undo and Ctrl+Y redo, and fields from newer or older versions are kept. Every app on the Traffic page shows its own icon: full paths are recorded when processes start, engines without an icon of their own (xray, sing-box) show the icon of the app that ships them, and a Process / App switch merges an app's processes into one row; right-click opens the file location. Cards and switch rows on every page can be dragged: a plain drag moves the panel, a 0.3 s hold then drag rearranges and is remembered, and right-click restores the default layout. The navigation collapses to icons (‹ button or Ctrl+B, remembered), and hovering an icon shows the page's name and contents.
+
 ## v1.4.5
 
 The quick panel no longer leaves an empty column on the right: the column count is chosen to leave the fewest empty cells. Group cards can be dragged to any cell; the others make room live with a smooth glide, and the card stays pinned there (kept across restarts); right-click to unpin one or let all flow again; dragging near the top or bottom edge scrolls. Dropping one icon on another names the new group from what the apps are for (for example "浏览器与社交通讯"), preselected so Enter accepts it; the name follows later member changes until you rename it; right-click a group, "按内容命名", to name it by content. Window size, position, maximized state and the panel page survive a restart, sign-out or update: placements are written at once, settings files reach the disk before they replace the old ones and keep a backup, and a damaged file is restored from that backup. The main panel shows the pixel size while an edge is dragged too.
@@ -86,7 +90,12 @@ With a local proxy or TUN adapter, traffic is attributed to the proxy process.
 
 - Left-click the tray icon to open / close the panel; the taskbar entry disappears when it is closed. Right-click for switches, the quick panel, open-a-path and the quick item list
 - Ten pages: Console, Display, Time zones, Monitor, Traffic, Quick, Shortcuts, Window, System, Update. Drag anywhere on the navigation (entries, blank space, version label) to move the panel, a click still switches pages; hold an entry still for about 0.3 s, then drag it to reorder (right-click the navigation to restore the default order); double-click the blank space to maximize or restore, and drag it while maximized to restore under the pointer. On the quick panel the margins, top-bar gaps, buttons and the empty part of the search box move the window directly (typed text: a drag selects, a 0.3 s hold then drag moves). Both panels reopen at their last size, position and maximized state (mapped proportionally and kept fully visible on another monitor or resolution); the Quick page sets where the quick panel opens and resets its size. Hover a group card and drag its corner grip to resize it by whole cells. Every shortcut can be changed, switched off or reset on the Shortcuts page and is remembered in settings.json; apps pinned to Start are imported into the quick panel automatically and shown in groups (automatic grouping only fills items that have no group yet; manual placement always wins)
-- Settings, logs and statistics live in `%APPDATA%\ZoneQuanta` (quick items in `quick.json`)
+- Navigation: the ‹ button at the bottom or `Ctrl + B` collapses it to icons and back, remembered; hover an icon for the page name and contents
+- Page content: press a card, switch row or blank space and move to drag the panel; hold still about 0.3 s, then drag to lift the card or row and drop it elsewhere (kept across restarts and updates); right-click blank space for 恢复默认布局 (default layout)
+- Traffic page: 进程 / 应用 shows one row per process or merges an app's processes; hover for paths and member totals; right-click to open the file location, copy the path or show properties
+- History: settings and the quick panel are saved on start, exit, before updates and restores, and after each change (identical content skipped; newest 60 plus one a day for 30 days); System → 历史版本 shows time, reason and changes, ↺ then 确认恢复 goes back (the current state is saved first and the app restarts); + saves one now, the folder button opens the history folder
+- Undo / redo on the quick panel: `Ctrl + Z` / `Ctrl + Y` (or `Ctrl + Shift + Z`), 50 steps
+- Settings, logs and statistics live in `%APPDATA%\ZoneQuanta` (quick items in `quick.json`, history in `history\`)
 
 | Hotkey | Action |
 |---|---|
@@ -106,8 +115,9 @@ Command line (usable from scripts and Claude Code; a second launch hands the com
 | `ZoneQuanta.exe --open <path or URL>` | Open a location with the same rules as the input |
 | `ZoneQuanta.exe --panel [page]` | Open the panel, optionally on a page, e.g. `--panel 流量` |
 | `ZoneQuanta.exe --exit` | Exit the running instance cleanly (settings and window positions are saved first) |
+| `ZoneQuanta.exe --data-dir <dir> [command]` | Run a separate instance on an isolated data folder (for tests and demos: no hotkeys, Explorer verb, traffic helper or updates, real data untouched); or set `ZONEQUANTA_DATA` |
 
-`%APPDATA%\ZoneQuanta\app.log` has millisecond timestamps and records quick-panel add / open timings, hotkey conflicts and fallbacks, data-cap alerts and Explorer menu registration.
+`%APPDATA%\ZoneQuanta\app.log` has millisecond timestamps and records quick-panel adds, opens, removes, moves, grouping, renames and undo, the settings each save touched, history snapshots and restores, navigation collapse, icon-resolution timings, hotkey conflicts and fallbacks, data-cap alerts and Explorer menu registration.
 
 ## Architecture
 

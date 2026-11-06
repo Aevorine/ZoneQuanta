@@ -5,7 +5,7 @@ namespace ZoneQuanta.Core.Monitor;
 
 public sealed class TotalsRecorder
 {
-    private readonly string _path = Path.Combine(TrafficFile.DefaultDir, "totals.tsv");
+    private readonly string _path = DataPaths.File("totals.tsv");
     private readonly TrafficFile _file;
     private long _flushedAt = Environment.TickCount64;
 

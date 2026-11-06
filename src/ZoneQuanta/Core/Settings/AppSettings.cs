@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace ZoneQuanta.Core.Settings;
@@ -192,6 +193,31 @@ public sealed class AppSettings : Observable
     // Page the panel was last on, reopened after a restart or an update.
     public string PanelPage { get => _panelPage; set => Set(ref _panelPage, value ?? ""); }
     public List<string> NavOrder { get => _navOrder; set => Set(ref _navOrder, value ?? new()); }
+
+    private bool _navCollapsed;
+    private Dictionary<string, List<string>> _layouts = new();
+    private string _appGroupBy = "Process";
+
+    // Sidebar shows icons only.
+    public bool NavCollapsed { get => _navCollapsed; set => Set(ref _navCollapsed, value); }
+
+    // Order of rearranged page content, by container key; a missing key keeps the built-in order.
+    public Dictionary<string, List<string>> Layouts { get => _layouts; set => Set(ref _layouts, value ?? new()); }
+
+    // Traffic list rows: one per process, or processes merged into the application they belong to.
+    public string AppGroupBy { get => _appGroupBy; set => Set(ref _appGroupBy, value == "App" ? "App" : "Process"); }
+
+    public void SetLayout(string key, IReadOnlyList<string>? order)
+    {
+        var next = new Dictionary<string, List<string>>(_layouts);
+        if (order is null || order.Count == 0) next.Remove(key);
+        else next[key] = new List<string>(order);
+        Layouts = next;
+    }
+
+    // Fields written by a newer or older version are kept as they are, so going back and forth never loses them.
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Extra { get; set; }
 
     public string LocalKey(string name) =>
         _localKeys.TryGetValue(name, out var v) && v.Length > 0 ? v : DefaultLocalKeys[name];

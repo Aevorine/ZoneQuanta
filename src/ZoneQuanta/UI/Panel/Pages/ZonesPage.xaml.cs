@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using ZoneQuanta.Core.Settings;
 using ZoneQuanta.Core.Time;
 
@@ -36,6 +37,13 @@ public partial class ZonesPage : UserControl
         AddButton.Click += (_, _) => AddSelected();
         Options.MouseDoubleClick += (_, _) => AddSelected();
         ApplyFilter();
+        // Hold a row still, then drag it: the clocks follow the new order.
+        Controls.Arrange.SetKey(Rows, "zones.rows");
+        Controls.Arrange.SetCommit(Rows, order =>
+        {
+            var zones = Zones.ToList();
+            Commit(order.Select(id => int.TryParse(id, out int k) && k >= 0 && k < zones.Count ? zones[k] : null).OfType<ZoneConfig>().Distinct());
+        });
         RebuildRows();
     }
 
@@ -73,7 +81,8 @@ public partial class ZonesPage : UserControl
             int index = i;
             var zone = zones[i];
 
-            var grid = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+            var grid = new Grid { Margin = new Thickness(0, 0, 0, 8), Background = Brushes.Transparent };
+            Controls.Arrange.SetId(grid, index.ToString(System.Globalization.CultureInfo.InvariantCulture));
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             for (int c = 0; c < 3; c++) grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
@@ -88,19 +97,20 @@ public partial class ZonesPage : UserControl
             label.KeyDown += (_, e) => { if (e.Key == Key.Enter) Keyboard.ClearFocus(); };
             grid.Children.Add(label);
 
-            AddButtonTo(grid, 1, "Icon.Up", index > 0, () => Move(index, -1));
-            AddButtonTo(grid, 2, "Icon.Down", index < zones.Count - 1, () => Move(index, 1));
-            AddButtonTo(grid, 3, "Icon.Close", zones.Count > 1, () => Commit(Zones.Where((_, k) => k != index)));
+            AddButtonTo(grid, 1, "Icon.Up", "上移", index > 0, () => Move(index, -1));
+            AddButtonTo(grid, 2, "Icon.Down", "下移", index < zones.Count - 1, () => Move(index, 1));
+            AddButtonTo(grid, 3, "Icon.Close", "删除", zones.Count > 1, () => Commit(Zones.Where((_, k) => k != index)));
 
             Rows.Children.Add(grid);
         }
         AddButton.IsEnabled = zones.Count < MaxZones;
     }
 
-    private void AddButtonTo(Grid grid, int column, string icon, bool enabled, Action action)
+    private void AddButtonTo(Grid grid, int column, string icon, string tip, bool enabled, Action action)
     {
         var b = new Button
         {
+            ToolTip = tip,
             Style = (Style)FindResource("IconButton"),
             Tag = FindResource(icon),
             IsEnabled = enabled,

@@ -56,6 +56,8 @@ public sealed class AppController : IPanelHost, IDisposable
     private int _trimIn = 20;
     private int _trimTicks;
     private bool _panelWasVisible;
+    // A version is kept 20 s after the last saved change, so a burst of edits becomes one entry.
+    private readonly DispatcherTimer _historyTimer = new() { Interval = TimeSpan.FromSeconds(20) };
 
     public AppController()
     {
@@ -82,7 +84,7 @@ public sealed class AppController : IPanelHost, IDisposable
 
         _dispatcher = Application.Current.Dispatcher;
         var s = Settings;
-        s.AutoStart = AutoStart.IsEnabled();
+        if (!DataPaths.Sandboxed) s.AutoStart = AutoStart.IsEnabled();
         ThemeManager.Apply(s.Theme);
 
         _widget = new WidgetWindow(s, _engine);
@@ -104,7 +106,7 @@ public sealed class AppController : IPanelHost, IDisposable
         ShowPendingUpdateFailure();
         _widget.ApplyInitial(CurrentSecond());
         _band.Sync();
-        if (s.TrackApps) _ = StartTrackingHelperAsync(helperFirst);
+        if (s.TrackApps && !DataPaths.Sandboxed) _ = StartTrackingHelperAsync(helperFirst);
         s.PropertyChanged += OnSettingChanged;
         _hotkey.Pressed += OnHotkey;
         UI.Controls.HotkeyBox.Recording += on =>
@@ -135,7 +137,21 @@ public sealed class AppController : IPanelHost, IDisposable
         _pipe.Start();
 
         _updates.UpdateFound += info => _tray.Notify("发现新版本", $"ZoneQuanta v{info.Version} 可用，在面板「更新」页安装");
-        _updates.PreparingToApply += () => ((App)Application.Current).PrepareExit();
+        _updates.PreparingToApply += () =>
+        {
+            _store.Flush();
+            DataHistory.Take("更新前");
+            ((App)Application.Current).PrepareExit();
+        };
+
+        _historyTimer.Tick += (_, _) =>
+        {
+            _historyTimer.Stop();
+            _ = Task.Run(() => DataHistory.Take("变更"));
+        };
+        _store.Saved += ArmHistory;
+        _quickStore.Saved += ArmHistory;
+        _ = Task.Run(() => DataHistory.Take("启动"));
 
         _ticker.Tick += OnTick;
         _ticker.Hourly += _engine.Refresh;
@@ -148,7 +164,7 @@ public sealed class AppController : IPanelHost, IDisposable
 
         if (showPanel) ShowPanel();
         _dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(Prewarm));
-        if (s.AutoCheckUpdate)
+        if (s.AutoCheckUpdate && !DataPaths.Sandboxed)
         {
             var delay = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
             delay.Tick += async (_, _) =>
@@ -244,7 +260,7 @@ public sealed class AppController : IPanelHost, IDisposable
     private void ApplyExplorerMenu()
     {
         string? exe = Environment.ProcessPath;
-        if (exe is null) return;
+        if (exe is null || DataPaths.Sandboxed) return;
         if (!Settings.QuickContextMenu) ExplorerMenu.Set(false, exe);
         else if (!ExplorerMenu.IsRegistered(exe)) ExplorerMenu.Set(true, exe);
     }
@@ -323,6 +339,7 @@ public sealed class AppController : IPanelHost, IDisposable
 
     public async System.Threading.Tasks.Task<bool> SetTrackingAsync(bool on)
     {
+        if (DataPaths.Sandboxed) return false;
         if (on)
         {
             bool ok = await HelperLauncher.EnableAsync();
@@ -336,7 +353,7 @@ public sealed class AppController : IPanelHost, IDisposable
 
     public void OpenSettingsFolder()
     {
-        string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ZoneQuanta");
+        string dir = DataPaths.Root;
         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{dir}\"") { UseShellExecute = true });
     }
 
@@ -359,6 +376,20 @@ public sealed class AppController : IPanelHost, IDisposable
         ((App)Application.Current).ExitApp();
     }
 
+    private void ArmHistory() => Application.Current?.Dispatcher.BeginInvoke(new Action(() =>
+    {
+        _historyTimer.Stop();
+        _historyTimer.Start();
+    }));
+
+    // The current state is kept as a version first, so going back is itself undoable.
+    public void RestoreSnapshot(Snapshot snapshot)
+    {
+        _store.Flush();
+        DataHistory.Take("恢复前");
+        ((App)Application.Current).Restart(() => DataHistory.Restore(snapshot));
+    }
+
     public void Dispose()
     {
         _ticker.Dispose();
@@ -377,6 +408,11 @@ public sealed class AppController : IPanelHost, IDisposable
         _panel?.Close();
         // Last: closing the windows commits where they were left.
         _store.Flush();
+        if (_historyTimer.IsEnabled)
+        {
+            _historyTimer.Stop();
+            DataHistory.Take("退出");
+        }
     }
 
     // Fast sampling only pays off while something on screen shows the numbers. Otherwise a one-second
@@ -498,7 +534,7 @@ public sealed class AppController : IPanelHost, IDisposable
         switch (e.PropertyName)
         {
             case nameof(AppSettings.AutoStart):
-                AutoStart.Set(Settings.AutoStart);
+                if (!DataPaths.Sandboxed) AutoStart.Set(Settings.AutoStart);
                 break;
             case nameof(AppSettings.Theme):
                 ThemeManager.Apply(Settings.Theme);
@@ -542,7 +578,7 @@ public sealed class AppController : IPanelHost, IDisposable
     private void RegisterHotkey(int id)
     {
         var s = Settings;
-        if (_recordingKeys) return;
+        if (_recordingKeys || DataPaths.Sandboxed) return;
         var (on, mods, key, page) = id switch
         {
             HotkeyService.QuickId => (s.QuickHotkeyEnabled, s.QuickHotkeyModifiers, s.QuickHotkeyKey, "快捷键"),

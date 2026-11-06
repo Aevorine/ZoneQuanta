@@ -35,6 +35,7 @@ public sealed class QuickWindow : LauncherWindow
         _search.SetResourceReference(StyleProperty, "IconField");
         _search.Tag = FindResource("Icon.Search");
         MainInput = _search;
+        actions.AttachUndoKeys(this);
 
         _groups = Toggle("Icon.Groups", "分组");
         _tiles = Toggle("Icon.Grid", "网格");

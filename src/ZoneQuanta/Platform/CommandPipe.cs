@@ -14,7 +14,7 @@ namespace ZoneQuanta.Platform;
 internal sealed class CommandPipe : IDisposable
 {
     private const int MaxBytes = 64 * 1024;
-    private static readonly string Name = $"ZoneQuanta.Cmd.7F3A.{Process.GetCurrentProcess().SessionId}";
+    private static readonly string Name = $"ZoneQuanta.Cmd.7F3A.{Process.GetCurrentProcess().SessionId}{DataPaths.InstanceSuffix}";
     private readonly CancellationTokenSource _cts = new();
 
     public event Action<string[]>? Received;

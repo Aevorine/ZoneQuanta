@@ -147,6 +147,33 @@ public sealed class QuickActions
     }
 
     public void ClearHighlight() => Highlight = null;
+
+    // Layout changes (grouping, moving, placing, sizing, renaming, removing) step back and forth, 50 deep.
+    public bool Undo() => Step(Store.Undo());
+    public bool Redo() => Step(Store.Redo());
+
+    private bool Step(bool done)
+    {
+        if (!done) return false;
+        Highlight = null;
+        PendingRename = null;
+        return true;
+    }
+
+    // Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) anywhere in scope; a text field that can undo its own typing keeps the keys.
+    public void AttachUndoKeys(UIElement scope)
+    {
+        scope.PreviewKeyDown += (_, e) =>
+        {
+            var m = System.Windows.Input.Keyboard.Modifiers;
+            if (m != System.Windows.Input.ModifierKeys.Control && m != (System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift)) return;
+            bool redo = e.Key == System.Windows.Input.Key.Y || (e.Key == System.Windows.Input.Key.Z && m.HasFlag(System.Windows.Input.ModifierKeys.Shift));
+            bool undo = e.Key == System.Windows.Input.Key.Z && !redo;
+            if (!undo && !redo) return;
+            if (System.Windows.Input.Keyboard.FocusedElement is System.Windows.Controls.TextBox box && (undo ? box.CanUndo : box.CanRedo)) return;
+            e.Handled = redo ? Redo() : Undo();
+        };
+    }
     public void ClearPendingRename() => PendingRename = null;
 
     public void MoveToGroup(QuickItem item, string group)

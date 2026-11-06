@@ -29,6 +29,17 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        WatchUnhandled();
+        if (Array.IndexOf(e.Args, "--traffic-helper") < 0)
+        {
+            try { DataPaths.Init(e.Args); }
+            catch (ArgumentException ex)
+            {
+                Log.Write($"start refused: {ex.Message}");
+                Shutdown(2);
+                return;
+            }
+        }
 
         if (Array.IndexOf(e.Args, "--traffic-helper") >= 0)
         {
@@ -43,7 +54,8 @@ public partial class App : Application
 
         bool autostart = Array.IndexOf(e.Args, "--autostart") >= 0;
         bool command = Array.Exists(e.Args, a => Array.IndexOf(Commands, a.ToLowerInvariant()) >= 0);
-        bool skipInstall = autostart || command || Array.IndexOf(e.Args, "--updated") >= 0
+        bool restarted = Array.IndexOf(e.Args, "--restart") >= 0;
+        bool skipInstall = autostart || command || restarted || DataPaths.Sandboxed || Array.IndexOf(e.Args, "--updated") >= 0
                            || Array.IndexOf(e.Args, "--installed") >= 0 || Array.IndexOf(e.Args, "--portable") >= 0;
         if (!skipInstall && !InInstallFolder())
         {
@@ -52,9 +64,9 @@ public partial class App : Application
         }
 
         bool updated = Array.IndexOf(e.Args, "--updated") >= 0;
-        _mutex = new Mutex(true, MutexName, out bool first);
-        if (!first && updated) first = TakeOverFromPrevious(_mutex);
-        _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
+        _mutex = new Mutex(true, MutexName + DataPaths.InstanceSuffix, out bool first);
+        if (!first && (updated || restarted)) first = TakeOverFromPrevious(_mutex, PreviousPid(e.Args));
+        _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName + DataPaths.InstanceSuffix);
         if (!first)
         {
             // --exit never falls back to showing the panel, even when the pipe could not be reached.
@@ -84,6 +96,7 @@ public partial class App : Application
             Log.Write($"session ending ({e.ReasonSessionEnding}): saving");
             PrepareExit();
         };
+        if (DataPaths.Sandboxed) Log.Write($"sandbox instance on {DataPaths.Root}");
         _controller = new AppController();
         _controller.Start(showPanel: !autostart && !command, updated);
         if (command) _controller.Execute(e.Args);
@@ -98,18 +111,28 @@ public partial class App : Application
         catch (AbandonedMutexException) { return true; }
     }
 
-    private static bool TakeOverFromPrevious(Mutex mutex)
+    // "--from <pid>": the instance that started this one (restart); 0 when absent (updates from older versions).
+    private static int PreviousPid(string[] args)
+    {
+        int i = Array.IndexOf(args, "--from");
+        return i >= 0 && i + 1 < args.Length && int.TryParse(args[i + 1], out int pid) ? pid : 0;
+    }
+
+    // Waits for the previous instance; if it hangs, ends only that one. Without its id (an update started by an
+    // older version) every other copy is ended, except from a sandbox, which must never touch the user's instance.
+    private static bool TakeOverFromPrevious(Mutex mutex, int previousPid)
     {
         if (WaitForPreviousInstance(mutex, 8)) return true;
+        if (previousPid == 0 && DataPaths.Sandboxed) return WaitForPreviousInstance(mutex, 10);
 
-        Log.Write("previous instance did not exit, ending it");
+        Log.Write($"previous instance did not exit, ending {(previousPid > 0 ? $"pid {previousPid}" : "other copies")}");
         try
         {
             foreach (var other in Process.GetProcessesByName(Process.GetCurrentProcess().ProcessName))
             {
                 using (other)
                 {
-                    if (other.Id == Environment.ProcessId) continue;
+                    if (other.Id == Environment.ProcessId || (previousPid > 0 && other.Id != previousPid)) continue;
                     try { other.Kill(true); }
                     catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception) { }
                 }
@@ -117,6 +140,32 @@ public partial class App : Application
         }
         catch (InvalidOperationException) { }
         return WaitForPreviousInstance(mutex, 10);
+    }
+
+    // Anything that escapes an event handler is logged in full; the app keeps running unless failures repeat
+    // in a burst (then it is better to end than to spin).
+    private void WatchUnhandled()
+    {
+        var recent = new System.Collections.Generic.Queue<long>();
+        DispatcherUnhandledException += (_, e) =>
+        {
+            Log.Crash("ui", e.Exception);
+            long now = Environment.TickCount64;
+            recent.Enqueue(now);
+            while (recent.Count > 0 && now - recent.Peek() > 60_000) recent.Dequeue();
+            e.Handled = recent.Count <= 10;
+            if (!e.Handled)
+            {
+                try { _controller?.Dispose(); }
+                catch (Exception ex) { Log.Error("crash-save", ex); }
+            }
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => { if (e.ExceptionObject is Exception ex) Log.Crash("domain", ex); };
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            Log.Crash("task", e.Exception);
+            e.SetObserved();
+        };
     }
 
     public void PrepareExit()
@@ -137,6 +186,35 @@ public partial class App : Application
             Environment.Exit(0);
         });
         PrepareExit();
+        Shutdown();
+    }
+
+    // Saves and stops everything, runs apply (e.g. writing a restored version) while no part of the app can
+    // write the files any more, then starts a fresh instance that takes over once this one has exited.
+    public void Restart(Action? apply = null)
+    {
+        string? exe = Environment.ProcessPath;
+        if (exe is null) return;
+        PrepareExit();
+        DataPaths.WritesFrozen = true;
+        try { apply?.Invoke(); }
+        catch (Exception ex) { Log.Error("restart-apply", ex); }
+        var psi = new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(exe)! };
+        psi.ArgumentList.Add("--restart");
+        psi.ArgumentList.Add("--from");
+        psi.ArgumentList.Add(Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        if (DataPaths.Sandboxed)
+        {
+            psi.ArgumentList.Add("--data-dir");
+            psi.ArgumentList.Add(DataPaths.Root);
+        }
+        try { Process.Start(psi); }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) { Log.Error("restart", ex); }
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(2500);
+            Environment.Exit(0);
+        });
         Shutdown();
     }
 

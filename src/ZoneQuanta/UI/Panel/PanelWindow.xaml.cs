@@ -16,21 +16,23 @@ namespace ZoneQuanta.UI.Panel;
 
 public partial class PanelWindow : Window
 {
-    private sealed record PageDef(string Title, string Icon, Func<IPanelHost, UserControl> Create);
+    private sealed record PageDef(string Title, string Icon, string About, Func<IPanelHost, UserControl> Create);
 
+    // About: shown when the pointer rests on the nav item (the only place a page explains itself).
     private static readonly PageDef[] Defs =
     {
-        new("控制台", "Icon.Grid", h => new ConsolePage(h)),
-        new("显示", "Icon.Monitor", h => new DisplayPage(h)),
-        new("时区", "Icon.Globe", h => new ZonesPage(h)),
-        new("监控", "Icon.Pulse", h => new MonitorPage(h)),
-        new("流量", "Icon.Chart", h => new TrafficPage(h)),
-        new("快捷", "Icon.Bolt", h => new QuickPage(h)),
-        new("快捷键", "Icon.Keyboard", h => new KeysPage(h)),
-        new("窗口", "Icon.Move", h => new WindowPage(h)),
-        new("系统", "Icon.Sliders", h => new SystemPage(h)),
-        new("更新", "Icon.Download", h => new UpdatePage(h)),
+        new("控制台", "Icon.Grid", "常用开关、缩放与不透明度", h => new ConsolePage(h)),
+        new("显示", "Icon.Monitor", "时间格式、主题与横竖排列", h => new DisplayPage(h)),
+        new("时区", "Icon.Globe", "添加、改名、排序时区", h => new ZonesPage(h)),
+        new("监控", "Icon.Pulse", "任务栏监控条、网速单位与刷新频率", h => new MonitorPage(h)),
+        new("流量", "Icon.Chart", "总流量、额度预测与各应用流量", h => new TrafficPage(h)),
+        new("快捷", "Icon.Bolt", "快捷面板的内容、显示与打开方式", h => new QuickPage(h)),
+        new("快捷键", "Icon.Keyboard", "全局快捷键与面板内快捷键", h => new KeysPage(h)),
+        new("窗口", "Icon.Move", "时钟坐标、微调与快速定位", h => new WindowPage(h)),
+        new("系统", "Icon.Sliders", "开机自启、置顶、穿透、历史版本与退出", h => new SystemPage(h)),
+        new("更新", "Icon.Download", "检查、下载并安装新版本", h => new UpdatePage(h)),
     };
+    private const double NavWide = 212, NavNarrow = 64;
 
     private readonly IPanelHost _host;
     private readonly Dictionary<string, UserControl> _pages = new();
@@ -56,6 +58,16 @@ public partial class PanelWindow : Window
             badge.Attach(_memory);
         }
         VersionText.Text = $"v{UpdateService.CurrentVersion}";
+        SetCompact(_host.Settings.NavCollapsed, animate: false);
+        CollapseButton.Click += (_, _) => ToggleNav();
+        PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key == System.Windows.Input.Key.B && System.Windows.Input.Keyboard.Modifiers == System.Windows.Input.ModifierKeys.Control)
+            {
+                ToggleNav();
+                e.Handled = true;
+            }
+        };
 
         BuildNav();
         // Reopens on the page it was left on (settings.json PanelPage), else the first.
@@ -70,6 +82,23 @@ public partial class PanelWindow : Window
         Nav.ContextMenu = new ContextMenu();
         Nav.ContextMenu.Items.Add(reset);
         Nav.ContextMenuOpening += (_, _) => reset.IsEnabled = _host.Settings.NavOrder.Count > 0;
+
+        // Page content: drag to move the window, hold to pick a card up and put it elsewhere.
+        Controls.Arrange.Settings = _host.Settings;
+        _ = new Controls.ContentDrag(PageArea, this);
+        var resetLayout = new MenuItem { Header = "恢复默认布局", Tag = TryFindResource("Icon.Reset") };
+        resetLayout.Click += (_, _) =>
+        {
+            foreach (var p in Controls.Arrange.PanelsIn(PageHost)) Controls.Arrange.Reset(p);
+        };
+        PageArea.ContextMenu = new ContextMenu();
+        PageArea.ContextMenu.Items.Add(resetLayout);
+        PageArea.ContextMenuOpening += (_, e) =>
+        {
+            var panels = Controls.Arrange.PanelsIn(PageHost);
+            if (panels.Count == 0) e.Handled = true;
+            else resetLayout.IsEnabled = panels.Exists(Controls.Arrange.HasSaved);
+        };
 
         MinButton.Click += (_, _) => HidePanel();
         MaxButton.Click += (_, _) => ToggleMaximize();
@@ -98,11 +127,54 @@ public partial class PanelWindow : Window
                 Style = (Style)FindResource("NavItem"),
                 Tag = FindResource(def.Icon),
                 GroupName = "nav",
+                ToolTip = NavTip(def),
             };
+            ToolTipService.SetPlacement(item, System.Windows.Controls.Primitives.PlacementMode.Right);
+            ToolTipService.SetInitialShowDelay(item, 250);
             item.Checked += (_, _) => Navigate(def);
             Nav.Children.Add(item);
             if (def.Title == current) item.IsChecked = true;
         }
+    }
+
+    private static UIElement NavTip(PageDef def)
+    {
+        var panel = new StackPanel { Margin = new Thickness(2, 1, 2, 1) };
+        panel.Children.Add(new TextBlock { Text = def.Title, FontSize = 13, FontWeight = FontWeights.SemiBold });
+        var about = new TextBlock { Text = def.About, FontSize = 12, Margin = new Thickness(0, 2, 0, 0) };
+        about.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+        panel.Children.Add(about);
+        return panel;
+    }
+
+    private void ToggleNav()
+    {
+        _host.Settings.NavCollapsed = !_host.Settings.NavCollapsed;
+        SetCompact(_host.Settings.NavCollapsed, animate: true);
+    }
+
+    // Icons only (64 px) or icons with names (212 px); the width slides, names fade with it.
+    private void SetCompact(bool compact, bool animate)
+    {
+        Controls.SideNav.SetCompact(Sidebar, compact);
+        BrandText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        VersionText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        Brand.HorizontalAlignment = compact ? HorizontalAlignment.Center : HorizontalAlignment.Left;
+        Brand.Margin = compact ? new Thickness(0, 0, 0, 6) : new Thickness(6, 0, 0, 6);
+        CollapseButton.Tag = FindResource(compact ? "Icon.Right" : "Icon.Left");
+        CollapseButton.ToolTip = compact ? "展开导航（Ctrl+B）" : "收起导航（Ctrl+B）";
+        double to = compact ? NavNarrow : NavWide;
+        if (!animate)
+        {
+            Sidebar.BeginAnimation(WidthProperty, null);
+            Sidebar.Width = to;
+            return;
+        }
+        Sidebar.BeginAnimation(WidthProperty, new DoubleAnimation(to, TimeSpan.FromMilliseconds(220))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut },
+        });
+        Core.Log.Write($"nav {(compact ? "collapsed" : "expanded")}");
     }
 
     private void OnSourceInitialized()

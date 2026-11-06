@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using ZoneQuanta.Core;
 
 namespace ZoneQuanta.Core.Quick;
 
@@ -22,6 +23,9 @@ public sealed class QuickItem
     public bool GroupManual { get; set; }
 
     public string DisplayName => Name.Length > 0 ? Name : QuickStore.DefaultName(Path);
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Extra { get; set; }
 
     // Open score that halves every week: frequent and recent beats frequent long ago.
     public double Score(long nowUtc) =>
@@ -51,6 +55,9 @@ public sealed class QuickGroup
     // Named from what its members are for; renamed with them until the user types a name.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool AutoNamed { get; set; }
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Extra { get; set; }
 }
 
 public sealed class QuickData
@@ -59,6 +66,9 @@ public sealed class QuickData
     public List<QuickGroup> Groups { get; set; } = new();
     public List<string> History { get; set; } = new();
     public List<string> StartSeen { get; set; } = new();
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Extra { get; set; }
 }
 
 public sealed class QuickStore
@@ -68,14 +78,23 @@ public sealed class QuickStore
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
     private readonly string _path;
 
+    private const int UndoLimit = 50;
+    // Each step keeps when it was taken: items Start sync added later survive undo / redo.
+    private readonly LinkedList<(string State, long At)> _undo = new(), _redo = new();
+    private readonly Dictionary<string, long> _synced = new(StringComparer.OrdinalIgnoreCase);
+    private long _lastCheckpoint;
+
     public QuickData Data { get; }
     public IReadOnlyList<QuickItem> Items => Data.Items;
     public IReadOnlyList<QuickGroup> Groups => Data.Groups;
     public event Action<QuickItem?>? Changed;
+    public event Action? Saved;
+    public bool CanUndo => _undo.Count > 0;
+    public bool CanRedo => _redo.Count > 0;
 
     public QuickStore(string? path = null)
     {
-        _path = path ?? System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ZoneQuanta", "quick.json");
+        _path = path ?? DataPaths.File("quick.json");
         Data = Load(_path);
     }
 
@@ -114,6 +133,7 @@ public sealed class QuickStore
     public (QuickItem Item, bool Added) Add(string path, int index = -1)
     {
         if (Find(path) is { } existing) return (existing, false);
+        Checkpoint($"add {Normalize(path)}");
         var item = new QuickItem { Path = Normalize(path), AddedUtc = Now };
         if (index < 0 || index > Data.Items.Count) Data.Items.Add(item);
         else Data.Items.Insert(index, item);
@@ -131,6 +151,7 @@ public sealed class QuickStore
             var item = new QuickItem { Path = Normalize(path), Name = name ?? "", AddedUtc = Now };
             Data.Items.Add(item);
             added.Add(item);
+            _synced[item.Path] = Environment.TickCount64;
         }
         Save(added.Count > 0 ? added[0] : null, notify: added.Count > 0);
         return added;
@@ -138,7 +159,9 @@ public sealed class QuickStore
 
     public void Remove(QuickItem item)
     {
-        if (!Data.Items.Remove(item)) return;
+        if (!Data.Items.Contains(item)) return;
+        Checkpoint($"remove \"{item.DisplayName}\"");
+        Data.Items.Remove(item);
         Prune(Data);
         Save(null);
     }
@@ -171,6 +194,7 @@ public sealed class QuickStore
     {
         QuickGroup? target = null;
         string name = group.Trim();
+        Checkpoint(name.Length > 0 ? $"group {items.Count} item(s) -> \"{name}\"" : $"ungroup {items.Count} item(s)");
         if (name.Length > 0)
         {
             target = FindGroup(name);
@@ -220,6 +244,7 @@ public sealed class QuickStore
     {
         string n = name.Trim();
         if (n.Length == 0 || n == group.Name || !Data.Groups.Contains(group)) return;
+        Checkpoint($"rename-group \"{group.Name}\" -> \"{n}\"{(auto ? " (auto)" : "")}");
         group.AutoNamed = auto;
         var other = FindGroup(n);
         string old = group.Name;
@@ -234,6 +259,7 @@ public sealed class QuickStore
     // Items stay in the panel, ungrouped, and are not picked up again by automatic grouping.
     public void Dissolve(QuickGroup group)
     {
+        Checkpoint($"dissolve \"{group.Name}\"");
         foreach (var i in ItemsOf(group).ToList())
         {
             i.Group = "";
@@ -247,6 +273,7 @@ public sealed class QuickStore
     public void PlaceGroup(QuickGroup group, int col, int row)
     {
         if (!Data.Groups.Contains(group)) return;
+        Checkpoint($"place \"{group.Name}\" at {col},{row}");
         group.Col = Math.Max(0, col);
         group.Row = Math.Max(0, row);
         group.PinnedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -256,6 +283,8 @@ public sealed class QuickStore
     // One card (or all with null) back to flowing in order.
     public void Unpin(QuickGroup? group)
     {
+        if (!Data.Groups.Any(g => g.Col is not null && (group is null || g == group))) return;
+        Checkpoint(group is null ? "unpin all" : $"unpin \"{group.Name}\"");
         bool any = false;
         foreach (var g in Data.Groups)
         {
@@ -287,6 +316,7 @@ public sealed class QuickStore
         cols = cols <= 0 || rows <= 0 ? 0 : Math.Min(cols, QuickGroup.MaxCols);
         rows = cols == 0 ? 0 : Math.Min(rows, QuickGroup.MaxRows);
         if (!Data.Groups.Contains(group) || (group.Cols == cols && group.Rows == rows && !group.Expanded)) return;
+        Checkpoint($"size \"{group.Name}\" {cols}x{rows}");
         group.Cols = cols;
         group.Rows = rows;
         group.Expanded = false;
@@ -310,6 +340,7 @@ public sealed class QuickStore
         if (from < 0) return;
         index = Math.Clamp(index, 0, Data.Items.Count - 1);
         if (from == index) return;
+        Checkpoint($"move \"{item.DisplayName}\" {from}->{index}");
         Data.Items.RemoveAt(from);
         Data.Items.Insert(index, item);
         Save(item);
@@ -318,6 +349,7 @@ public sealed class QuickStore
     public void Rename(QuickItem item, string name)
     {
         string n = name.Trim();
+        Checkpoint($"rename \"{item.DisplayName}\" -> \"{n}\"");
         item.Name = n == DefaultName(item.Path) ? "" : n;
         Save(item);
     }
@@ -342,14 +374,74 @@ public sealed class QuickStore
 
     public void Save(QuickItem? changed, bool notify = true)
     {
-        try
+        if (!DataPaths.WritesFrozen)
         {
-            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(_path)!);
-            DurableFile.Write(_path, JsonSerializer.Serialize(Data, Json));
+            try
+            {
+                Directory.CreateDirectory(System.IO.Path.GetDirectoryName(_path)!);
+                DurableFile.Write(_path, JsonSerializer.Serialize(Data, Json));
+                Saved?.Invoke();
+            }
+            catch (IOException ex) { Log.Error("quick-save", ex); }
+            catch (UnauthorizedAccessException ex) { Log.Error("quick-save", ex); }
         }
-        catch (IOException ex) { Log.Error("quick-save", ex); }
-        catch (UnauthorizedAccessException ex) { Log.Error("quick-save", ex); }
         if (notify) Changed?.Invoke(changed);
+    }
+
+    // Taken before each change the user makes. A change within 400 ms of the previous one (one gesture
+    // and the renames it causes) joins the same undo step.
+    private void Checkpoint(string what)
+    {
+        long now = Environment.TickCount64;
+        if (_undo.Count == 0 || now - _lastCheckpoint > 400)
+        {
+            _undo.AddLast((JsonSerializer.Serialize(Data, Json), now));
+            if (_undo.Count > UndoLimit) _undo.RemoveFirst();
+            _redo.Clear();
+        }
+        _lastCheckpoint = now;
+        Log.Write($"quick {what}");
+    }
+
+    public bool Undo() => Step(_undo, _redo, "undo");
+    public bool Redo() => Step(_redo, _undo, "redo");
+
+    // Brings back the layout of a step; open counts and recency stay as they are now.
+    private bool Step(LinkedList<(string State, long At)> from, LinkedList<(string State, long At)> to, string what)
+    {
+        if (from.Count == 0) return false;
+        var (state, at) = from.Last!.Value;
+        from.RemoveLast();
+        QuickData? d;
+        try { d = JsonSerializer.Deserialize<QuickData>(state); }
+        catch (JsonException ex)
+        {
+            Log.Error($"quick-{what}", ex);
+            return false;
+        }
+        if (d is null) return false;
+        to.AddLast((JsonSerializer.Serialize(Data, Json), Environment.TickCount64));
+        var now = new Dictionary<string, QuickItem>(StringComparer.OrdinalIgnoreCase);
+        foreach (var i in Data.Items) now.TryAdd(i.Path, i);
+        foreach (var i in d.Items)
+        {
+            i.Extra?.Remove(nameof(QuickItem.DisplayName));
+            if (now.TryGetValue(i.Path, out var cur)) (i.LastOpenedUtc, i.OpenCount, i.Frecency) = (cur.LastOpenedUtc, cur.OpenCount, cur.Frecency);
+        }
+        var restored = new HashSet<string>(d.Items.Select(i => i.Path), StringComparer.OrdinalIgnoreCase);
+        var keep = Data.Items.Where(i => !restored.Contains(i.Path) && _synced.TryGetValue(i.Path, out long t) && t > at).ToList();
+        Data.Items.Clear();
+        Data.Items.AddRange(d.Items);
+        Data.Items.AddRange(keep);
+        foreach (var i in keep)
+            if (i.Group.Length > 0 && !d.Groups.Exists(g => string.Equals(g.Name, i.Group, StringComparison.OrdinalIgnoreCase))) i.Group = "";
+        Data.Groups.Clear();
+        Data.Groups.AddRange(d.Groups);
+        Prune(Data);
+        _lastCheckpoint = 0;
+        Log.Write($"quick {what} ({from.Count} more{(keep.Count > 0 ? $", kept {keep.Count} synced" : "")})");
+        Save(null);
+        return true;
     }
 
     private static QuickData Load(string path)
@@ -358,7 +450,11 @@ public sealed class QuickStore
         if (d is null) return new QuickData();
         d.Items ??= new();
         d.Items.RemoveAll(i => string.IsNullOrWhiteSpace(i.Path));
-        foreach (var i in d.Items) i.Group = i.Group?.Trim() ?? "";
+        foreach (var i in d.Items)
+        {
+            i.Group = i.Group?.Trim() ?? "";
+            i.Extra?.Remove(nameof(QuickItem.DisplayName)); // computed, never stored back
+        }
         d.Groups ??= new();
         Prune(d);
         return d;

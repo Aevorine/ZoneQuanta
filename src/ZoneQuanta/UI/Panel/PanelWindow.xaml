@@ -11,13 +11,13 @@
 
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="212"/>
+            <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
-        <Border x:Name="Sidebar" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,1,0">
+        <Border x:Name="Sidebar" Width="212" ClipToBounds="True" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,1,0">
             <DockPanel Margin="12,0,12,12">
-                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Height="52" VerticalAlignment="Center" Margin="6,0,0,6">
+                <StackPanel x:Name="Brand" DockPanel.Dock="Top" Orientation="Horizontal" Height="52" VerticalAlignment="Center" Margin="6,0,0,6">
                     <Border Width="26" Height="26" CornerRadius="8" VerticalAlignment="Center">
                         <Border.Background>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
@@ -26,11 +26,12 @@
                             </LinearGradientBrush>
                         </Border.Background>
                     </Border>
-                    <TextBlock Text="ZoneQuanta" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                    <TextBlock x:Name="BrandText" Text="ZoneQuanta" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Margin="10,0,0,0"/>
                 </StackPanel>
-                <StackPanel DockPanel.Dock="Bottom" Margin="8,0,0,0">
-                    <TextBlock x:Name="VersionText" Style="{StaticResource Muted}"/>
-                </StackPanel>
+                <DockPanel DockPanel.Dock="Bottom" Margin="0,4,0,0">
+                    <Button x:Name="CollapseButton" DockPanel.Dock="Left" Style="{StaticResource IconButton}" Tag="{StaticResource Icon.Left}"/>
+                    <TextBlock x:Name="VersionText" Style="{StaticResource Muted}" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,8,0"/>
+                </DockPanel>
                 <StackPanel x:Name="Nav" WindowChrome.IsHitTestVisibleInChrome="True"/>
             </DockPanel>
         </Border>
@@ -48,7 +49,9 @@
                     <Button x:Name="CloseButton" Style="{StaticResource IconButton}" Tag="{StaticResource Icon.Close}" ToolTip="关闭"/>
                 </StackPanel>
             </Grid>
-            <ContentPresenter x:Name="PageHost" Grid.Row="1" Margin="16,0,16,16"/>
+            <Border x:Name="PageArea" Grid.Row="1" Background="Transparent">
+                <ContentPresenter x:Name="PageHost" Margin="16,0,16,16"/>
+            </Border>
         </Grid>
     </Grid>
 </Window>

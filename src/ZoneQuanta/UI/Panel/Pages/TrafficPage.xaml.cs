@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -67,6 +68,17 @@ public partial class TrafficPage : UserControl
                 Refresh(animate: true);
             };
             Sorts.Children.Add(r);
+        }
+        foreach (var (key, text, tip) in new[] { ("Process", "进程", "每个进程一行"), ("App", "应用", "同一应用的进程合并为一行") })
+        {
+            var r = new RadioButton { Content = text, GroupName = "app-group", Width = 56, Margin = new Thickness(4, 0, 0, 0), IsChecked = s.AppGroupBy == key, ToolTip = tip };
+            r.SetResourceReference(StyleProperty, "Segment");
+            r.Checked += (_, _) =>
+            {
+                s.AppGroupBy = key;
+                Refresh(animate: true);
+            };
+            GroupBy.Children.Add(r);
         }
         AppSearch.TextChanged += (_, _) => Refresh(animate: false);
 
@@ -155,7 +167,8 @@ public partial class TrafficPage : UserControl
         Apps.Children.Clear();
         if (!s.TrackApps)
         {
-            Apps.Children.Add(Placeholder("开启下方开关后，这里按应用统计流量"));
+            AppHeader.Content = null;
+            Apps.Children.Add(Placeholder());
             return;
         }
 
@@ -174,31 +187,85 @@ public partial class TrafficPage : UserControl
             "Down" => v => v.Down,
             _ => v => v.Up + v.Down,
         };
-        var all = _apps.Query(from).Where(kv => kv.Key != TrafficFile.TotalKey && kv.Value.Up + kv.Value.Down > 0).ToList();
-        double sum = Math.Max(1, all.Sum(kv => (double)kv.Value.Up + kv.Value.Down));
+        // Renamed copies of one program ("claude.exe.old.N") count as that program.
+        var byName = new Dictionary<string, (long Up, long Down)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in _apps.Query(from))
+        {
+            if (kv.Key == TrafficFile.TotalKey || kv.Value.Up + kv.Value.Down <= 0) continue;
+            string n = kv.Key is "System" || kv.Key == TrafficHelper.ExitedName ? kv.Key : ProcessImages.NameOf(kv.Key);
+            byName.TryGetValue(n, out var cur);
+            byName[n] = (cur.Up + kv.Value.Up, cur.Down + kv.Value.Down);
+        }
+        double sum = Math.Max(1, byName.Values.Sum(v => (double)v.Up + v.Down));
+        var all = s.AppGroupBy == "App" ? MergeByApp(byName) : byName.Select(kv => ProcessRow(kv.Key, kv.Value)).ToList();
         var rows = all
-            .Where(kv => q.Length == 0 || Fuzzy.Score(q, kv.Key) >= 0 || (AppDirectory.Get(kv.Key)?.Description is { Length: > 0 } d && Fuzzy.Score(q, d) >= 0))
-            .OrderByDescending(kv => key(kv.Value))
+            .Where(r => q.Length == 0 || r.SearchText.Any(t => t.Length > 0 && Fuzzy.Score(q, t) >= 0))
+            .OrderByDescending(r => key((r.Up, r.Down)))
             .Take(AppRows)
             .ToList();
         AppHeader.Content = rows.Count > 0 ? HeaderRow() : null;
         if (rows.Count == 0)
         {
-            Apps.Children.Add(Placeholder("暂无数据"));
+            Apps.Children.Add(Placeholder());
             return;
         }
 
-        double max = Math.Max(1, key(rows[0].Value));
+        double max = Math.Max(1, key((rows[0].Up, rows[0].Down)));
         int index = 0;
-        foreach (var kv in rows)
-            Apps.Children.Add(BuildRow(kv.Key, kv.Value.Up, kv.Value.Down, key(kv.Value), max, (kv.Value.Up + kv.Value.Down) / sum, animate, index++));
+        foreach (var r in rows)
+            Apps.Children.Add(BuildRow(r, key((r.Up, r.Down)), max, (r.Up + r.Down) / sum, animate, index++));
 
-        // Exe path and description are looked up off the UI thread; rows refresh once something new is known.
-        var names = rows.Select(r => r.Key).ToList();
+        // Program file, name, owner and icon are worked out off the UI thread; rows refresh once something new is known.
+        var names = byName.Keys.ToList();
         System.Threading.Tasks.Task.Run(() => AppDirectory.Resolve(names)).ContinueWith(t =>
         {
             if (t.IsCompletedSuccessfully && t.Result) Dispatcher.BeginInvoke(new Action(() => Refresh(animate: false)));
         }, System.Threading.Tasks.TaskScheduler.Default);
+    }
+
+    private sealed record Member(string Name, long Up, long Down, AppDirectory.Entry? Meta);
+
+    // One line of the list: a process, or every process of one application.
+    private sealed record Row(string Title, string Sub, string Icon, string Path, long Up, long Down, List<Member> Members)
+    {
+        public IEnumerable<string> SearchText => Members.SelectMany(m => new[] { m.Name, m.Meta?.Description ?? "", m.Meta?.Owner ?? "", m.Meta?.Friendly ?? "" }).Append(Title);
+    }
+
+    private static Row ProcessRow(string name, (long Up, long Down) v)
+    {
+        var meta = AppDirectory.Get(name);
+        string title = meta?.Friendly is { Length: > 0 } f ? f : name;
+        var sub = new List<string>();
+        if (!title.Equals(name, StringComparison.OrdinalIgnoreCase)) sub.Add(name);
+        if (meta?.Owner is { Length: > 0 } o && !o.Equals(title, StringComparison.OrdinalIgnoreCase)) sub.Add(o);
+        return new Row(title, string.Join(" · ", sub), meta?.Icon ?? "", meta?.Path ?? "", v.Up, v.Down, new List<Member> { new(name, v.Up, v.Down, meta) });
+    }
+
+    // Processes sharing an owner (a proxy and its cores, a browser and its helpers) become one row named
+    // after the application, with its main program's icon.
+    private static List<Row> MergeByApp(Dictionary<string, (long Up, long Down)> byName)
+    {
+        var groups = new Dictionary<string, List<Member>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, v) in byName)
+        {
+            var meta = AppDirectory.Get(name);
+            string k = meta?.OwnerKey is { Length: > 0 } ok ? ok : name;
+            if (!groups.TryGetValue(k, out var list)) groups[k] = list = new List<Member>();
+            list.Add(new Member(name, v.Up, v.Down, meta));
+        }
+        var rows = new List<Row>();
+        foreach (var members in groups.Values)
+        {
+            members.Sort((a, b) => (b.Up + b.Down).CompareTo(a.Up + a.Down));
+            var main = members.FirstOrDefault(m => m.Meta is { Owner.Length: 0 }) ?? members[0];
+            string title = members.Count == 1 ? ProcessRow(main.Name, (main.Up, main.Down)).Title
+                : main.Meta is { Owner.Length: 0, Friendly.Length: > 0 } ? main.Meta.Friendly
+                : members.Select(m => m.Meta?.Owner).FirstOrDefault(o => o is { Length: > 0 }) ?? main.Name;
+            string icon = main.Meta?.Icon is { Length: > 0 } i ? i : members.Select(m => m.Meta?.Icon).FirstOrDefault(x => x is { Length: > 0 }) ?? "";
+            string sub = members.Count == 1 ? ProcessRow(main.Name, (main.Up, main.Down)).Sub : string.Join(" · ", members.Select(m => m.Name));
+            rows.Add(new Row(title, sub, icon, main.Meta?.Path ?? "", members.Sum(m => m.Up), members.Sum(m => m.Down), members));
+        }
+        return rows;
     }
 
     private const double ColValue = 86, ColShare = 54, ColIcon = 34;
@@ -296,22 +363,22 @@ public partial class TrafficPage : UserControl
         Stats.Children.Add(p);
     }
 
-    private UIElement BuildRow(string name, long up, long down, double value, double max, double share, bool animate, int index)
+    private UIElement BuildRow(Row row, double value, double max, double share, bool animate, int index)
     {
         double ratio = Math.Clamp(value / max, 0.02, 1);
-        var meta = AppDirectory.Get(name);
+        long up = row.Up, down = row.Down;
         var grid = Columns();
         grid.Margin = new Thickness(0, 0, 0, 6);
         grid.MinHeight = 34;
         grid.Background = Brushes.Transparent;
 
-        grid.Children.Add(AppIcon(name, meta?.Path));
+        grid.Children.Add(AppIcon(row.Title, row.Icon));
 
         var title = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
-        title.Children.Add(new TextBlock { Text = name, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis });
-        if (meta is { Description.Length: > 0 } && !meta.Description.Equals(name, StringComparison.OrdinalIgnoreCase))
+        title.Children.Add(new TextBlock { Text = row.Title, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis });
+        if (row.Sub.Length > 0)
         {
-            var d = new TextBlock { Text = meta.Description, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
+            var d = new TextBlock { Text = row.Sub, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
             d.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
             title.Children.Add(d);
         }
@@ -346,7 +413,13 @@ public partial class TrafficPage : UserControl
         Value(grid, 5, Size(up + down), "TextBrush", true);
         Value(grid, 6, share >= 0.001 ? share.ToString("P1", System.Globalization.CultureInfo.InvariantCulture) : "<0.1%", "MutedBrush", false);
 
-        grid.ToolTip = $"{name}{(meta is null ? "" : "\n" + meta.Path)}\n上传 {Size(up)} · 下载 {Size(down)} · 合计 {Size(up + down)} · 占比 {share:P1}";
+        var tip = new System.Text.StringBuilder(row.Title);
+        if (row.Members.Count == 1 && row.Path.Length > 0) tip.Append('\n').Append(row.Path);
+        tip.Append($"\n上传 {Size(up)} · 下载 {Size(down)} · 合计 {Size(up + down)} · 占比 {share:P1}");
+        if (row.Members.Count > 1)
+            foreach (var m in row.Members.Take(12)) tip.Append($"\n{m.Name}  {Size(m.Up + m.Down)}");
+        grid.ToolTip = tip.ToString();
+        if (row.Path.Length > 0) grid.ContextMenu = RowMenu(row.Path);
 
         if (animate)
         {
@@ -373,34 +446,66 @@ public partial class TrafficPage : UserControl
         grid.Children.Add(t);
     }
 
-    // Program icon when the executable is known, otherwise the first letter on a tinted tile.
-    private UIElement AppIcon(string name, string? path)
+    private static ContextMenu RowMenu(string path)
+    {
+        var menu = new ContextMenu();
+        void Add(string header, string icon, Action act)
+        {
+            var mi = new MenuItem { Header = header };
+            mi.SetResourceReference(MenuItem.TagProperty, icon);
+            mi.Click += (_, _) => act();
+            menu.Items.Add(mi);
+        }
+        Add("打开文件位置", "Icon.Folder", () => ShellLauncher.Reveal(path));
+        Add("复制路径", "Icon.Copy", () =>
+        {
+            try { Clipboard.SetDataObject(path, true); }
+            catch (System.Runtime.InteropServices.COMException) { }
+        });
+        Add("属性", "Icon.Info", () => ShellLauncher.Properties(path));
+        return menu;
+    }
+
+    // The program's real icon (its own, its application's, or its Store tile), a system glyph, or its initial.
+    private UIElement AppIcon(string title, string icon)
     {
         int px = (int)Math.Round(22 * Math.Max(1, VisualTreeHelper.GetDpi(this).DpiScaleX));
         var host = new Grid { Width = 22, Height = 22, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
-        if (path is not null && ShellIcons.Cached(path, px) is { } cached)
+        if (icon.StartsWith("glyph:", StringComparison.Ordinal))
+        {
+            bool windows = icon == AppIdentity.WindowsGlyph;
+            var glyph = new System.Windows.Shapes.Path { Width = 16, Height = 16, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            glyph.SetResourceReference(StyleProperty, "IconPath");
+            glyph.SetResourceReference(System.Windows.Shapes.Path.DataProperty, windows ? "Icon.Start" : "Icon.Clock");
+            glyph.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, windows ? "Accent1Brush" : "MutedBrush");
+            host.Children.Add(glyph);
+            return host;
+        }
+        if (icon.Length > 0 && ShellIcons.Cached(icon, px) is { } cached)
         {
             host.Children.Add(new Image { Source = cached });
             return host;
         }
         var tile = new Border { CornerRadius = new CornerRadius(6) };
         tile.SetResourceReference(Border.BackgroundProperty, "RaisedBrush");
-        var letter = new TextBlock { Text = name.Length > 0 ? name[..1].ToUpperInvariant() : "?", FontSize = 12, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        var letter = new TextBlock { Text = title.Length > 0 ? title[..1].ToUpperInvariant() : "?", FontSize = 12, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         letter.SetResourceReference(TextBlock.ForegroundProperty, "Accent1Brush");
         tile.Child = letter;
         host.Children.Add(tile);
-        if (path is not null)
-            ShellIcons.Request(path, px, bmp =>
+        if (icon.Length > 0)
+            ShellIcons.Request(icon, px, bmp =>
             {
                 if (bmp is not null) Dispatcher.BeginInvoke(new Action(() => { host.Children.Clear(); host.Children.Add(new Image { Source = bmp }); }));
             });
         return host;
     }
 
-    private static TextBlock Placeholder(string text)
+    private static UIElement Placeholder()
     {
-        var t = new TextBlock { Text = text, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 30, 0, 0) };
-        t.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
-        return t;
+        var p = new System.Windows.Shapes.Path { Width = 44, Height = 44, Margin = new Thickness(0, 34, 0, 0), HorizontalAlignment = HorizontalAlignment.Center, Opacity = 0.55 };
+        p.SetResourceReference(StyleProperty, "IconPath");
+        p.SetResourceReference(System.Windows.Shapes.Path.DataProperty, "Icon.Chart");
+        p.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "MutedBrush");
+        return p;
     }
 }

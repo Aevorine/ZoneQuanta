@@ -63,6 +63,11 @@ public sealed class UpdateCoordinator : Observable
     public async Task InstallAsync()
     {
         if (Busy || Available is null) return;
+        if (DataPaths.Sandboxed)
+        {
+            Status = "隔离实例不安装更新";
+            return;
+        }
         Busy = true;
         Progress = 0;
         Status = "正在下载…";

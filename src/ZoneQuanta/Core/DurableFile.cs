@@ -28,7 +28,15 @@ public static class DurableFile
         {
             // ReplaceFile can refuse (e.g. the file is briefly open elsewhere); copy-then-move still keeps a .bak.
             if (File.Exists(path)) File.Copy(path, bak, overwrite: true);
-            File.Move(tmp, path, overwrite: true);
+            for (int attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    File.Move(tmp, path, overwrite: true);
+                    return;
+                }
+                catch (IOException) when (attempt < 5) { System.Threading.Thread.Sleep(20); } // a reader may hold it a moment
+            }
         }
     }
 

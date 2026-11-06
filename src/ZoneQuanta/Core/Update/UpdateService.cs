@@ -169,7 +169,7 @@ public sealed class UpdateService
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) { Log.Error("relaunch", ex); }
     }
 
-    public static string FailureMarker => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ZoneQuanta", "update-failed.txt");
+    public static string FailureMarker => DataPaths.File("update-failed.txt");
 
     public static void CleanupLeftovers()
     {

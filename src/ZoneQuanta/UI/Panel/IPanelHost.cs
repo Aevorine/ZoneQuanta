@@ -25,5 +25,6 @@ public interface IPanelHost
     Task<bool> SetTrackingAsync(bool on);
     void ToggleQuick();
     void ShowPathBar();
+    void RestoreSnapshot(Core.Snapshot snapshot);
     event Action<DateTimeOffset> Tick;
 }

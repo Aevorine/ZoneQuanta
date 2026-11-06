@@ -13,19 +13,22 @@ public sealed class SettingsStore
     private static readonly HashSet<string> Immediate = new() { nameof(AppSettings.QuickBounds), nameof(AppSettings.PanelBounds) };
     private readonly string _path;
     private readonly DispatcherTimer _debounce;
+    private readonly SortedSet<string> _dirty = new(StringComparer.Ordinal);
+
+    public event Action? Saved;
 
     public AppSettings Current { get; }
 
     public SettingsStore()
     {
-        string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ZoneQuanta");
-        Directory.CreateDirectory(dir);
-        _path = Path.Combine(dir, "settings.json");
+        Directory.CreateDirectory(DataPaths.Root);
+        _path = DataPaths.File("settings.json");
         Current = Load(_path, out bool migrated);
         _debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         _debounce.Tick += (_, _) => Flush();
         Current.PropertyChanged += (_, e) =>
         {
+            if (e.PropertyName is { } changed) _dirty.Add(changed);
             _debounce.Stop();
             if (e.PropertyName is { } name && Immediate.Contains(name)) Flush();
             else _debounce.Start();
@@ -36,7 +39,14 @@ public sealed class SettingsStore
     public void Flush()
     {
         _debounce.Stop();
-        try { DurableFile.Write(_path, JsonSerializer.Serialize(Current, Json)); }
+        if (DataPaths.WritesFrozen) return;
+        try
+        {
+            DurableFile.Write(_path, JsonSerializer.Serialize(Current, Json));
+            if (_dirty.Count > 0) Log.Write($"settings saved: {string.Join(", ", _dirty)}");
+            _dirty.Clear();
+            Saved?.Invoke();
+        }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Error("settings-save", ex); }
     }
 

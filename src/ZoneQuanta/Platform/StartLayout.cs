@@ -20,7 +20,7 @@ internal static class StartLayout
 
     public static async Task<List<Pin>?> ReadAsync()
     {
-        string dir = Path.Combine(Path.GetTempPath(), "ZoneQuanta");
+        string dir = Path.Combine(Path.GetTempPath(), "ZoneQuanta" + DataPaths.InstanceSuffix); // a sandbox must not lock the user's copy
         Directory.CreateDirectory(dir);
         string layout = Path.Combine(dir, "start-layout.json"), apps = Path.Combine(dir, "start-apps.json");
         string script = "$ErrorActionPreference='Stop';" +

@@ -36,6 +36,13 @@ internal static class ShellLinks
         }
     }
 
+    // Target of a shortcut, "" when it cannot be read.
+    public static string Target(string lnk)
+    {
+        try { return Resolve(lnk).Target; }
+        catch (Exception ex) when (ex is COMException or IOException or UnauthorizedAccessException or ArgumentException or InvalidCastException) { return ""; }
+    }
+
     private static (string Target, string Args) Resolve(string lnk)
     {
         var link = (IShellLinkW)new ShellLink();

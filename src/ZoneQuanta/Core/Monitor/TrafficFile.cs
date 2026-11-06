@@ -15,7 +15,8 @@ public sealed class TrafficFile
     private long _todayFrom, _todayUntil, _todayTotal;
     private bool _todayValid;
 
-    public static string DefaultDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ZoneQuanta");
+    // The helper's folder (apps.tsv); totals.tsv lives in DataPaths.Root.
+    public static string DefaultDir => DataPaths.HelperDir;
 
     public static TrafficFile Load(string path)
     {

@@ -62,6 +62,7 @@ public sealed partial class QuickGrid : UserControl
         _list.Drop += OnDrop;
 
         InitBoard();
+        actions.AttachUndoKeys(this);
         actions.Store.Changed += _ => Invalidate();
         actions.Settings.PropertyChanged += OnSetting;
         IsVisibleChanged += (_, _) => { if (IsVisible) Sync(); };

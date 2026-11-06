@@ -391,6 +391,9 @@ public sealed partial class QuickGrid
         if (TileAt(e.OriginalSource) is not null) return;
         var menu = card.ContextMenu!;
         menu.Items.Clear();
+        Add(menu, "撤销", "Icon.Reset", "Ctrl+Z", () => _actions.Undo(), _actions.Store.CanUndo);
+        Add(menu, "重做", "Icon.Right", "Ctrl+Y", () => _actions.Redo(), _actions.Store.CanRedo);
+        menu.Items.Add(new Separator());
         Add(menu, "重命名分组", "Icon.Edit", "", card.BeginRename, true);
         var group = card.Group;
         menu.Items.Add(CardSizeMenu(menu, group.Cols, group.Rows, "跟随默认", (c, r) => _actions.SetSize(group, c, r)));
